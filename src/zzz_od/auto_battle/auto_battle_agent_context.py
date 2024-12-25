@@ -516,7 +516,7 @@ class AutoBattleAgentContext:
             ultimate_state_list = [
                 CommonAgentStateEnum.ULTIMATE_31.value,
                 CommonAgentStateEnum.ULTIMATE_32.value,
-                CommonAgentStateEnum.ULTIMATE_32.value,
+                CommonAgentStateEnum.ULTIMATE_33.value, #错误
             ]
         elif len(screen_agent_list) == 2:
             energy_state_list = [
