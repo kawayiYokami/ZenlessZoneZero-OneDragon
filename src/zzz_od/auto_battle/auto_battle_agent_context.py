@@ -342,6 +342,8 @@ class AutoBattleAgentContext:
 
             update_state_record_list = []
             # 尝试更新代理人列表 成功的话 更新状态记录
+            # 只有代理人列表更新成功 本次识别的状态才可用
+            
             if self.team_info.update_agent_list(
                     screen_agent_list,
                     [(i.value if i is not None else 0) for i in energy_state_list],
@@ -516,7 +518,7 @@ class AutoBattleAgentContext:
             ultimate_state_list = [
                 CommonAgentStateEnum.ULTIMATE_31.value,
                 CommonAgentStateEnum.ULTIMATE_32.value,
-                CommonAgentStateEnum.ULTIMATE_32.value,
+                CommonAgentStateEnum.ULTIMATE_33.value, #错误
             ]
         elif len(screen_agent_list) == 2:
             energy_state_list = [
