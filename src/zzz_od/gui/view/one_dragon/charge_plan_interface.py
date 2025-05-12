@@ -273,13 +273,13 @@ class ChargePlanInterface(VerticalScrollInterface):
         self.loop_opt.setValue(self.ctx.charge_plan_config.loop)
         self.loop_opt.value_changed.connect(self._on_loop_changed)
 
-        self.first_unfinished_first_opt = SwitchSettingCard(icon=FluentIcon.FLAG, title='不跳过任务', content='开启时 体力不足时不尝试下一个计划')
-        self.first_unfinished_first_opt.setValue(self.ctx.charge_plan_config.first_unfinished_first)
-        self.first_unfinished_first_opt.value_changed.connect(self._on_first_unfinished_first_changed)
+        self.skip_plan_opt = SwitchSettingCard(icon=FluentIcon.FLAG, title='跳过计划', content='开启时 自动跳过体力不足的计划')
+        self.skip_plan_opt.setValue(self.ctx.charge_plan_config.skip_plan)
+        self.skip_plan_opt.value_changed.connect(self._on_skip_plan_changed)
 
         # 将两个开关添加到水平布局中
         switch_layout.addWidget(self.loop_opt)
-        switch_layout.addWidget(self.first_unfinished_first_opt)
+        switch_layout.addWidget(self.skip_plan_opt)
 
         # 将容器添加到主布局中
         self.content_widget.add_widget(switch_container)
@@ -377,8 +377,8 @@ class ChargePlanInterface(VerticalScrollInterface):
         self.ctx.charge_plan_config.loop = new_value
         self.ctx.charge_plan_config.save()
 
-    def _on_first_unfinished_first_changed(self, new_value: bool) -> None:
-        self.ctx.charge_plan_config.first_unfinished_first = new_value
+    def _on_skip_plan_changed(self, new_value: bool) -> None:
+        self.ctx.charge_plan_config.skip_plan = new_value
         self.ctx.charge_plan_config.save()
     
     def _on_remove_all_completed_clicked(self) -> None:
