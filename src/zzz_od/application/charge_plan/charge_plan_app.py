@@ -16,7 +16,6 @@ from zzz_od.operation.compendium.routine_cleanup import RoutineCleanup
 from zzz_od.operation.compendium.tp_by_compendium import TransportByCompendium
 from zzz_od.operation.goto.goto_menu import GotoMenu
 
-
 class ChargePlanApp(ZApplication):
 
     STATUS_NO_PLAN: ClassVar[str] = '未配置体力计划'
@@ -94,22 +93,21 @@ class ChargePlanApp(ZApplication):
                 return self.round_success(ChargePlanApp.STATUS_ROUND_FINISHED)
             
             # 计算所需电量
-            need_charge_power = 1000  # 默认值，确保在未知情况下会检查
+            need_charge_power = 20  # 默认值，确保在未知情况下会检查
             self.need_to_check_power_in_mission = False
             
             if next_plan.category_name == '实战模拟室' and next_plan.card_num == CardNumEnum.DEFAULT.value.value:
                 self.need_to_check_power_in_mission = True
-            elif next_plan.category_name == '定期清剿':  # 进去尝试使用家政券
+            elif next_plan.category_name == '定期清剿' and self.ctx.charge_plan_config.use_coupon:  # 进去尝试使用家政券
                 self.need_to_check_power_in_mission = True
-            else:
-                if next_plan.category_name == '实战模拟室':
-                    need_charge_power = int(next_plan.card_num) * 20
-                elif next_plan.category_name == '专业挑战室':
-                    need_charge_power = 40
-                elif next_plan.category_name == '恶名狩猎':
-                    need_charge_power = 60
-                else:
-                    self.need_to_check_power_in_mission = True
+            elif next_plan.category_name == '实战模拟室':
+                need_charge_power = int(next_plan.card_num) * 20
+            elif next_plan.category_name == '专业挑战室':
+                need_charge_power = 40
+            elif next_plan.category_name == '恶名狩猎':
+                need_charge_power = 60
+            elif next_plan.category_name == '定期清剿':
+                need_charge_power = 60
             
             # 检查电量是否足够
             if not self.need_to_check_power_in_mission and self.charge_power < need_charge_power:
