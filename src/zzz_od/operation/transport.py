@@ -132,7 +132,7 @@ class Transport(ZOperation):
         area = self.ctx.screen_loader.get_area('地图', '传送点名称')
         part = cv2_utils.crop_image_only(screen, area.rect)
 
-        ocr_map = self.ctx.ocr.run_ocr(part)
+        ocr_map = self.ctx.ocr.run_ocr(screen)
 
         if len(ocr_map) == 0:
             return self.round_retry('未识别到传送点', wait_round_time=1)
@@ -147,7 +147,8 @@ class Transport(ZOperation):
 
         if target_ocr_str is not None:
             mrl = ocr_map[target_ocr_str]
-            self.ctx.controller.click(mrl.max.center + area.left_top)
+            # self.ctx.controller.click(mrl.max.center + area.left_top)
+            self.ctx.controller.click(mrl.max.center)
             return self.round_success(wait=1)
 
         area_tp_list: List[str] = self.ctx.map_service.area_name_map[self.area_name].tp_list  # 当前区域的传送点名称
@@ -222,7 +223,7 @@ def __debug():
     ctx.init_by_config()
     ctx.init_ocr()
     ctx.start_running()
-    op = Transport(ctx, '澄辉坪', '览海道')
+    op = Transport(ctx, '澄辉坪', '阿朔')
     op.execute()
 
 
