@@ -191,7 +191,7 @@ class LostVoidApp(ZApplication):
 
         if idx is None or idx < 0:
             start = Point(self.ctx.controller.standard_width // 2, self.ctx.controller.standard_height // 2)
-            end = start + Point(-400, 0)
+            end = start + Point(-800, 0)
             self.ctx.controller.drag_to(start=start, end=end)
             return self.round_retry(status='未识别到目标调查战略', wait=1)
 
