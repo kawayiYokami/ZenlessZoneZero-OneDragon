@@ -102,6 +102,7 @@ class SuibianTempleApp(ZApplication):
 
         target_cn_list: list[str] = [
             '自动选择邦布',
+            '邦布电量不足',  # 连续派遣有可能导致电量不足 此时有要跳过 issue 1155
             '派遣',
             '确认',
             '可收获',
@@ -114,8 +115,14 @@ class SuibianTempleApp(ZApplication):
             '剩余时间',
             '可派遣小队',
         ]
+        if self.last_squad_opt == '邦布电量不足':
+            # 电量不足的时候不要点派遣
+            target_cn_list.remove('派遣')
+            target_cn_list.remove('邦布电量不足')
+
         if self.last_squad_opt in ['游历小队', '自动选择邦布']:  # 不能一直点击
             ignore_cn_list.append(self.last_squad_opt)
+
         result = self.round_by_ocr_and_click_by_priority(screen, target_cn_list, ignore_cn_list=ignore_cn_list)
         if result.is_success:
             self.last_squad_opt = result.status
