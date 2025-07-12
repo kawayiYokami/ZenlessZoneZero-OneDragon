@@ -159,9 +159,8 @@ jobs:
         Copy-Item "$distDir/OneDragon-Installer.exe" -Destination $rootDir -Force
 
         # 打包启动器
-        Compress-Archive -Path @(
-          "$distDir/OneDragon-Launcher.exe"
-        ) -DestinationPath "$distDir/ZenlessZoneZero-OneDragon-Launcher.zip" -Force
+        Compress-Archive -Path "$distDir/OneDragon-Launcher.exe" -DestinationPath "$distDir/ZenlessZoneZero-OneDragon-Launcher.zip" -Force
+        Copy-Item "$distDir/ZenlessZoneZero-OneDragon-Launcher.zip" -Destination $envDir -Force
 
         # 复制资源文件
         Copy-Item "assets/text" -Destination "$rootDir/assets/text" -Recurse -Force
@@ -302,13 +301,13 @@ jobs:
         $version = "${{ steps.get_version.outputs.version }}"
 
         # 打包完整版本
-        Compress-Archive -Path "$rootDir\*" -DestinationPath "$distDir/ZenlessZoneZero-OneDragon-$version-Full.zip" -Force
+        Compress-Archive -Path "$rootDir/*" -DestinationPath "$distDir/ZenlessZoneZero-OneDragon-$version-Full.zip" -Force
 
         # 复制环境依赖到 .install 目录
         Copy-Item "$distDir/ZenlessZoneZero-OneDragon-Environment.zip" -Destination "$rootDir/.install/ZenlessZoneZero-OneDragon-Environment.zip" -Force
 
         # 打包带环境的完整版本
-        Compress-Archive -Path "$rootDir\*" -DestinationPath "$distDir/ZenlessZoneZero-OneDragon-$version-Full-Environment.zip" -Force
+        Compress-Archive -Path "$rootDir/*" -DestinationPath "$distDir/ZenlessZoneZero-OneDragon-$version-Full-Environment.zip" -Force
 
         # 复制安装程序
         Copy-Item "$rootDir/OneDragon-Installer.exe" -Destination "$distDir/ZenlessZoneZero-OneDragon-$version-Installer.exe" -Force
