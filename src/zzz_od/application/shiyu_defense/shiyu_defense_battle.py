@@ -1,7 +1,6 @@
-import time
+from typing import Optional, ClassVar
 
 from cv2.typing import MatLike
-from typing import Optional, ClassVar
 
 from one_dragon.base.geometry.rectangle import Rect
 from one_dragon.base.operation.operation import Operation
@@ -104,17 +103,14 @@ class ShiyuDefenseBattle(ZOperation):
             auto_battle_utils.stop_running(self.auto_op)
             return self.round_success(status=ShiyuDefenseBattle.STATUS_NEED_SPECIAL_MOVE)
 
-        now = time.time()
-        screen = self.screenshot()
-
         in_battle = self.auto_op.auto_battle_context.check_battle_state(
-            screen, now,
+            self.last_screenshot, self.last_screenshot_time,
             check_battle_end_normal_result=True,
             check_battle_end_defense_result=True,
             check_distance=True)
 
         if not in_battle:
-            result = self.round_by_find_area(screen, '战斗画面', '按键-交互')
+            result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-交互')
             if result.is_success:
                 self.find_interact_btn_times += 1
             else:

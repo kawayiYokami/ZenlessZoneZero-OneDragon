@@ -1,5 +1,4 @@
 import time
-
 from typing import Optional, ClassVar
 
 from one_dragon.base.geometry.point import Point
@@ -205,10 +204,10 @@ class RoutineCleanup(ZOperation):
         if self.auto_op.auto_battle_context.last_check_end_result is not None:
             auto_battle_utils.stop_running(self.auto_op)
             return self.round_success(status=self.auto_op.auto_battle_context.last_check_end_result)
-        now = time.time()
-        screen = self.screenshot()
 
-        self.auto_op.auto_battle_context.check_battle_state(screen, now, check_battle_end_normal_result=True)
+        self.auto_op.auto_battle_context.check_battle_state(
+            self.last_screenshot, self.last_screenshot_time,
+            check_battle_end_normal_result=True)
 
         return self.round_wait(wait=self.ctx.battle_assistant_config.screenshot_interval)
 

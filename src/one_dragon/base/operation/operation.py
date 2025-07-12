@@ -115,6 +115,9 @@ class Operation(OperationBase):
         self.last_screenshot: np.ndarray | None = None
         """上一次的截图 用于出错时保存"""
 
+        self.last_screenshot_time: float = 0
+        """上一次截图的时间"""
+
     def _init_before_execute(self):
         """在操作开始前初始化执行状态。
 
@@ -538,7 +541,7 @@ class Operation(OperationBase):
         Returns:
             np.ndarray: 截图图像。
         """
-        self.last_screenshot = self.ctx.controller.screenshot()
+        self.last_screenshot_time, self.last_screenshot = self.ctx.controller.screenshot()
         return self.last_screenshot
 
     def save_screenshot(self, prefix: Optional[str] = None) -> str:

@@ -596,25 +596,23 @@ class LostVoidRunLevel(ZOperation):
         if not self.auto_op.is_running:
             self.auto_op.start_running_async()
 
-        screenshot_time = time.time()
-        screen = self.screenshot()
         self.last_frame_in_battle = self.current_frame_in_battle
-        self.current_frame_in_battle = self.auto_op.auto_battle_context.check_battle_state(screen, screenshot_time)
+        self.current_frame_in_battle = self.auto_op.auto_battle_context.check_battle_state(self.last_screenshot, self.last_screenshot_time)
 
         if self.current_frame_in_battle:  # 当前回到可战斗画面
             if (not self.last_frame_in_battle  # 之前在非战斗画面
-                or screenshot_time - self.last_det_time >= 1  # 1秒识别一次
-                or (self.no_in_battle_times > 0 and screenshot_time - self.last_check_finish_time >= 0.1)  # 之前也识别到脱离战斗 0.1秒识别一次
+                or self.last_screenshot_time - self.last_det_time >= 1  # 1秒识别一次
+                or (self.no_in_battle_times > 0 and self.last_screenshot_time - self.last_check_finish_time >= 0.1)  # 之前也识别到脱离战斗 0.1秒识别一次
             ):
                 no_in_battle = False
                 screen2 = self.screenshot()  # 因为跟自动战斗是异步同时识别 这里重新截图避免两边冲突
 
                 # 尝试识别下层入口 (道中危机 和 终结之役 不需要识别)
                 if self.region_type not in [LostVoidRegionType.ELITE, LostVoidRegionType.BOSS]:
-                    self.last_det_time = screenshot_time
+                    self.last_det_time = self.last_screenshot_time
                     try:
                         # 为了不随意打断战斗 这里的识别阈值要高一点
-                        frame_result: DetectFrameResult = self.detector.run(screen2, run_time=screenshot_time, conf=0.9)
+                        frame_result: DetectFrameResult = self.detector.run(screen2, run_time=self.last_screenshot_time, conf=0.9)
                         with_interact, with_distance, with_entry = self.detector.is_frame_with_all(frame_result)
                         if with_interact or with_distance or with_entry:
                             no_in_battle = True
@@ -639,16 +637,16 @@ class LostVoidRunLevel(ZOperation):
 
                 return self.round_wait(wait_round_time=self.ctx.battle_assistant_config.screenshot_interval)
         else:  # 当前不在战斗画面
-            if (screenshot_time - self.last_check_finish_time >= 1  # 1秒识别一次
-                or (self.no_in_battle_times > 0 and screenshot_time - self.last_check_finish_time >= 0.1)  # 之前也识别到脱离战斗 0.1秒识别一次
+            if (self.last_screenshot_time - self.last_check_finish_time >= 1  # 1秒识别一次
+                or (self.no_in_battle_times > 0 and self.last_screenshot_time - self.last_check_finish_time >= 0.1)  # 之前也识别到脱离战斗 0.1秒识别一次
             ):
-                self.last_check_finish_time = screenshot_time
+                self.last_check_finish_time = self.last_screenshot_time
                 no_in_battle_screen_name_list = [
                     '迷失之地-武备选择', '迷失之地-通用选择',
                     '迷失之地-挑战结果',
                     '迷失之地-战斗失败'
                 ]
-                screen_name = self.check_and_update_current_screen(screen, no_in_battle_screen_name_list)
+                screen_name = self.check_and_update_current_screen(self.last_screenshot, no_in_battle_screen_name_list)
                 if screen_name in no_in_battle_screen_name_list:
                     self.no_in_battle_times += 1
                 else:
