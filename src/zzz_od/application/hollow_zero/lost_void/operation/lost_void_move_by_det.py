@@ -135,7 +135,7 @@ class LostVoidMoveByDet(ZOperation):
         self.last_target_x: Optional[float] = None  # 上一次识别到的目标x轴坐标
         self.last_actual_turn_distance: int = 0  # 上一次实际的转向距离
         self.estimated_turn_ratio: float = 0.2  # 估算的转向比例
-        self.turn_calibration_count: int = 0  # 转向校准次数
+        self.turn_calibration_count: int = 1  # 转向校准次数
 
         self._reset_turn_calibration_status()
 
@@ -146,7 +146,7 @@ class LostVoidMoveByDet(ZOperation):
         self.last_target_x = None
         self.last_actual_turn_distance = 0
         self.estimated_turn_ratio = 0.2
-        self.turn_calibration_count = 0
+        self.turn_calibration_count = 1
 
     def handle_not_in_world(self, screen: MatLike) -> OperationRoundResult:
         """
@@ -258,7 +258,7 @@ class LostVoidMoveByDet(ZOperation):
         """
         if is_moving:
             # 如果在移动中，每次都重置校准，并使用非常小的转向限制
-            self.turn_calibration_count = 0
+            self.turn_calibration_count = 1
             min_turn = 5
             max_turn = 15
         else:
@@ -281,7 +281,7 @@ class LostVoidMoveByDet(ZOperation):
             # 当目标穿越中心点(过冲)时，强力抑制，比例减半并重置校准过程
             if last_diff_x * diff_x < 0:
                 self.estimated_turn_ratio *= 0.5
-                self.turn_calibration_count = 0
+                self.turn_calibration_count = 1
             # 正常校准：使用移动平均法平滑更新比例
             elif abs(actual_pixel_moved) > 1:
                 current_ratio = abs(self.last_actual_turn_distance / actual_pixel_moved)
@@ -293,7 +293,7 @@ class LostVoidMoveByDet(ZOperation):
                 self.turn_calibration_count += 1
 
         # 计算转向指令，首次使用固定值进行侦察，后续使用自适应指令
-        if self.turn_calibration_count == 0:
+        if self.turn_calibration_count == 1:
             turn_distance = 30 if diff_x > 0 else -30
             self.turn_calibration_count += 1
         else:
