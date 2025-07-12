@@ -23,9 +23,9 @@ if __name__ == '__main__':
     setTheme(Theme['AUTO'])
 
     if hasattr(sys, '_MEIPASS'):
-        icon_path = os.path.join(sys._MEIPASS, 'resources', 'assets', 'ui', 'installer_logo.ico')
+        icon_path = os.path.join(sys._MEIPASS, 'resources', 'assets', 'ui', 'logo.ico')
     else:
-        icon_path = os.path.join(os.getcwd(), 'assets', 'ui', 'installer_logo.ico')
+        icon_path = os.path.join(os.getcwd(), 'assets', 'ui', 'logo.ico')
     picker_window = DirectoryPickerWindow(win_title="", icon_path=icon_path)
     picker_window.exec()
     work_dir = picker_window.selected_directory

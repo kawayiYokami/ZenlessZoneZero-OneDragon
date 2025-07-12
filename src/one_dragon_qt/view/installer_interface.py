@@ -359,7 +359,7 @@ class InstallerInterface(VerticalScrollInterface):
         logo_vlayout.setSpacing(0)
         logo_vlayout.addStretch(1)
         self.card_logo_label = QLabel()
-        card_logo_pixmap = QPixmap('assets/ui/installer_logo.ico')
+        card_logo_pixmap = QPixmap('assets/ui/logo.ico')
         pixel_ratio = self.devicePixelRatio()
         target_size = QSize(160, 160)
         scaled_pixmap = card_logo_pixmap.scaled(target_size * pixel_ratio, 

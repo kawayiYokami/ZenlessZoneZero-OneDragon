@@ -13,7 +13,7 @@ class ZInstallerWindow(InstallerWindowBase):
             ctx=ctx,
             win_title=win_title,
             parent=parent,
-            app_icon='zzz_logo.ico'
+            app_icon='logo.ico'
         )
 
         # 隐藏左侧导航栏
