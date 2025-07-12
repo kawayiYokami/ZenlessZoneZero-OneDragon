@@ -7,6 +7,7 @@ from typing import Optional, ClassVar, Callable, Any
 
 import cv2
 import numpy as np
+from cv2.typing import MatLike
 
 from one_dragon.base.geometry.point import Point
 from one_dragon.base.matcher.match_result import MatchResultList
@@ -905,8 +906,8 @@ class Operation(OperationBase):
 
     def round_by_ocr_and_click_by_priority(
             self,
-            screen: np.ndarray,
             target_cn_list: list[str],
+            screen: MatLike | None = None,
             ignore_cn_list: list[str] = None,
             area: Optional[ScreenArea] = None,
             success_wait: Optional[float] = None, success_wait_round: Optional[float] = None,
@@ -929,6 +930,9 @@ class Operation(OperationBase):
         Returns:
             OperationRoundResult: 点击结果。
         """
+        if screen is None:
+            screen = self.last_screenshot
+
         # 优先使用OCR缓存服务
         if self.ctx.env_config.ocr_cache:
             ocr_result_map = self.ctx.ocr_service.get_ocr_result_list(
