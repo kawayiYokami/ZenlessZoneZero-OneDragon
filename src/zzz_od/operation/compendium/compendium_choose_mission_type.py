@@ -44,9 +44,8 @@ class CompendiumChooseMissionType(ZOperation):
         if self.mission_type.mission_type_name == "代理人方案培养":
             return self.handle_agent_training()
 
-        screen = self.screenshot()
         area = self.ctx.screen_loader.get_area('快捷手册', '副本列表')
-        part = cv2_utils.crop_image_only(screen, area.rect)
+        part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
 
         mission_type_list: List[CompendiumMissionType] = self.ctx.compendium_service.get_same_category_mission_type_list(self.mission_type.mission_type_name)
         if mission_type_list is None:
@@ -84,15 +83,14 @@ class CompendiumChooseMissionType(ZOperation):
         if target_point is None:
             return self.handle_scroll(area, before_target_cnt)
 
-        return self.handle_go_button(screen, target_point)
+        return self.handle_go_button(self.last_screenshot, target_point)
 
     def handle_agent_training(self) -> OperationRoundResult:
         """
         专门处理"代理人方案培养"的方法
         """
-        screen = self.screenshot()
         area = self.ctx.screen_loader.get_area("快捷手册", "目标列表")
-        part = cv2_utils.crop_image_only(screen, area.rect)
+        part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
 
         click_pos = cv2_utils.find_character_avatar_center_with_offset(
             part, 
@@ -107,7 +105,7 @@ class CompendiumChooseMissionType(ZOperation):
 
         target_point = Point(click_pos[0], click_pos[1])
         log.debug(f"找到代理人目标，最终目标点: {target_point}")
-        return self.handle_go_button(screen, target_point)
+        return self.handle_go_button(self.last_screenshot, target_point)
 
     def handle_scroll(self, area: Rect, before_target_cnt: int = 0) -> OperationRoundResult:
         """
@@ -170,8 +168,7 @@ class CompendiumChooseMissionType(ZOperation):
     @node_from(from_name='选择副本', status=STATUS_CHOOSE_SUCCESS)
     @operation_node(name='确认')
     def confirm(self) -> OperationRoundResult:
-        screen = self.screenshot()
-        return self.round_by_find_and_click_area(screen, '快捷手册', '传送确认',
+        return self.round_by_find_and_click_area(self.last_screenshot, '快捷手册', '传送确认',
                                                  success_wait=5, retry_wait=1)
 
 

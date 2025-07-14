@@ -220,7 +220,7 @@ class LostVoidContext:
             if screenshot_time - start >= total_check_seconds:
                 return False
 
-            screen = self.ctx.controller.screenshot()
+            screenshot_time, screen = self.ctx.controller.screenshot()
             if self.check_battle_encounter(screen, screenshot_time):
                 return True
 

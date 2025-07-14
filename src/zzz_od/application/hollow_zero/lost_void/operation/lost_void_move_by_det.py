@@ -169,17 +169,14 @@ class LostVoidMoveByDet(ZOperation):
     @node_from(from_name='无目标处理', status=STATUS_CONTINUE)
     @operation_node(name='移动前转向', node_max_retry_times=20, is_start_node=True)
     def turn_at_first(self) -> OperationRoundResult:
-        screenshot_time = time.time()
-        screen = self.screenshot()
-
-        in_world = self.ctx.lost_void.in_normal_world(screen)
+        in_world = self.ctx.lost_void.in_normal_world(self.last_screenshot)
         if not in_world:
-            return self.handle_not_in_world(screen)
+            return self.handle_not_in_world(self.last_screenshot)
 
-        frame_result = self.ctx.lost_void.detect_to_go(screen, screenshot_time=screenshot_time,
+        frame_result = self.ctx.lost_void.detect_to_go(self.last_screenshot, screenshot_time=self.last_screenshot_time,
                                                        ignore_list=self.ignore_entry_list)
 
-        if self.check_interact_stop(screen, frame_result):
+        if self.check_interact_stop(self.last_screenshot, frame_result):
             return self.round_success(LostVoidMoveByDet.STATUS_ARRIVAL, data=self.last_target_name)
 
         target_result = self.get_move_target(frame_result)
@@ -207,12 +204,11 @@ class LostVoidMoveByDet(ZOperation):
     @node_from(from_name='移动前转向', status='开始移动')
     @operation_node(name='移动')
     def move_towards(self) -> OperationRoundResult:
-        screenshot_time = time.time()
-        screen = self.screenshot()
-        frame_result: DetectFrameResult = self.ctx.lost_void.detect_to_go(screen, screenshot_time=screenshot_time,
-                                                                          ignore_list=self.ignore_entry_list)
+        frame_result: DetectFrameResult = self.ctx.lost_void.detect_to_go(
+            self.last_screenshot, screenshot_time=self.last_screenshot_time,
+            ignore_list=self.ignore_entry_list)
 
-        if self.check_interact_stop(screen, frame_result):
+        if self.check_interact_stop(self.last_screenshot, frame_result):
             self.ctx.controller.stop_moving_forward()
             return self.round_success(data=self.last_target_name)
 
@@ -493,22 +489,21 @@ class LostVoidMoveByDet(ZOperation):
             if in_battle:
                 return self.round_success(LostVoidMoveByDet.STATUS_IN_BATTLE)
 
-        screenshot_time = time.time()
-        screen = self.screenshot()
 
         if self.stop_when_disappear:
             return self.round_success(LostVoidMoveByDet.STATUS_ARRIVAL, data=self.last_target_name)
 
-        frame_result: DetectFrameResult = self.ctx.lost_void.detect_to_go(screen, screenshot_time=screenshot_time,
-                                                                          ignore_list=self.ignore_entry_list)
-        if self.check_interact_stop(screen, frame_result):
-            result = self.round_by_find_area(screen, '战斗画面', '按键-交互')
+        frame_result: DetectFrameResult = self.ctx.lost_void.detect_to_go(
+            self.last_screenshot, screenshot_time=self.last_screenshot_time,
+            ignore_list=self.ignore_entry_list)
+        if self.check_interact_stop(self.last_screenshot, frame_result):
+            result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-交互')
             if result.is_success:
                 return self.round_success(LostVoidMoveByDet.STATUS_ARRIVAL, data=self.last_target_name)
 
         # 保存截图用于优化
-        if self.ctx.env_config.is_debug and screenshot_time - self.last_save_debug_image_time > 5:
-            self.last_save_debug_image_time = screenshot_time
+        if self.ctx.env_config.is_debug and self.last_screenshot_time - self.last_save_debug_image_time > 5:
+            self.last_save_debug_image_time = self.last_screenshot_time
             self.save_screenshot(prefix='lost_void_move_by_det')
 
         if self.last_target_result is not None:

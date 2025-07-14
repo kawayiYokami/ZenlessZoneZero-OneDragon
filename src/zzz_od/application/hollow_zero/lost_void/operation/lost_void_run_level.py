@@ -98,9 +98,7 @@ class LostVoidRunLevel(ZOperation):
     @node_from(from_name='非战斗画面识别', status='按钮-挑战-确认')  # 挑战类型的对话框确认后 第一次点击可能无效 跳回来这里点击到最后生效为止
     @operation_node(name='等待加载', node_max_retry_times=60, is_start_node=True)
     def wait_loading(self) -> OperationRoundResult:
-        screen = self.screenshot()
-
-        if self.ctx.lost_void.in_normal_world(screen):
+        if self.ctx.lost_void.in_normal_world(self.last_screenshot):
             # 有一个战略会在挚交会谈时奖励一个鸣徽 这个画面会在进入大世界一秒内触发
             if self.region_type == LostVoidRegionType.FRIENDLY_TALK:
                 wait = 1
@@ -114,20 +112,20 @@ class LostVoidRunLevel(ZOperation):
         possible_screen_name_list = [
             '迷失之地-武备选择', '迷失之地-通用选择',
         ]
-        screen_name = self.check_and_update_current_screen(screen, screen_name_list=possible_screen_name_list)
+        screen_name = self.check_and_update_current_screen(self.last_screenshot, screen_name_list=possible_screen_name_list)
         if screen_name is not None:
             self.interact_target = LostVoidInteractTarget(name='未知', icon='感叹号', is_exclamation=True)
             return self.round_success('识别正在交互')
 
         # 挑战-限时 挑战-无伤都是这个 都是需要战斗
-        result = self.round_by_find_and_click_area(screen, '迷失之地-大世界', '按钮-挑战-确认')
+        result = self.round_by_find_and_click_area(self.last_screenshot, '迷失之地-大世界', '按钮-挑战-确认')
         if result.is_success:
             self.region_type = LostVoidRegionType.CHANLLENGE_TIME_TRAIL
             self.click_challenge_confirm = True
             return self.round_wait(result.status)
 
         # 可能某个卡在对话
-        result = self.try_talk(screen)
+        result = self.try_talk(self.last_screenshot)
         if result is not None:
             return result
 
@@ -190,12 +188,9 @@ class LostVoidRunLevel(ZOperation):
     @node_from(from_name='尝试交互', success=False)  # 没能交互到
     @operation_node(name='非战斗画面识别', timeout_seconds=180)
     def non_battle_check(self) -> OperationRoundResult:
-        now = time.time()
-        screen = self.screenshot()
-
         # 不在大世界处理
-        if not self.ctx.lost_void.in_normal_world(screen):
-            result = self.round_by_find_and_click_area(screen, '迷失之地-大世界', '按钮-挑战-确认')
+        if not self.ctx.lost_void.in_normal_world(self.last_screenshot):
+            result = self.round_by_find_and_click_area(self.last_screenshot, '迷失之地-大世界', '按钮-挑战-确认')
             if result.is_success:
                 self.region_type = LostVoidRegionType.CHANLLENGE_TIME_TRAIL
                 self.click_challenge_confirm = True
@@ -209,8 +204,9 @@ class LostVoidRunLevel(ZOperation):
                 return self.round_wait('未在大世界', wait=1)
 
         # 在大世界 开始检测
-        frame_result: DetectFrameResult = self.ctx.lost_void.detect_to_go(screen, screenshot_time=now,
-                                                                          ignore_list=self.had_been_list)
+        frame_result: DetectFrameResult = self.ctx.lost_void.detect_to_go(
+            self.last_screenshot, screenshot_time=self.last_screenshot_time,
+            ignore_list=self.had_been_list)
         with_interact, with_distance, with_entry = self.ctx.lost_void.detector.is_frame_with_all(frame_result)
 
         # 优先处理感叹号
@@ -299,12 +295,11 @@ class LostVoidRunLevel(ZOperation):
         走到了交互点后 尝试交互
         @return:
         """
-        screen = self.screenshot()
-        result = self.round_by_find_area(screen, '战斗画面', '按键-交互')
+        result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-交互')
         if result.is_success:
             # 尝试文本识别准备交互的目标 这样会比使用图标更为准确
             area = self.ctx.screen_loader.get_area('迷失之地-大世界', '区域-交互文本')
-            part = cv2_utils.crop_image_only(screen, area.rect)
+            part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
             ocr_result_map = self.ctx.ocr.run_ocr(part)
             current_interact_target = None
             for ocr_result in ocr_result_map.keys():
@@ -319,7 +314,7 @@ class LostVoidRunLevel(ZOperation):
             self.ctx.controller.interact(press=True, press_time=0.2, release=True)
             return self.round_wait('交互', wait=1)
 
-        if not self.ctx.lost_void.in_normal_world(screen):  # 按键消失 说明开始加载了
+        if not self.ctx.lost_void.in_normal_world(self.last_screenshot):  # 按键消失 说明开始加载了
             return self.round_success('交互成功')
 
         # 没有交互按钮 可能走过头了 尝试往后走
@@ -344,10 +339,8 @@ class LostVoidRunLevel(ZOperation):
         2. 出现挑战结果
         @return:
         """
-        screen = self.screenshot()
-
         screen_name = self.check_and_update_current_screen(
-            screen,
+            self.last_screenshot,
             screen_name_list=[
                 '迷失之地-武备选择',
                 '迷失之地-通用选择',
@@ -388,7 +381,7 @@ class LostVoidRunLevel(ZOperation):
             else:
                 return self.round_fail(op_result.status)
 
-        talk_result = self.try_talk(screen)
+        talk_result = self.try_talk(self.last_screenshot)
         if talk_result is not None:
             # 对话的情况 说明交互到的不是下层入口 中途交互到其他内容了
             if self.interact_target is not None and self.interact_target.is_entry:
@@ -396,16 +389,16 @@ class LostVoidRunLevel(ZOperation):
 
             return talk_result
 
-        if self.ctx.lost_void.in_normal_world(screen):
+        if self.ctx.lost_void.in_normal_world(self.last_screenshot):
             return self.round_success('迷失之地-大世界')
 
-        result = self.round_by_find_area(screen, '迷失之地-挑战结果', '标题-挑战结果')
+        result = self.round_by_find_area(self.last_screenshot, '迷失之地-挑战结果', '标题-挑战结果')
         if result.is_success:
             return self.round_success('迷失之地-挑战结果')
 
         # 有可能出现对话框需要确认 issue #1104
         # 这里偷懒了 复用了挑战对话框的按钮
-        result = self.round_by_find_and_click_area(screen, '迷失之地-大世界', '按钮-挑战-确认')
+        result = self.round_by_find_and_click_area(self.last_screenshot, '迷失之地-大世界', '按钮-挑战-确认')
         if result.is_success:
             return self.round_wait(status=result.status, wait=1)
 
@@ -522,20 +515,18 @@ class LostVoidRunLevel(ZOperation):
         if self.interact_target is not None:
             log.info('交互后处理 上次交互对象为 %s %s', self.interact_target.icon, self.interact_target.name)
 
-        screen = self.screenshot()
-
-        if self.ctx.lost_void.in_normal_world(screen):
+        if self.ctx.lost_void.in_normal_world(self.last_screenshot):
             self.move_after_interact()
             return self.round_success(status='大世界', wait=1)
 
-        result = self.round_by_find_area(screen, '迷失之地-挑战结果', '标题-挑战结果')
+        result = self.round_by_find_area(self.last_screenshot, '迷失之地-挑战结果', '标题-挑战结果')
         if result.is_success:
             # 这个标题出来之后 按钮还需要一段时间才能出来
-            r2 = self.round_by_find_area(screen, '迷失之地-挑战结果', '按钮-确定')
+            r2 = self.round_by_find_area(self.last_screenshot, '迷失之地-挑战结果', '按钮-确定')
             if r2.is_success:
                 return self.round_success('挑战结果-确定', wait=2)
 
-            r2 = self.round_by_find_area(screen, '迷失之地-挑战结果', '按钮-完成')
+            r2 = self.round_by_find_area(self.last_screenshot, '迷失之地-挑战结果', '按钮-完成')
             if r2.is_success:
                 return self.round_success('挑战结果-完成', wait=2)
 
@@ -681,17 +672,15 @@ class LostVoidRunLevel(ZOperation):
     @node_from(from_name='交互后处理', status='挑战结果-完成')
     @operation_node(name='挑战结果处理完成')
     def handle_challenge_result_finish(self) -> OperationRoundResult:
-        screen = self.screenshot()
-
         # 由于有动画效果 这里需要识别很多轮 只要有一轮识别到就算有
-        result = self.round_by_find_area(screen, '迷失之地-挑战结果', '奖励-零号业绩')
+        result = self.round_by_find_area(self.last_screenshot, '迷失之地-挑战结果', '奖励-零号业绩')
         if result.is_success:
             self.reward_eval_found = True
-        result = self.round_by_find_area(screen, '迷失之地-挑战结果', '奖励-丁尼')
+        result = self.round_by_find_area(self.last_screenshot, '迷失之地-挑战结果', '奖励-丁尼')
         if result.is_success:
             self.reward_dn_found = True
 
-        result = self.round_by_find_and_click_area(screen=screen, screen_name='迷失之地-挑战结果', area_name='按钮-完成',
+        result = self.round_by_find_and_click_area(screen=self.last_screenshot, screen_name='迷失之地-挑战结果', area_name='按钮-完成',
                                                    until_not_find_all=[('迷失之地-挑战结果', '按钮-完成')],
                                                    success_wait=1, retry_wait=1)
         if result.is_success:

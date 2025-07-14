@@ -586,7 +586,7 @@ class RecordContext:
         self.in_battle = False
         while not self.in_battle:
             log.info("等待战斗开始...")
-            screen = self.screenshot(self.sh_independent)
+            screenshot_time, screen = self.screenshot(self.sh_independent)
             self.in_battle = self.battle.is_normal_attack_btn_available(screen)
             time.sleep(0.5)  # 防止循环过快导致卡顿
 
@@ -596,7 +596,7 @@ class RecordContext:
         while self.battle.last_check_end_result is None:  # check_screen内会检查
             now = time.time()
 
-            screen = self.screenshot(self.sh_independent)
+            screenshot_time, screen = self.screenshot(self.sh_independent)
 
             self.in_battle = self.battle.is_normal_attack_btn_available(screen)
 

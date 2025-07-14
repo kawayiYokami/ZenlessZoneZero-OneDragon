@@ -64,31 +64,28 @@ class ScreenshotHelperApp(ZApplication):
         """
         持续截图
         """
-        now = time.time()
-        screen = self.screenshot()
-
         # 缓存截图
         if self.cache_start_time is None:
-            self.cache_start_time = now
-        self.screenshot_cache.append(screen)
+            self.cache_start_time = self.last_screenshot_time
+        self.screenshot_cache.append(self.last_screenshot)
         # 动态计算最大缓存数量
         if len(self.screenshot_cache) > self.cache_max_count:
             self.screenshot_cache.pop(0)
 
         if self.ctx.screenshot_helper_config.dodge_detect:
-            if self.auto_op.auto_battle_context.dodge_context.check_dodge_flash(screen, now):
-                debug_utils.save_debug_image(screen, prefix='dodge')
-            elif self.auto_op.auto_battle_context.dodge_context.check_dodge_audio(now):
-                debug_utils.save_debug_image(screen, prefix='dodge')
+            if self.auto_op.auto_battle_context.dodge_context.check_dodge_flash(self.last_screenshot, self.last_screenshot_time):
+                debug_utils.save_debug_image(self.last_screenshot, prefix='dodge')
+            elif self.auto_op.auto_battle_context.dodge_context.check_dodge_audio(self.last_screenshot_time):
+                debug_utils.save_debug_image(self.last_screenshot, prefix='dodge')
 
         if self.to_save_screenshot:
             if not self.ctx.screenshot_helper_config.screenshot_before_key and self.is_saving_after_key:
                 # 在按键后截图模式下，保存当前截图
-                debug_utils.save_debug_image(screen, prefix='switch')
+                debug_utils.save_debug_image(self.last_screenshot, prefix='switch')
             return self.round_success()
         else:
             # 确保每次截图间隔正确
-            next_time = self.ctx.screenshot_helper_config.frequency_second - (time.time() - now)
+            next_time = self.ctx.screenshot_helper_config.frequency_second - (time.time() - self.last_save_screenshot_time)
             return self.round_wait(wait_round_time=max(0.01, next_time))
 
     def _on_key_press(self, event: ContextEventItem) -> None:

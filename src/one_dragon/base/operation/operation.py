@@ -724,7 +724,7 @@ class Operation(OperationBase):
             OperationRoundResult: 点击结果。
         """
         if screen is None:
-            screen = self.screenshot()
+            screen = self.last_screenshot
 
         if screen_name is None or area_name is None:
             return self.round_fail('未指定画面区域')
@@ -1013,7 +1013,7 @@ class Operation(OperationBase):
             OperationRoundResult: 导航结果。
         """
         if screen is None:
-            screen = self.screenshot()
+            screen = self.last_screenshot
 
         current_screen_name = screen_utils.get_match_screen_name(self.ctx, screen)
         self.ctx.screen_loader.update_current_screen_name(current_screen_name)
@@ -1056,7 +1056,7 @@ class Operation(OperationBase):
             str: 画面名称。
         """
         if screen is None:
-            screen = self.screenshot()
+            screen = self.last_screenshot
         current_screen_name = screen_utils.get_match_screen_name(self.ctx, screen,
                                                                  screen_name_list=screen_name_list)
         self.ctx.screen_loader.update_current_screen_name(current_screen_name)

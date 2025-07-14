@@ -75,13 +75,11 @@ class CombatSimulation(ZOperation):
     @node_from(from_name='异步初始化自动战斗')
     @operation_node(name='等待入口加载', is_start_node=True, node_max_retry_times=60)
     def wait_entry_load(self) -> OperationRoundResult:
-        screen = self.screenshot()
-
-        result = self.round_by_find_area(screen, '实战模拟室', '挑战等级')
+        result = self.round_by_find_area(self.last_screenshot, '实战模拟室', '挑战等级')
         if result.is_success:
             return self.round_success(self.plan.mission_type_name)
 
-        if self.is_in_category_screen(screen):
+        if self.is_in_category_screen(self.last_screenshot):
             return self.round_success(CombatSimulation.STATUS_NEED_TYPE)
 
         return self.round_retry(wait=1)
@@ -89,9 +87,7 @@ class CombatSimulation(ZOperation):
     @node_from(from_name='等待入口加载', status='自定义模板')
     @operation_node(name='自定义模版的返回')
     def back_for_div(self) -> OperationRoundResult:
-        screen = self.screenshot()
-
-        if self.is_in_category_screen(screen):
+        if self.is_in_category_screen(self.last_screenshot):
             return self.round_success()
 
         result = self.round_by_click_area('菜单', '返回')
@@ -122,9 +118,8 @@ class CombatSimulation(ZOperation):
     @node_from(from_name='自定义模版的返回')
     @operation_node(name='选择类型')
     def choose_mission_type(self) -> OperationRoundResult:
-        screen = self.screenshot()
         area = self.ctx.screen_loader.get_area('实战模拟室', '副本类型列表')
-        return self.round_by_ocr_and_click(screen, self.plan.mission_type_name, area=area,
+        return self.round_by_ocr_and_click(self.last_screenshot, self.plan.mission_type_name, area=area,
                                            success_wait=1, retry_wait=1)
 
     @node_from(from_name='等待入口加载')
@@ -137,12 +132,11 @@ class CombatSimulation(ZOperation):
             self.scroll_count = 0
             return self.round_success(status=CombatSimulation.STATUS_CHOOSE_FAIL)
         
-        screen = self.screenshot()
         if self.plan.mission_name == '代理人方案培养':
             target_point: Optional[Point] = None
 
             area = self.ctx.screen_loader.get_area('实战模拟室', '副本名称列表顶部')
-            part = cv2_utils.crop_image_only(screen, area.rect)
+            part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
 
             # 直接获取点击位置
             click_pos = cv2_utils.find_character_avatar_center_with_offset(
@@ -165,7 +159,7 @@ class CombatSimulation(ZOperation):
 
         else:
             area = self.ctx.screen_loader.get_area('实战模拟室', '副本名称列表')
-            part = cv2_utils.crop_image_only(screen, area.rect)
+            part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
 
             target_point: Optional[Point] = None
             ocr_result_map = self.ctx.ocr.run_ocr(part)
@@ -209,8 +203,7 @@ class CombatSimulation(ZOperation):
     @node_from(from_name='进入选择数量')
     @operation_node(name='选择数量')
     def choose_card_num(self) -> OperationRoundResult:
-        screen = self.screenshot()
-        result = self.round_by_find_area(screen, '实战模拟室', '保存方案')
+        result = self.round_by_find_area(self.last_screenshot, '实战模拟室', '保存方案')
         if not result.is_success:
             return self.round_retry(result.status, wait=1)
 
@@ -223,7 +216,7 @@ class CombatSimulation(ZOperation):
             self.round_by_click_area('实战模拟室', '内层-卡片1')
             time.sleep(0.5)
 
-        return self.round_by_find_and_click_area(screen, '实战模拟室', '保存方案',
+        return self.round_by_find_and_click_area(self.last_screenshot, '实战模拟室', '保存方案',
                                                  success_wait=2, retry_wait=1)
 
     @node_from(from_name='进入选择数量', status=CardNumEnum.DEFAULT.value.value)
@@ -236,17 +229,15 @@ class CombatSimulation(ZOperation):
             else:
                 return self.round_success(CombatSimulation.STATUS_CHARGE_NOT_ENOUGH)
 
-        screen = self.screenshot()
-
         area = self.ctx.screen_loader.get_area('实战模拟室', '剩余电量')
-        part = cv2_utils.crop_image_only(screen, area.rect)
+        part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
         ocr_result = self.ctx.ocr.run_ocr_single_line(part)
         self.charge_left = str_utils.get_positive_digits(ocr_result, None)
         if self.charge_left is None:
             return self.round_retry(status='识别 %s 失败' % '剩余电量', wait=1)
 
         area = self.ctx.screen_loader.get_area('实战模拟室', '需要电量')
-        part = cv2_utils.crop_image_only(screen, area.rect)
+        part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
         ocr_result = self.ctx.ocr.run_ocr_single_line(part)
         self.charge_need = str_utils.get_positive_digits(ocr_result, None)
         if self.charge_need is None:
@@ -267,19 +258,17 @@ class CombatSimulation(ZOperation):
     @node_from(from_name='识别电量', status=STATUS_CHARGE_ENOUGH)
     @operation_node(name='下一步', node_max_retry_times=10)  # 部分机器加载较慢 延长出战的识别时间
     def click_next(self) -> OperationRoundResult:
-        screen = self.screenshot()
-
         # 防止前面电量识别错误
-        result = self.round_by_find_area(screen, '实战模拟室', '恢复电量')
+        result = self.round_by_find_area(self.last_screenshot, '实战模拟室', '恢复电量')
         if result.is_success:
             return self.round_success(status=CombatSimulation.STATUS_CHARGE_NOT_ENOUGH)
 
         # 点击直到出战按钮出现
-        result = self.round_by_find_area(screen, '实战模拟室', '出战')
+        result = self.round_by_find_area(self.last_screenshot, '实战模拟室', '出战')
         if result.is_success:
             return self.round_success(result.status)
 
-        result = self.round_by_find_and_click_area(screen, '实战模拟室', '下一步')
+        result = self.round_by_find_and_click_area(self.last_screenshot, '实战模拟室', '下一步')
         if result.is_success:
             time.sleep(0.5)
             self.ctx.controller.mouse_move(ScreenNormalWorldEnum.UID.value.center)  # 点击后 移开鼠标 防止识别不到出战
@@ -325,9 +314,7 @@ class CombatSimulation(ZOperation):
     @node_from(from_name='加载自动战斗指令')
     @operation_node(name='等待战斗画面加载', node_max_retry_times=60)
     def wait_battle_screen(self) -> OperationRoundResult:
-        screen = self.screenshot()
-        result = self.round_by_find_area(screen, '战斗画面', '按键-普通攻击', retry_wait_round=1)
-        return result
+        return self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-普通攻击', retry_wait_round=1)
 
     @node_from(from_name='等待战斗画面加载')
     @operation_node(name='向前移动准备战斗')

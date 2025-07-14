@@ -1,5 +1,3 @@
-import time
-
 from typing import Optional
 
 from one_dragon.base.controller.pc_button import pc_button_utils
@@ -84,10 +82,7 @@ class AutoBattleDebugApp(ZApplication):
         识别当前画面 并进行点击
         :return:
         """
-        now = time.time()
-
-        screen = self.screenshot()
-        self.auto_op.auto_battle_context.check_battle_state(screen, now, sync=True)
+        self.auto_op.auto_battle_context.check_battle_state(self.last_screenshot, self.last_screenshot_time, sync=True)
 
         return self.round_wait(wait_round_time=self.ctx.battle_assistant_config.screenshot_interval)
 

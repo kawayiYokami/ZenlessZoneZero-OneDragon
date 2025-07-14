@@ -24,14 +24,12 @@ class SuibianTempleApp(ZApplication):
 
     @operation_node(name='识别初始画面', is_start_node=True)
     def check_initial_screen(self) -> OperationRoundResult:
-        screen = self.screenshot()
-
-        current_screen_name, can_go = self.check_screen_with_can_go(screen, '快捷手册-目标')
+        current_screen_name, can_go = self.check_screen_with_can_go(self.last_screenshot, '快捷手册-目标')
         if can_go is not None and can_go == True:
-            return self.round_by_goto_screen(screen, '快捷手册-目标',
+            return self.round_by_goto_screen(self.last_screenshot, '快捷手册-目标',
                                              success_wait=1, retry_wait=1)
 
-        current_screen_name, can_go = self.check_screen_with_can_go(screen, '随便观-入口')
+        current_screen_name, can_go = self.check_screen_with_can_go(self.last_screenshot, '随便观-入口')
         if can_go is not None and can_go == True:
             return self.round_success(status='随便观-入口')
 
@@ -47,8 +45,7 @@ class SuibianTempleApp(ZApplication):
     @node_from(from_name='开始前返回大世界')
     @operation_node(name='前往快捷手册-目标')
     def goto_category(self) -> OperationRoundResult:
-        screen = self.screenshot()
-        return self.round_by_goto_screen(screen, '快捷手册-目标')
+        return self.round_by_goto_screen(self.last_screenshot, '快捷手册-目标')
 
     @node_from(from_name='前往快捷手册-目标')
     @operation_node(name='前往随便观', node_max_retry_times=10)
@@ -78,9 +75,8 @@ class SuibianTempleApp(ZApplication):
     @node_from(from_name='前往随便观')
     @operation_node(name='前往游历')
     def goto_adventure(self) -> OperationRoundResult:
-        screen = self.screenshot()
         return self.round_by_find_and_click_area(
-            screen, '随便观-入口', '按钮-游历',
+            self.last_screenshot, '随便观-入口', '按钮-游历',
             success_wait=1, retry_wait=1,
             until_not_find_all=[('随便观-入口', '按钮-游历')]
         )

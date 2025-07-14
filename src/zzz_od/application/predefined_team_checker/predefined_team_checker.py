@@ -60,9 +60,8 @@ class PredefinedTeamChecker(ZApplication):
 
     @node_from(from_name='点击预备编队')
     @operation_node(name='识别编队角色')
-    def check_team_members(self, screen: MatLike = None) -> OperationRoundResult:
-        screen = self.screenshot()
-        self.update_team_members(screen)
+    def check_team_members(self) -> OperationRoundResult:
+        self.update_team_members(self.last_screenshot)
 
         if self.scroll_times == 0:
             drag_start = Point(self.ctx.controller.standard_width // 2, self.ctx.controller.standard_height // 2)
