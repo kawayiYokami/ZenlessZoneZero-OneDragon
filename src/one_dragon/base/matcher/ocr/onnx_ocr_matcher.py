@@ -1,10 +1,9 @@
-import time
-
 import os
-from cv2.typing import MatLike
+import time
 from logging import DEBUG
 from typing import Callable, List, Optional
-import copy
+
+from cv2.typing import MatLike
 
 from one_dragon.base.matcher.match_result import MatchResult, MatchResultList
 from one_dragon.base.matcher.ocr import ocr_utils
@@ -16,7 +15,6 @@ from one_dragon.utils import os_utils
 from one_dragon.utils import str_utils
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
-
 
 DEFAULT_OCR_MODEL_NAME: str = 'ppocrv5'
 GITHUB_DOWNLOAD_URL: str = 'https://github.com/OneDragon-Anything/OneDragon-Env/releases/download'
@@ -55,156 +53,89 @@ def get_final_file_list(ocr_model_name: str) -> list[str]:
     ]
 
 
+class OnnxOcrParam:
+    """
+    OCR配置实体类，包含OCR引擎的各项参数设置
+    默认值见 onnxocr.utils
+    """
+
+    def __init__(
+            self,
+            ocr_model_name: str = DEFAULT_OCR_MODEL_NAME,
+            det_model_name: str = 'det.onnx',
+            rec_model_name: str = 'rec.onnx',
+            cls_model_name: str = 'cls.onnx',
+            dict_name: str = 'ppocrv5_dict.txt',
+            font_name: str = 'simfang.ttf',
+            use_gpu: bool = False,
+            use_angle_cls: bool = False,
+            det_limit_side_len: float = 960.0,
+    ):
+        self.ocr_model_name: str = ocr_model_name
+        self.models_dir: str = get_ocr_model_dir(ocr_model_name)
+        # ===================================================================
+        # I. 设备与性能 (Device & Performance)
+        # ===================================================================
+        self.use_gpu = use_gpu  # 是否使用GPU进行计算
+
+        # ===================================================================
+        # II. 模型路径 (Model Paths)
+        # ===================================================================
+        self.det_model_dir = os.path.join(self.models_dir, det_model_name)  # 文字检测模型文件路径
+        self.rec_model_dir = os.path.join(self.models_dir, rec_model_name)  # 文字识别模型文件路径
+        self.cls_model_dir = os.path.join(self.models_dir, cls_model_name)  # 方向分类模型文件路径
+        self.rec_char_dict_path = os.path.join(self.models_dir, dict_name)  # 字符字典文件路径
+        self.vis_font_path = os.path.join(self.models_dir, font_name)  # 可视化字体文件路径
+
+        # ===================================================================
+        # III. 核心功能开关 (Core Feature Switches)
+        # ===================================================================
+        self.use_angle_cls = use_angle_cls  # 是否加载并使用方向分类模型
+
+        # ===================================================================
+        # IV. 文字检测超参数 (Detection Hyperparameters)
+        # ===================================================================
+        self.det_limit_side_len = det_limit_side_len  # 输入图像的长边限制
+
+    def to_dict(self):
+        """将OCR配置转换为字典格式"""
+        return {
+            'use_gpu': self.use_gpu,
+            'det_model_dir': self.det_model_dir,
+            'rec_model_dir': self.rec_model_dir,
+            'cls_model_dir': self.cls_model_dir,
+            'rec_char_dict_path': self.rec_char_dict_path,
+            'vis_font_path': self.vis_font_path,
+            'use_angle_cls': self.use_angle_cls,
+            'det_limit_side_len': self.det_limit_side_len,
+        }
+
+
 
 class OnnxOcrMatcher(OcrMatcher, ZipDownloader):
     """
     使用onnx的ocr模型 速度更快
     """
 
-    def __init__(self, ocr_model_name: str = DEFAULT_OCR_MODEL_NAME):
-        self.base_dir: str = get_ocr_model_dir(ocr_model_name)
+    def __init__(self, ocr_param: Optional[OnnxOcrParam] =  None):
+        if ocr_param is None:
+            ocr_param = OnnxOcrParam()
         OcrMatcher.__init__(self)
         param = CommonDownloaderParam(
-            save_file_path=self.base_dir,
-            save_file_name=f'{ocr_model_name}.zip',
-            github_release_download_url=get_ocr_download_url_github(ocr_model_name),
-            gitee_release_download_url=get_ocr_download_url_gitee(ocr_model_name),
+            save_file_path=ocr_param.models_dir,
+            save_file_name=f'{ocr_param.ocr_model_name}.zip',
+            github_release_download_url=get_ocr_download_url_github(ocr_param.ocr_model_name),
+            gitee_release_download_url=get_ocr_download_url_gitee(ocr_param.ocr_model_name),
             mirror_chan_download_url='',
-            check_existed_list=get_final_file_list(ocr_model_name)
+            check_existed_list=get_final_file_list(ocr_param.ocr_model_name)
         )
         ZipDownloader.__init__(
             self,
             param=param,
         )
-        # 1. 首先，确定模型根目录 (沿用现有逻辑)
-        models_dir = get_ocr_model_dir(ocr_model_name)
-
-        # 2. 然后，构建 ocr_options 字典
-        self.ocr_options = {
-            # ===================================================================
-            # I. 设备与性能 (Device & Performance)
-            # ===================================================================
-
-            # 是否使用GPU进行计算。
-            # 这是影响性能最关键的开关。修改此项后需要重新加载模型。
-            # 类型: bool
-            'use_gpu': False,
-
-            # ===================================================================
-            # II. 模型路径 (Model Paths)
-            # ===================================================================
-
-            # 以下路径将在__init__方法中，通过调用项目已有的os_utils自动填充。
-            # 允许外部修改这些路径，以便未来可以方便地切换或升级模型版本。
-
-            # 文字检测模型文件路径。
-            # 类型: str
-            'det_model_dir': os.path.join(models_dir, 'det.onnx'),
-
-            # 文字识别模型文件路径。
-            # 类型: str
-            'rec_model_dir': os.path.join(models_dir, 'rec.onnx'),
-
-            # 方向分类模型文件路径。
-            # 类型: str
-            'cls_model_dir': os.path.join(models_dir, 'cls.onnx'),
-
-            # 识别器使用的字符字典文件路径。
-            # 类型: str
-            'rec_char_dict_path': os.path.join(models_dir, 'ppocrv5_dict.txt'),
-
-            # 可视化识别结果时使用的字体文件路径
-            # 类型: str
-            'vis_font_path': os.path.join(models_dir, 'simfang.ttf'),
-
-            # ===================================================================
-            # III. 核心功能开关 (Core Feature Switches)
-            # ===================================================================
-
-            # 是否加载并使用方向分类模型。
-            # 开启后，可以识别并矫正180度颠倒的文本行，但会轻微增加耗时。
-            # 类型: bool
-            'use_angle_cls': False,
-
-            # ===================================================================
-            # IV. 文字检测超参数 (Detection Hyperparameters)
-            # ===================================================================
-
-            # 针对DB检测算法的精细化控制参数。
-
-            # 输入图像的长边限制。
-            # OCR前会将图像等比缩放到最长边不超过此值。
-            # 较小的值可以提升速度，但可能丢失小文字信息；较大的值能更好地检测小文字，但会增加耗时。
-            # 类型: float
-            'det_limit_side_len': 960.0,
-
-            # DB算法中判断像素点是否为文本区域的概率阈值。
-            # 降低此值可能有助于检测模糊或不清晰的文本，但可能引入更多噪声。
-            # 类型: float, 范围: 0.0 ~ 1.0
-            'det_db_thresh': 0.3,
-
-            # 在像素点判断后，将文本区域组合成检测框的置信度阈值。
-            # 如果出现文本漏检，可以适当调低此值。如果出现很多非文本区域被误检，可以适当调高。
-            # 类型: float, 范围: 0.0 ~ 1.0
-            'det_db_box_thresh': 0.6,
-
-            # 检测框向外扩张的系数。
-            # 大于1.0的值会使最终的检测框比预测的更大，有助于完整地框住文字，特别是对于粘连或艺术字体。
-            # 类型: float
-            'det_db_unclip_ratio': 1.5,
-
-            # ===================================================================
-            # V. 文字识别超参数 (Recognition Hyperparameters)
-            # ===================================================================
-
-            # 识别时一次处理的文本框（图片切片）数量。
-            # 在GPU模式下，适当增加此值可以提升识别速度。
-            # 类型: int
-            'rec_batch_num': 6,
-
-            # 限制单个文本框识别出的最大字符数。
-            # 类型: int
-            'max_text_length': 25,
-
-            # 底层识别引擎使用的置信度阈值。
-            # 只有识别分数高于此值的文本结果，才会被从底层返回。
-            # 这是一种引擎级别的初步过滤。
-            # 类型: float, 范围: 0.0 ~ 1.0
-            'drop_score': 0.5,
-
-            # ===================================================================
-            # VI. 方向分类超参数 (Classification Hyperparameters)
-            # ===================================================================
-
-            # 方向分类器的置信度阈值。
-            # 只有当模型判断某个方向（0度或180度）的置信度高于此值时，才会进行旋转。
-            # 类型: float, 范围: 0.0 ~ 1.0
-            'cls_thresh': 0.9,
-        }
+        self._ocr_param: OnnxOcrParam = ocr_param
         self._model = None
         self._loading: bool = False
-
-    def get_options(self) -> dict:
-        """
-        获取只读的配置
-        :return:
-        """
-        return self.ocr_options.copy()
-
-    def update_options(self, options: dict):
-        """
-        更新配置
-        :param options:
-        :return:
-        """
-        old_options = copy.deepcopy(self.ocr_options)
-        self.ocr_options.update(options)
-
-        for key, value in old_options.items():
-            if key in self.ocr_options and self.ocr_options[key] != value:
-                log.info(f'OCR配置项 {key} 发生变更，模型将重新加载')
-                self._model = None
-                return
 
     def init_model(
             self,
@@ -245,7 +176,8 @@ class OnnxOcrMatcher(OcrMatcher, ZipDownloader):
             from onnxocr.onnx_paddleocr import ONNXPaddleOcr
 
             try:
-                self._model = ONNXPaddleOcr(**self.ocr_options)
+                args = self._ocr_param.to_dict()
+                self._model = ONNXPaddleOcr(**args)
                 self._loading = False
                 log.info('加载OCR模型完毕')
                 return True
@@ -294,7 +226,7 @@ class OnnxOcrMatcher(OcrMatcher, ZipDownloader):
             image,
             det=True,
             rec=True,
-            cls=self.ocr_options.get('use_angle_cls', False)
+            cls=self._ocr_param.use_angle_cls
         )
         if len(scan_result_list) == 0:
             log.debug('OCR结果 %s 耗时 %.2f', result_map.keys(), time.time() - start_time)
@@ -333,10 +265,12 @@ class OnnxOcrMatcher(OcrMatcher, ZipDownloader):
         if self._model is None and not self.init_model():
             return ""
         start_time = time.time()
-        scan_result: list = self._model.ocr(image,
-                                             det=False,
-                                             rec=True,
-                                             cls=self.ocr_options.get('use_angle_cls', False))
+        scan_result: list = self._model.ocr(
+            image,
+            det=False,
+            rec=True,
+            cls=self._ocr_param.use_angle_cls
+        )
         img_result = scan_result[0]  # 取第一张图片
         if len(img_result) > 1:
             log.debug("禁检测的OCR模型返回多个识别结果")  # 目前没有出现这种情况
