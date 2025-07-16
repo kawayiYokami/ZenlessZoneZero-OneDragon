@@ -185,8 +185,14 @@ class LostVoidApp(ZApplication):
         idx = str_utils.find_best_match_by_difflib(target, ocr_word_list)
 
         if idx is None or idx < 0:
+            is_after = str_utils.is_target_after_ocr_list(
+                target_cn=self.ctx.lost_void.challenge_config.investigation_strategy,
+                order_cn_list=[i.strategy_name for i in self.ctx.lost_void.investigation_strategy_list],
+                ocr_result_list=ocr_word_list
+            )
+
             start = Point(self.ctx.controller.standard_width // 2, self.ctx.controller.standard_height // 2)
-            end = start + Point(-800, 0)
+            end = start + Point(800 * (-1 if is_after else 1), 0)
             self.ctx.controller.drag_to(start=start, end=end)
             return self.round_retry(status='未识别到目标调查战略', wait=1)
 
