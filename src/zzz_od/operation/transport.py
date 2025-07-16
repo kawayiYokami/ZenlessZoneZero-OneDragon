@@ -152,11 +152,11 @@ class Transport(ZOperation):
 
         if left_cnt > 0:  # 往右滑
             from_point = area.center + Point(-20, -20)  # 如果在两个地点卡片中间 会滑动不了 这里选择了一个特殊点
-            end_point = from_point + Point(-400, 0)
+            end_point = from_point + Point(-800, 0)
             self.ctx.controller.drag_to(start=from_point, end=end_point)
         else:  # 往左滑
             from_point = area.center + Point(-20, -20)
-            end_point = from_point + Point(350, 0)  # 跟上面滑动距离稍微不一样 防止一直重复左右都找不到
+            end_point = from_point + Point(750, 0)  # 跟上面滑动距离稍微不一样 防止一直重复左右都找不到
             self.ctx.controller.drag_to(start=from_point, end=end_point)
 
         # 返回数量只是为了测试 实际不会用到
