@@ -14,6 +14,12 @@ from zzz_od.game_data.compendium import CompendiumMissionType
 from zzz_od.operation.zzz_operation import ZOperation
 
 
+class MissionTypeTargetWrapper:
+
+    def __init__(self):
+        pass
+
+
 class CompendiumChooseMissionType(ZOperation):
     """
     快捷手册中选择特定副本类型的操作类
@@ -37,12 +43,11 @@ class CompendiumChooseMissionType(ZOperation):
         )
 
         self.mission_type: CompendiumMissionType = mission_type
-        self.scroll_count: int = 0  # 滑动次数计数器
 
     @operation_node(name='选择副本', is_start_node=True, node_max_retry_times=20)
-    def choose_tab(self) -> OperationRoundResult:
-        if self.mission_type.mission_type_name == "代理人方案培养":
-            return self.handle_agent_training()
+    def choose_mission_type(self) -> OperationRoundResult:
+        if self.mission_type.mission_type_name == '代理人方案培养':
+            return self.round_success(status='代理人方案培养')
 
         area = self.ctx.screen_loader.get_area('快捷手册', '副本列表')
         part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
@@ -81,11 +86,13 @@ class CompendiumChooseMissionType(ZOperation):
                 before_target_cnt += 1
 
         if target_point is None:
-            return self.handle_scroll(area, before_target_cnt)
+            return self.handle_scroll(area.rect)
 
         return self.handle_go_button(self.last_screenshot, target_point)
 
-    def handle_agent_training(self) -> OperationRoundResult:
+    @node_from(from_name='选择副本', status='代理人方案培养')
+    @operation_node(name='选择代理人方案', node_max_retry_times=5)
+    def choose_mission_type_by_agent(self) -> OperationRoundResult:
         """
         专门处理"代理人方案培养"的方法
         """
@@ -101,35 +108,20 @@ class CompendiumChooseMissionType(ZOperation):
 
         if click_pos is None:
             log.debug("未找到有效的代理人头像，执行滑动操作")
-            return self.handle_scroll(area, 1)
+            return self.handle_scroll(area.rect)
 
         target_point = Point(click_pos[0], click_pos[1])
         log.debug(f"找到代理人目标，最终目标点: {target_point}")
         return self.handle_go_button(self.last_screenshot, target_point)
 
-    def handle_scroll(self, area: Rect, before_target_cnt: int = 0) -> OperationRoundResult:
+    def handle_scroll(self, area: Rect) -> OperationRoundResult:
         """
         处理滑动操作
+        目前看只需要往下滚动即可
         """
-        self.scroll_count += 1
-        if self.scroll_count > 5:
-            if self.mission_type.mission_type_name == "代理人方案培养":
-                return self.round_success(status=CompendiumChooseMissionType.STATUS_CHOOSE_FAIL)
-            return self.round_fail('滑动超过5次仍未找到目标副本')
-
-        if before_target_cnt > 0:
-            dy = -1
-        else:
-            dy = 1
-
-        # 部分特殊类型的副本 外面的顺序和里面的顺序反转
-        if (self.mission_type.category.category_name in ['定期清剿', '专业挑战室', '恶名狩猎']
-            and self.mission_type.mission_type_name != '代理人方案培养'):
-            dy = dy * -1
-
         # 滑动
         start = area.center
-        end = start + Point(0, 300 * dy)
+        end = start + Point(0, 300 * -1)
         self.ctx.controller.drag_to(start=start, end=end)
         return self.round_retry(status='找不到 %s' % self.mission_type.mission_type_name, wait=1)
 
