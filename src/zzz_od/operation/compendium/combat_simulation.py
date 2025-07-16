@@ -406,7 +406,7 @@ def __debug_charge():
     ctx.init_by_config()
     ctx.init_ocr()
     from one_dragon.utils import debug_utils
-    screen = debug_utils.get_debug_image('power')
+    screen = debug_utils.get_debug_image('_1752673754384')
     area = ctx.screen_loader.get_area('实战模拟室', '剩余电量')
     part = cv2_utils.crop_image_only(screen, area.rect)
     cv2_utils.show_image(part, wait=0)
@@ -434,4 +434,4 @@ def __debug():
 
 
 if __name__ == '__main__':
-    __debug()
+    __debug_charge()
