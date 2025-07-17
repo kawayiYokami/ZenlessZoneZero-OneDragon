@@ -285,6 +285,10 @@ class NotoriousHunt(ZOperation):
         if result.is_success:
             return self.round_success(self.plan.mission_type_name)
 
+        result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-交互')
+        if result.is_success:
+            return self.round_success(self.plan.mission_type_name)
+
         return self.round_retry(result.status, wait=1)
 
     @node_from(from_name='等待战斗画面加载')
@@ -307,7 +311,8 @@ class NotoriousHunt(ZOperation):
 
         result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-交互')
         if result.is_success:
-            return self.round_success()
+            self.ctx.controller.interact(press=True, press_time=0.2, release=True)
+            return self.round_success(status=result.status)
 
         det_result: DetectFrameResult = self.ctx.lost_void.detector.run(self.last_screenshot, label_list=['0001-距离'])
         self.auto_op.auto_battle_context.check_battle_distance(self.last_screenshot)
@@ -361,7 +366,7 @@ class NotoriousHunt(ZOperation):
         else:
             return False
 
-    @node_from(from_name='移动靠近交互')
+    @node_from(from_name='移动靠近交互', status='按键-交互')
     @operation_node(name='交互')
     def move_and_interact(self) -> OperationRoundResult:
         result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-交互')
@@ -375,11 +380,19 @@ class NotoriousHunt(ZOperation):
     @node_from(from_name='交互')
     @operation_node(name='选择')
     def choose_buff(self) -> OperationRoundResult:
+        result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-普通攻击')
+        if result.is_success:
+            return self.round_success(self.plan.mission_type_name)
+
+        result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-交互')
+        if result.is_success:
+            return self.round_success(self.plan.mission_type_name)
+
         ocr_result_map = self.ctx.ocr.run_ocr(self.last_screenshot)
         choose_mr_list: List[MatchResult] = []
 
         for ocr_result, mrl in ocr_result_map.items():
-            if str_utils.find_by_lcs(gt('选择', 'game'), ocr_result, percent=0.5):
+            if str_utils.find_by_lcs(gt('选择', 'game'), ocr_result, percent=1):
                 for mr in mrl:
                     choose_mr_list.append(mr)
 
@@ -398,7 +411,7 @@ class NotoriousHunt(ZOperation):
         to_click = choose_mr_list[to_choose_idx].center
         self.ctx.controller.click(to_click)
 
-        return self.round_success(wait=3)  # 多等待一会 等白色距离点出现
+        return self.round_wait(wait=1)
 
     @node_from(from_name='选择')
     @operation_node(name='选择后移动', node_max_retry_times=18)
@@ -427,12 +440,18 @@ class NotoriousHunt(ZOperation):
         else:
             self.no_dis_times = 0
 
-        if result.is_success:
-            self.auto_op.start_running_async()
         return result
 
+    @node_from(from_name='移动靠近交互', status='标识-BOSS血条')
+    @node_from(from_name='选择', success=False)  # 2.1版本更新后 基本进不到选buff环节 加一个兜底
     @node_from(from_name='选择后移动')
     @node_from(from_name='战斗失败', status='战斗结果-倒带')
+    @operation_node(name='开始自动战斗')
+    def start_auto_op(self) -> OperationRoundResult:
+        self.auto_op.start_running_async()
+        return self.round_success()
+
+    @node_from(from_name='开始自动战斗')
     @operation_node(name='自动战斗', mute=True, timeout_seconds=600)
     def auto_battle(self) -> OperationRoundResult:
         if self.auto_op.auto_battle_context.last_check_end_result is not None:
@@ -452,7 +471,6 @@ class NotoriousHunt(ZOperation):
 
         if result.is_success:
             self.auto_op.auto_battle_context.last_check_end_result = None
-            self.auto_op.start_running_async()
             return self.round_success(result.status, wait=1)
 
         result = self.round_by_find_and_click_area(self.last_screenshot, '战斗画面', '战斗结果-撤退')
@@ -542,6 +560,8 @@ class NotoriousHunt(ZOperation):
                                                    success_wait=1, retry_wait=1)
         if result.is_success:
             return self.round_fail(status=NotoriousHunt.STATUS_FIGHT_TIMEOUT)
+        else:
+            return self.round_retry(status=result.status, wait=1)
 
     @node_from(from_name='选择后移动', success=False)
     @operation_node(name='主动重新开始')
