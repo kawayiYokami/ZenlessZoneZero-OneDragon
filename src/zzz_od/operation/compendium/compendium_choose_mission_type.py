@@ -158,6 +158,7 @@ class CompendiumChooseMissionType(ZOperation):
         return self.round_success(status=CompendiumChooseMissionType.STATUS_CHOOSE_SUCCESS, wait=1)
 
     @node_from(from_name='选择副本', status=STATUS_CHOOSE_SUCCESS)
+    @node_from(from_name='选择代理人方案', status=STATUS_CHOOSE_SUCCESS)
     @operation_node(name='确认')
     def confirm(self) -> OperationRoundResult:
         return self.round_by_find_and_click_area(self.last_screenshot, '快捷手册', '传送确认',
