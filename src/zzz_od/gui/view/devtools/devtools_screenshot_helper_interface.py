@@ -52,6 +52,10 @@ class DevtoolsScreenshotHelperInterface(AppRunInterface):
         self.screenshot_before_key_opt.value_changed.connect(self._on_screenshot_before_key_changed)
         top_widget.add_widget(self.screenshot_before_key_opt)
 
+        self.mini_map_angle_detect_opt = SwitchSettingCard(icon=FluentIcon.GAME, title='小地图朝向检测',
+                                                           content='无法计算朝向时截图')
+        top_widget.add_widget(self.mini_map_angle_detect_opt)
+
         return top_widget
 
     def on_interface_shown(self) -> None:
@@ -65,6 +69,7 @@ class DevtoolsScreenshotHelperInterface(AppRunInterface):
         self.key_save_opt.setValue(str(self.ctx.screenshot_helper_config.key_save))
         self.dodge_detect_opt.setValue(self.ctx.screenshot_helper_config.dodge_detect)
         self.screenshot_before_key_opt.setValue(self.ctx.screenshot_helper_config.screenshot_before_key)
+        self.mini_map_angle_detect_opt.init_with_adapter(self.ctx.screenshot_helper_config.get_prop_adapter('mini_map_angle_detect'))
 
     def get_app(self) -> ZApplication:
         return ScreenshotHelperApp(self.ctx)
