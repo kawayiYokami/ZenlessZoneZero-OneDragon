@@ -73,6 +73,13 @@ class SpinBoxSettingCardBase(SettingCardBase):
         if not emit_signal:
             self.spin_box.blockSignals(False)
 
+    def set_range(self, minimum: Union[int, float], maximum: Union[int, float]) -> None:
+        """设置微调框的范围"""
+        self.spin_box.setRange(minimum, maximum)
+
+    def set_step(self, step: Union[int, float]) -> None:
+        """设置微调框的步长"""
+        self.spin_box.setSingleStep(step)
 
 class SpinBoxSettingCard(SpinBoxSettingCardBase):
     """带整数微调框的设置卡片类"""
@@ -84,7 +91,10 @@ class SpinBoxSettingCard(SpinBoxSettingCardBase):
                  maximum: int = 99,
                  min_width: int = 140,
                  max_width: int = 300,
-                 **kwargs):
+                 icon_size: IconSize = IconSize(16, 16),
+                 margins: Margins = Margins(16, 16, 0, 16),
+                 adapter: Optional[YamlConfigAdapter] = None,
+                 parent=None):
 
         self.step = step
         self.minimum = minimum
@@ -97,7 +107,10 @@ class SpinBoxSettingCard(SpinBoxSettingCardBase):
             icon=icon,
             title=title,
             content=content,
-            **kwargs
+            icon_size=icon_size,
+            margins= margins,
+            adapter=adapter,
+            parent=parent
         )
 
     def _create_spin_box(self) -> Union[SpinBox, DoubleSpinBox]:
@@ -119,7 +132,10 @@ class DoubleSpinBoxSettingCard(SpinBoxSettingCardBase):
                  maximum: float = 10.00,
                  min_width: int = 140,
                  max_width: int = 300,
-                 **kwargs):
+                 icon_size: IconSize = IconSize(16, 16),
+                 margins: Margins = Margins(16, 16, 0, 16),
+                 adapter: Optional[YamlConfigAdapter] = None,
+                 parent=None):
 
         self.step = step
         self.minimum = minimum
@@ -132,7 +148,10 @@ class DoubleSpinBoxSettingCard(SpinBoxSettingCardBase):
             icon=icon,
             title=title,
             content=content,
-            **kwargs
+            icon_size=icon_size,
+            margins= margins,
+            adapter=adapter,
+            parent=parent
         )
 
     def _create_spin_box(self) -> Union[SpinBox, DoubleSpinBox]:
