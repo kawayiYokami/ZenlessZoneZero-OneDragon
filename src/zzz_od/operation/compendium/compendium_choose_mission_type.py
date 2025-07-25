@@ -93,7 +93,7 @@ class CompendiumChooseMissionType(ZOperation):
         """
         专门处理"代理人方案培养"的方法
         """
-        area = self.ctx.screen_loader.get_area("快捷手册", "目标列表")
+        area = self.ctx.screen_loader.get_area("快捷手册", f"目标列表-{self.mission_type.category.tab.tab_name}")
         part = cv2_utils.crop_image_only(self.last_screenshot, area.rect)
 
         click_pos = cv2_utils.find_character_avatar_center_with_offset(
