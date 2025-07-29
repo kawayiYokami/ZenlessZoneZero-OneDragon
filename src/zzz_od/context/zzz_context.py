@@ -31,6 +31,9 @@ class ZContext(OneDragonContext):
         from zzz_od.context.mini_map_service import MiniMapService
         self.mini_map_service: MiniMapService = MiniMapService(self)
 
+        from zzz_od.telemetry.telemetry_manager import TelemetryManager
+        self.telemetry: TelemetryManager = TelemetryManager(self)
+
         # 实例独有的配置
         self.load_instance_config()
 
@@ -150,6 +153,8 @@ class ZContext(OneDragonContext):
 
         self.init_by_config()
 
+        self.telemetry.initialize()
+
     def init_by_config(self) -> None:
         """
         根据配置进行初始化
@@ -218,4 +223,7 @@ class ZContext(OneDragonContext):
         App关闭后进行的操作 关闭一切可能资源操作
         @return:
         """
+        if hasattr(self, 'telemetry') and self.telemetry:
+            self.telemetry.shutdown()
+
         OneDragonContext.after_app_shutdown(self)
