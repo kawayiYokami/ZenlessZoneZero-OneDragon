@@ -1,24 +1,23 @@
 from functools import partial
 
 import numpy as np
-
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QImage, QPixmap, QClipboard
 from PySide6.QtWidgets import QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QFileDialog, QFrame
-
 from qfluentwidgets import (
     FluentIcon, ComboBox, CheckBox, SpinBox, DoubleSpinBox, PushButton, ToolButton, PlainTextEdit, LineEdit,
     SubtitleLabel, BodyLabel, InfoBar, InfoBarPosition, ListWidget, SimpleCardWidget, ScrollArea,
     MessageBoxBase, Dialog
 )
 
-from one_dragon.base.operation.one_dragon_context import OneDragonContext
 from one_dragon.base.cv_process.cv_step import CvStep
+from one_dragon.base.operation.one_dragon_context import OneDragonContext
 from one_dragon.utils.i18_utils import gt
 from one_dragon_qt.logic.image_analysis_logic import ImageAnalysisLogic
+from one_dragon_qt.widgets.color_channel_dialog import ColorChannelDialog
 from one_dragon_qt.widgets.color_info_dialog import ColorInfoDialog
-from one_dragon_qt.widgets.zoomable_image_label import ZoomableClickImageLabel
 from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
+from one_dragon_qt.widgets.zoomable_image_label import ZoomableClickImageLabel
 
 
 class PipelineNameDialog(MessageBoxBase):
@@ -52,7 +51,8 @@ class DevtoolsImageAnalysisInterface(VerticalScrollInterface):
         self.param_widgets = []  # 用于存储动态创建的参数控件，用于统一删除
         self.param_widget_map = {}  # 用于通过参数名快速查找控件 {param_name: input_widget}
 
-        super().__init__(
+        VerticalScrollInterface.__init__(
+            self,
             content_widget=self._init_content_widget(),
             object_name='devtools_image_analysis_interface',
             parent=parent,
@@ -77,6 +77,7 @@ class DevtoolsImageAnalysisInterface(VerticalScrollInterface):
         self.add_step_combo.currentIndexChanged.connect(self._on_add_step_by_combo)
         self.run_btn.clicked.connect(self._on_run_pipeline)
         self.toggle_view_btn.clicked.connect(self._on_toggle_view)
+        self.color_channel_btn.clicked.connect(self._on_color_channel_clicked)
         self.pipeline_list_widget.currentItemChanged.connect(self._on_pipeline_selection_changed)
 
         # 流水线管理
@@ -172,6 +173,8 @@ class DevtoolsImageAnalysisInterface(VerticalScrollInterface):
         layout.addWidget(self.toggle_view_btn)
         self.run_btn = PushButton(text=gt('执行'), icon=FluentIcon.PLAY_SOLID)
         layout.addWidget(self.run_btn)
+        self.color_channel_btn = PushButton(text='色彩通道', icon=FluentIcon.INFO)
+        layout.addWidget(self.color_channel_btn)
         layout.addStretch(1)
         return widget
 
@@ -696,6 +699,36 @@ class DevtoolsImageAnalysisInterface(VerticalScrollInterface):
             return
 
         dialog = ColorInfoDialog(color_info, self.window())
+        dialog.exec()
+
+    def _on_color_channel_clicked(self):
+        """
+        响应色彩通道按钮点击
+        """
+        if self.logic.context is None:
+            InfoBar.error(
+                title='错误',
+                content='请先打开一张图片',
+                duration=3000,
+                parent=self,
+                position=InfoBarPosition.TOP
+            )
+            return
+
+        # 获取当前显示的图像
+        display_image = self.logic.get_display_image()
+        if display_image is None:
+            InfoBar.error(
+                title='错误',
+                content='没有可用的图像进行分析',
+                duration=3000,
+                parent=self,
+                position=InfoBarPosition.TOP
+            )
+            return
+
+        # 显示色彩通道弹窗
+        dialog = ColorChannelDialog(display_image, self.window())
         dialog.exec()
 
     def _update_pipeline_combo(self):

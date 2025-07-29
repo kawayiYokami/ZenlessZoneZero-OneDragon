@@ -28,8 +28,8 @@ class ZContext(OneDragonContext):
         # 服务
         from one_dragon.base.cv_process.cv_service import CvService
         self.cv_service: CvService = CvService(self)
-        from zzz_od.context.mini_map_service import MiniMapService
-        self.mini_map_service: MiniMapService = MiniMapService(self)
+        from zzz_od.game_map.zzz_map_service import ZzzMapService
+        self.mini_map_service: ZzzMapService = ZzzMapService(self)
 
         from zzz_od.telemetry.telemetry_manager import TelemetryManager
         self.telemetry: TelemetryManager = TelemetryManager(self)
