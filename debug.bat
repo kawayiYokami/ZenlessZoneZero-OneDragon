@@ -326,6 +326,8 @@ if "%is_uv_exist%"=="true" if "%is_mingit_exist%"=="false" (
     echo [提示] 未找到MinGit，如果您正在使用自己的Git工具，那么版本可能没有错误。
 )
 
+goto :END
+
 :CLEAN_FILES
 echo -------------------------------
 echo 正在删除日志和缓存文件...
