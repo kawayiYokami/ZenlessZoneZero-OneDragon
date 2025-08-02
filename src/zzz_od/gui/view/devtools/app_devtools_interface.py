@@ -7,6 +7,7 @@ from one_dragon_qt.widgets.pivot_navi_interface import PivotNavigatorInterface
 from zzz_od.context.zzz_context import ZContext
 from zzz_od.gui.view.devtools.devtools_screenshot_helper_interface import DevtoolsScreenshotHelperInterface
 from zzz_od.gui.view.devtools.large_map_recorder_interface import LargeMapRecorderInterface
+from zzz_od.gui.view.devtools.world_patrol_route_recorder_interface import WorldPatrolRouteRecorderInterface
 
 
 class AppDevtoolsInterface(PivotNavigatorInterface):
@@ -28,3 +29,4 @@ class AppDevtoolsInterface(PivotNavigatorInterface):
         self.add_sub_interface(DevtoolsScreenManageInterface(self.ctx))
         self.add_sub_interface(DevtoolsScreenshotHelperInterface(self.ctx))
         self.add_sub_interface(LargeMapRecorderInterface(self.ctx))
+        self.add_sub_interface(WorldPatrolRouteRecorderInterface(self.ctx))

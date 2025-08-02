@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
                                QTableWidgetItem, QPushButton, QHeaderView, QAbstractItemView, QLabel)
 from qfluentwidgets import FluentIcon, PushButton
 
-from zzz_od.application.world_patrol.world_patrol_service import WorldPatrolLargeMapIcon
+from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolLargeMapIcon
 
 
 class IconEditorDialog(QDialog):

@@ -1,7 +1,7 @@
 from cv2.typing import MatLike
 
 from one_dragon.base.geometry.point import Point
-from zzz_od.application.world_patrol.world_patrol_service import WorldPatrolLargeMap, WorldPatrolLargeMapIcon
+from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolLargeMapIcon, WorldPatrolLargeMap
 
 
 class LargeMapSnapshot(WorldPatrolLargeMap):

@@ -1,111 +1,20 @@
 import os
-from functools import cached_property
 
-from cv2.typing import MatLike
+import yaml
 
 from one_dragon.base.config.yaml_operator import YamlOperator
 from one_dragon.base.geometry.point import Point
 from one_dragon.utils import os_utils, cv2_utils
 from one_dragon.utils.log_utils import log
+from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolArea, WorldPatrolEntry, WorldPatrolLargeMap, \
+    world_patrol_dir, entry_dir, road_mask_path, icon_yaml_path, WorldPatrolLargeMapIcon
+from zzz_od.application.world_patrol.world_patrol_route import WorldPatrolRoute, WorldPatrolOpType
 from zzz_od.context.zzz_context import ZContext
 
 
-class WorldPatrolEntry:
-
-    def __init__(self, entry_name: str, entry_id: str):
-        self.entry_name: str = entry_name
-        self.entry_id: str = entry_id
-
-
-class WorldPatrolArea:
-
-    def __init__(
-            self,
-            entry: WorldPatrolEntry,
-            area_name: str,
-            area_id: str,
-    ):
-        self.entry: WorldPatrolEntry = entry
-        self.area_name: str = area_name
-        self.area_id: str = area_id
-
-        self.parent_area: "WorldPatrolArea | None" = None
-        self.sub_area_list: "list[WorldPatrolArea] | None" = None
-
-    @cached_property
-    def full_id(self) -> str:
-        if self.parent_area is None:
-            return self.area_id
-        else:
-            return f'{self.parent_area.full_id}_{self.area_id}'
-
-    @cached_property
-    def full_name(self) -> str:
-        if self.parent_area is None:
-            return self.area_name
-        else:
-            return f'{self.parent_area.full_name}_{self.area_name}'
-
-
-class WorldPatrolLargeMapIcon:
-
-    def __init__(
-            self,
-            icon_name: str,
-            template_id: str,
-            lm_pos: list[int],
-            tp_pos: list[int] | None,
-    ):
-        self.icon_name: str = icon_name
-        self.template_id: str = template_id
-        self.lm_pos: Point = Point(lm_pos[0], lm_pos[1])  # 图标中心点在大地图上的坐标
-        self.tp_pos: Point = self.lm_pos if tp_pos is None else Point(tp_pos[0], tp_pos[1])  # 传送落地后的坐标
-
-    def to_dict(self) -> dict:
-        return {
-            'icon_name': self.icon_name,
-            'template_id': self.template_id,
-            'lm_pos': [self.lm_pos.x, self.lm_pos.y],
-            'tp_pos': [self.tp_pos.x, self.tp_pos.y],
-        }
-
-
-class WorldPatrolLargeMap:
-
-    def __init__(
-            self,
-            area_full_id: str,
-            road_mask: MatLike,
-            icon_list: list[WorldPatrolLargeMapIcon],
-    ):
-        self.area_full_id: str = area_full_id
-        self.road_mask: MatLike = road_mask
-        self.icon_list: list[WorldPatrolLargeMapIcon] = icon_list
-
-    def to_dict(self) -> dict:
-        return {
-            'area_full_id': self.area_full_id,
-            'icon_list': [i.to_dict() for i in self.icon_list],
-        }
-
-def world_patrol_dir():
-    return os_utils.get_path_under_work_dir('assets', 'game_data', 'world_patrol')
-
-
-def entry_dir(entry: WorldPatrolEntry):
-    return os_utils.get_path_under_work_dir('assets', 'game_data', 'world_patrol', entry.entry_id)
-
-
-def area_dir(area: WorldPatrolArea):
-    return os_utils.get_path_under_work_dir('assets', 'game_data', 'world_patrol', area.entry.entry_id, area.full_id)
-
-
-def road_mask_path(area: WorldPatrolArea):
-    return os.path.join(area_dir(area), 'road_mask.png')
-
-
-def icon_yaml_path(area: WorldPatrolArea):
-    return os.path.join(area_dir(area), 'icon.yml')
+def area_route_dir(area: WorldPatrolArea):
+    return os_utils.get_path_under_work_dir('assets', 'config', 'world_patrol_route', 'system',
+                                            area.entry.entry_id, area.full_id)
 
 
 class WorldPatrolService:
@@ -116,6 +25,7 @@ class WorldPatrolService:
         self.entry_list: list[WorldPatrolEntry] = []
         self.area_list: list[WorldPatrolArea] = []
         self.large_map_list: list[WorldPatrolLargeMap] = []
+        self.route_list: list[WorldPatrolRoute] = []
 
     def load_data(self):
         self.load_entry()
@@ -232,3 +142,106 @@ class WorldPatrolService:
         if os.path.exists(icon_yaml_path(area)):
             os.remove(icon_yaml_path(area))
         return True
+
+    def get_world_patrol_routes(self, area: WorldPatrolArea) -> list[WorldPatrolRoute]:
+        """获取指定区域的所有路线"""
+        routes = []
+        route_dir = area_route_dir(area)
+
+        if not os.path.exists(route_dir):
+            return routes
+
+        # 遍历路线文件夹中的所有yml文件
+        for filename in os.listdir(route_dir):
+            if filename.endswith('.yml'):
+                try:
+                    file_path = os.path.join(route_dir, filename)
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = yaml.safe_load(f)
+                    route = WorldPatrolRoute.from_dict(data, area)
+                    routes.append(route)
+                except Exception as e:
+                    log.error(f'加载路线文件失败: {filename}, 错误: {e}')
+
+        # 按idx排序
+        routes.sort(key=lambda r: r.idx)
+        return routes
+
+    def save_world_patrol_route(self, route: WorldPatrolRoute) -> bool:
+        """保存世界巡逻路线"""
+        try:
+            route_dir = area_route_dir(route.tp_area)
+            os.makedirs(route_dir, exist_ok=True)
+
+            filename = f'{route.idx:02d}.yml'
+            file_path = os.path.join(route_dir, filename)
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                yaml.dump(route.to_dict(), f, default_flow_style=False, allow_unicode=True)
+
+            log.info(f'保存路线成功: {route.tp_area.full_name} - {route.tp_name} ({filename})')
+            return True
+        except Exception as e:
+            log.error(f'保存路线失败: {e}')
+            return False
+
+    def get_next_route_idx(self, area: WorldPatrolArea) -> int:
+        """获取指定区域的下一个路线索引"""
+        routes = self.get_world_patrol_routes(area)
+        if not routes:
+            return 1
+        return max(route.idx for route in routes) + 1
+
+    def delete_world_patrol_route(self, route: WorldPatrolRoute) -> bool:
+        """删除世界巡逻路线"""
+        try:
+            route_dir = area_route_dir(route.tp_area)
+            filename = f'{route.idx:02d}.yml'
+            file_path = os.path.join(route_dir, filename)
+
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                log.info(f'删除路线成功: {route.tp_area.full_name} - {route.tp_name} ({filename})')
+                return True
+            else:
+                log.error(f'路线文件不存在: {filename}')
+                return False
+
+        except Exception as e:
+            log.error(f'删除路线失败: {e}')
+            return False
+
+    def get_route_last_pos(self, route: WorldPatrolRoute) -> Point | None:
+        """
+        获取路线的最后一个点坐标
+
+        Args:
+            route: 路线
+
+        Returns:
+            Point: 最后一个点坐标
+        """
+        large_map = None
+        for lm in self.large_map_list:
+            if lm.area_full_id == route.tp_area.full_id:
+                large_map = lm
+                break
+        if large_map is None:
+            return None
+
+        tp_icon = None
+        for icon in large_map.icon_list:
+            if icon.icon_name == route.tp_name:
+                tp_icon = icon
+                break
+        if tp_icon is None:
+            return None
+
+        current_pos = tp_icon.tp_pos
+        for op in route.op_list:
+            if op.op_type in [
+                WorldPatrolOpType.MOVE
+            ]:
+                current_pos = Point(int(op.data[0]), int(op.data[1]))
+
+        return current_pos

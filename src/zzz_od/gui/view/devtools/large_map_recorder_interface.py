@@ -22,8 +22,9 @@ from one_dragon_qt.widgets.setting_card.switch_setting_card import SwitchSetting
 from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
 from zzz_od.application.devtools.large_map_recorder import large_map_recorder_utils
 from zzz_od.application.devtools.large_map_recorder.large_map_recorder_wrapper import LargeMapSnapshot, MiniMapSnapshot
-from zzz_od.application.world_patrol.world_patrol_service import WorldPatrolService, WorldPatrolEntry, WorldPatrolArea, \
-    WorldPatrolLargeMap, WorldPatrolLargeMapIcon
+from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolEntry, WorldPatrolArea, \
+    WorldPatrolLargeMapIcon, WorldPatrolLargeMap
+from zzz_od.application.world_patrol.world_patrol_service import WorldPatrolService
 from zzz_od.context.zzz_context import ZContext
 from zzz_od.gui.view.devtools.icon_editor_dialog import IconEditorDialog
 from zzz_od.game_map.mini_map_wrapper import MiniMapWrapper

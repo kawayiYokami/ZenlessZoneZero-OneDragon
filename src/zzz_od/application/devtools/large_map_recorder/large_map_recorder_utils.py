@@ -8,7 +8,7 @@ from one_dragon.base.geometry.point import Point
 from one_dragon.base.matcher.match_result import MatchResult
 from one_dragon.utils import cv2_utils, cal_utils
 from zzz_od.application.devtools.large_map_recorder.large_map_recorder_wrapper import LargeMapSnapshot, MiniMapSnapshot
-from zzz_od.application.world_patrol.world_patrol_service import WorldPatrolLargeMap, WorldPatrolLargeMapIcon
+from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolLargeMapIcon, WorldPatrolLargeMap
 from zzz_od.context.zzz_context import ZContext
 from zzz_od.game_map import cal_pos_utils
 from zzz_od.game_map.mini_map_wrapper import MiniMapWrapper
