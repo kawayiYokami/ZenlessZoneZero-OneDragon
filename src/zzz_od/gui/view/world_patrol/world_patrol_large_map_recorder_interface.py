@@ -27,7 +27,7 @@ from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolEntry, 
 from zzz_od.application.world_patrol.world_patrol_service import WorldPatrolService
 from zzz_od.context.zzz_context import ZContext
 from zzz_od.gui.view.devtools.icon_editor_dialog import IconEditorDialog
-from zzz_od.game_map.mini_map_wrapper import MiniMapWrapper
+from zzz_od.application.world_patrol.mini_map_wrapper import MiniMapWrapper
 
 
 class LargeMapRecorderInterface(VerticalScrollInterface):
@@ -46,7 +46,7 @@ class LargeMapRecorderInterface(VerticalScrollInterface):
         VerticalScrollInterface.__init__(
             self,
             content_widget=None,
-            object_name='large_map_recorder_interface',
+            object_name='world_patrol_large_map_recorder_interface',
             nav_text_cn='大地图录制',
             parent=parent,
         )
@@ -360,13 +360,13 @@ class LargeMapRecorderInterface(VerticalScrollInterface):
 
         log.info('[截图] 计算小地图道路 开始')
         _, screen = self.ctx.controller.screenshot()
-        self.mini_map_1 = self.ctx.mini_map_service.cut_mini_map(screen)
+        self.mini_map_1 = self.ctx.world_patrol_service.cut_mini_map(screen)
         snapshot_1 = large_map_recorder_utils.create_mini_map_snapshot(self.ctx, self.mini_map_1)
 
         self.ctx.controller.turn_by_angle_diff(180)
         time.sleep(2)
         _, screen = self.ctx.controller.screenshot()
-        self.mini_map_2 = self.ctx.mini_map_service.cut_mini_map(screen)
+        self.mini_map_2 = self.ctx.world_patrol_service.cut_mini_map(screen)
         snapshot_2 = large_map_recorder_utils.create_mini_map_snapshot(self.ctx, self.mini_map_2)
 
         self.mini_map = large_map_recorder_utils.merge_mini_map(snapshot_1, snapshot_2)

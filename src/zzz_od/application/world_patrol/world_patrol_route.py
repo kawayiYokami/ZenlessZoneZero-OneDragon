@@ -1,4 +1,5 @@
 from enum import StrEnum
+from functools import cached_property
 
 from one_dragon.base.geometry.point import Point
 from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolArea
@@ -65,3 +66,7 @@ class WorldPatrolRoute:
             idx=data.get('idx', 0),
             op_list=op_list
         )
+
+    @cached_property
+    def full_id(self) -> str:
+        return f'{self.tp_area.full_id}_{self.idx}'

@@ -38,9 +38,12 @@ class BackToNormalWorld(ZOperation):
             return self.round_wait(result.status, wait=1)
 
         result = self.round_by_find_area(self.last_screenshot, '大世界', '信息')
-
         if result.is_success:
             return self.round_success(result.status)
+
+        mini_map = self.ctx.world_patrol_service.cut_mini_map(self.last_screenshot)
+        if mini_map.play_mask_found:
+            return self.round_success(status='发现地图')
 
         # 大部分画面都有街区可以直接返回
         result = self.round_by_find_and_click_area(self.last_screenshot, '画面-通用', '左上角-街区')
@@ -171,4 +174,4 @@ def _debug():
 
 
 if __name__ == '__main__':
-    _debug()
+    __debug_op()

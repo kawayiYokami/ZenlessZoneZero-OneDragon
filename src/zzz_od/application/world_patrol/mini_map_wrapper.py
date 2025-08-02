@@ -90,6 +90,9 @@ class MiniMapWrapper:
         diff_mask = (rgb_max - rgb_min) > 5
         road_mask[diff_mask] = 0
 
+        # 只要圆圈以内的
+        road_mask = cv2.bitwise_and(road_mask, self.circle_mask)
+
         # CLAHE 可以让道路更有辨识度 但背景亮时 会让灰色带变得更亮 颜色偏差很大 很难选择
         # clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(3, 3))
         # road_mask = clahe.apply(self.yuv_y)
@@ -145,6 +148,14 @@ class MiniMapWrapper:
             cv2.drawContours(final_mask, filtered_contours, -1, 255, thickness=cv2.FILLED)
 
         return final_mask
+
+    @cached_property
+    def play_mask_found(self) -> bool:
+        """
+        Returns:
+            bool: 是否能找到玩家的指标
+        """
+        return np.sum(np.where(self.player_mask > 0)) > 50
 
     @cached_property
     def circle_mask(self) -> MatLike:

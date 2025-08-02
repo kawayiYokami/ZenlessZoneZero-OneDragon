@@ -21,10 +21,12 @@ class WorldPatrolArea:
             entry: WorldPatrolEntry,
             area_name: str,
             area_id: str,
+            is_hollow: bool = False,
     ):
         self.entry: WorldPatrolEntry = entry
         self.area_name: str = area_name
         self.area_id: str = area_id
+        self.is_hollow: bool = is_hollow
 
         self.parent_area: "WorldPatrolArea | None" = None
         self.sub_area_list: "list[WorldPatrolArea] | None" = None

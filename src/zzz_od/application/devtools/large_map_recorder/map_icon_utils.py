@@ -60,6 +60,17 @@ def __debug_extract_map_icon(icon: str):
 
     icon_map = {
         # 传送点
+        '3d_map_tp_icon_1': [
+            ((180, 180, 180), (255, 255, 255)),
+            ((0, 0, 0), (20, 20, 20)),
+        ],
+
+        # 传送点
+        '3d_map_tp_icon_2': [
+            ((140, 140, 140), (255, 255, 255)),
+        ],
+
+        # 传送点
         'map_icon_01': [
             ((100, 100, 100), (255, 255, 255)),
         ],
@@ -92,4 +103,4 @@ def __debug_extract_map_icon(icon: str):
     extract_map_icon(ctx, icon, icon_map.get(icon, []))
 
 if __name__ == '__main__':
-    __debug_extract_map_icon('map_icon_05')
+    __debug_extract_map_icon('3d_map_tp_icon_1')

@@ -10,8 +10,8 @@ from one_dragon.utils import cv2_utils, cal_utils
 from zzz_od.application.devtools.large_map_recorder.large_map_recorder_wrapper import LargeMapSnapshot, MiniMapSnapshot
 from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolLargeMapIcon, WorldPatrolLargeMap
 from zzz_od.context.zzz_context import ZContext
-from zzz_od.game_map import cal_pos_utils
-from zzz_od.game_map.mini_map_wrapper import MiniMapWrapper
+from zzz_od.application.world_patrol import cal_pos_utils
+from zzz_od.application.world_patrol.mini_map_wrapper import MiniMapWrapper
 
 
 def get_mini_map_circle_mask(d: int) -> MatLike:
@@ -575,7 +575,7 @@ def __debug():
 
     from one_dragon.utils import debug_utils
     screen1 = debug_utils.get_debug_image('_1753027579068')
-    mm1 = ctx.mini_map_service.cut_mini_map(screen1)
+    mm1 = ctx.world_patrol_service.cut_mini_map(screen1)
     mm1 = get_mini_map_in_circle(mm1.road_mask)
     from one_dragon.utils import cv2_utils
     cv2_utils.show_image(mm1, win_name='mm', wait=0)
