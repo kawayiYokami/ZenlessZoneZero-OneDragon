@@ -262,10 +262,10 @@ class Operation(OperationBase):
 
         """
         if self.need_check_game_win and start_node is not None:
-            check_game_window = OperationNode('检测游戏窗口', lambda _: self.check_game_window())
+            check_game_window = OperationNode('检测游戏窗口', lambda _: self.check_game_window(), screenshot_before_round=False)
             self._add_node(check_game_window)
 
-            open_and_enter_game = OperationNode('打开并进入游戏', lambda _: self.open_and_enter_game())
+            open_and_enter_game = OperationNode('打开并进入游戏', lambda _: self.open_and_enter_game(), screenshot_before_round=False)
             self._add_node(open_and_enter_game)
 
             no_game_edge = OperationEdge(check_game_window, open_and_enter_game, success=False)
