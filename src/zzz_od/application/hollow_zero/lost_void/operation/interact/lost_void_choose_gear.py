@@ -5,6 +5,7 @@ from cv2.typing import MatLike
 from typing import List, Tuple
 
 from one_dragon.base.geometry.point import Point
+from one_dragon.base.geometry.rectangle import Rect
 from one_dragon.base.matcher.match_result import MatchResult
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
@@ -19,13 +20,12 @@ from zzz_od.operation.zzz_operation import ZOperation
 
 class LostVoidChooseGear(ZOperation):
 
-    def __init__(self, ctx: ZContext, chase_new_mode: bool = False):
+    def __init__(self, ctx: ZContext):
         """
         入口处 人物武备和通用武备的选择
         :param ctx:
         """
         ZOperation.__init__(self, ctx, op_name='迷失之地-武备选择')
-        self.chase_new_mode = chase_new_mode
 
     @operation_node(name='选择武备', is_start_node=True)
     def choose_gear(self) -> OperationRoundResult:
@@ -43,7 +43,8 @@ class LostVoidChooseGear(ZOperation):
             # 进入本指令之前 有可能识别错画面
             return self.round_retry(status=f'当前画面 {screen_name}', wait=1)
 
-        if self.chase_new_mode:
+        choose_new: bool = False
+        if self.ctx.lost_void.challenge_config.chase_new_mode:
             gear_contours, gear_context = self._find_gears_with_status()
 
             if not gear_contours:
@@ -54,20 +55,20 @@ class LostVoidChooseGear(ZOperation):
             if unlocked_gears:
                 target_contour = unlocked_gears[0]
                 log.debug("【武备追新】找到一个未获取的武备，准备点击")
+
+                M = cv2.moments(target_contour)
+                center_x = int(M["m10"] / M["m00"])
+                center_y = int(M["m01"] / M["m00"])
+                offset_x, offset_y = gear_context.crop_offset
+                click_pos = Point(center_x + offset_x, center_y + offset_y)
+                log.debug(f"【武备追新】 点击目标坐标: {click_pos} (相对: ({center_x}, {center_y}), 偏移: {gear_context.crop_offset})")
+                self.ctx.controller.click(click_pos)
+                time.sleep(0.5)
+                choose_new = True
             else:
-                target_contour = gear_contours[0][0]
-                log.debug("【武备追新】所有武备都已获取，选择第一个作为保底")
+                log.debug("【武备追新】所有武备都已获取，回退至原优先级")
 
-            M = cv2.moments(target_contour)
-            center_x = int(M["m10"] / M["m00"])
-            center_y = int(M["m01"] / M["m00"])
-            offset_x, offset_y = gear_context.crop_offset
-            click_pos = Point(center_x + offset_x, center_y + offset_y)
-            log.debug(f"【武备追新】 点击目标坐标: {click_pos} (相对: ({center_x}, {center_y}), 偏移: {gear_context.crop_offset})")
-            self.ctx.controller.click(click_pos)
-            time.sleep(0.5)
-
-        else:
+        if not choose_new:
             gear_list = self.get_gear_pos_by_feature(screen_list)
             if len(gear_list) == 0:
                 return self.round_retry(status='无法识别武备')
@@ -102,11 +103,23 @@ class LostVoidChooseGear(ZOperation):
                     level_center_y = int(level_M["m01"] / level_M["m00"])
 
                     # 简单的空间关系判断：等级中心点在武备矩形的右侧附近
-                    if (gear_rect[0] < level_center_x < gear_rect[0] + gear_rect[2] * 1.5 and
-                            gear_rect[1] < level_center_y < gear_rect[1] + gear_rect[3]):
+                    if (gear_rect[0] - gear_rect[2] * 0.2 < level_center_x < gear_rect[0] + gear_rect[2] and
+                            gear_rect[1] - gear_rect[3] * 0.2 < level_center_y < gear_rect[1] + gear_rect[3]):
                         has_level = True
                         break
             gear_with_status.append((gear_contour, has_level))
+
+        rects = []
+        for idx in range(len(gear_with_status)):
+            contour, has_level = gear_with_status[idx]
+            if has_level:
+                continue
+            rect = cv2.boundingRect(contour)
+            rects.append(Rect(rect[0], rect[1], rect[2], rect[3]))
+        for contour in level_context.contours:
+            rect = cv2.boundingRect(contour)
+            rects.append(Rect(rect[0], rect[1], rect[2], rect[3]))
+        # cv2_utils.show_image(self.last_screenshot, rects, wait=0)
 
         return gear_with_status, gear_context
 

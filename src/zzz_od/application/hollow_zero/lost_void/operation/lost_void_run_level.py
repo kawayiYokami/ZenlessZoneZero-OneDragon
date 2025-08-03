@@ -370,7 +370,7 @@ class LostVoidRunLevel(ZOperation):
         interact_op: Optional[ZOperation] = None
         interact_type: Optional[str] = None
         if screen_name == '迷失之地-武备选择':
-            interact_op = LostVoidChooseGear(self.ctx, self.ctx.lost_void.challenge_config.chase_new_mode)
+            interact_op = LostVoidChooseGear(self.ctx)
         elif screen_name == '迷失之地-通用选择':
             interact_op = LostVoidChooseCommon(self.ctx)
         elif screen_name == '迷失之地-邦布商店':

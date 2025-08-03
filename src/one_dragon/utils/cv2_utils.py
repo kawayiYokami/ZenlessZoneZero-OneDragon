@@ -70,7 +70,7 @@ def get_image_file_type(file_path: str) -> str:
 
 def show_image(
         img: MatLike,
-        rects: Union[MatchResult, MatchResultList] = None,
+        rects: Union[MatchResult, MatchResultList, list[Rect]] = None,
         win_name: str = 'DEBUG',
         wait: Optional[int] = None,
         destroy_after: bool = False,
@@ -109,6 +109,12 @@ def show_image(
         elif type(rects) == MatchResultList:
             for i in rects:
                 cv2.rectangle(to_show, (i.x, i.y), (i.x + i.w, i.y + i.h), (255, 0, 0), 1)
+        elif isinstance(rects, list):
+            for rect in rects:
+                if isinstance(rect, MatchResult):
+                    cv2.rectangle(to_show, (rect.x, rect.y), (rect.x + rect.w, rect.y + rect.h), (255, 0, 0), 1)
+                elif type(rect) == Rect:
+                    cv2.rectangle(to_show, (rect.x1, rect.y1), (rect.x2, rect.y2), (255, 0, 0), 1)
 
     if max_width is not None and to_show.shape[1] > max_width:
         scale = max_width / to_show.shape[1]
