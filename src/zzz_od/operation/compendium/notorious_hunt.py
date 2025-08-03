@@ -332,7 +332,7 @@ class NotoriousHunt(ZOperation):
         result = self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-交互')
         if result.is_success:
             self.ctx.controller.interact(press=True, press_time=0.2, release=True)
-            return self.round_success(status=result.status)
+            return self.round_success(status=result.status, wait=2)  # 按键后 等待一段时间选择鸣徽界面出现
 
         det_result: DetectFrameResult = self.ctx.lost_void.detector.run(self.last_screenshot, label_list=['0001-距离'])
         self.auto_op.auto_battle_context.check_battle_distance(self.last_screenshot)
