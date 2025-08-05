@@ -85,10 +85,13 @@ try:
 
         # 继承初始化函数
         def init_window(self):
-            self.resize(1050, 700)
+            self.resize(1095, 730)  # 3:2比例
 
             # 初始化位置
-            self.move(100, 100)
+            screen = QApplication.primaryScreen()
+            geometry = screen.availableGeometry()
+            w, h = geometry.width(), geometry.height()
+            self.move(w // 2 - self.width() // 2, h // 2 - self.height() // 2)
 
             # 设置配置ID
             self.setObjectName("PhosWindow")
