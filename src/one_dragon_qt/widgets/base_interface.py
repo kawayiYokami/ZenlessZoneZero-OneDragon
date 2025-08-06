@@ -5,19 +5,8 @@ from typing import Union
 
 from one_dragon.utils.i18_utils import gt
 
-try:
-    from zzz_od.telemetry.auto_telemetry import TelemetryInterfaceMixin, auto_telemetry_method
-except ImportError:
-    class TelemetryInterfaceMixin:
-        def track_interface_shown(self): pass
-        def track_interface_hidden(self): pass
 
-    def auto_telemetry_method(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
-
-class BaseInterface(QWidget, TelemetryInterfaceMixin):
+class BaseInterface(QWidget):
 
     def __init__(self,
                  object_name: str,
@@ -35,21 +24,19 @@ class BaseInterface(QWidget, TelemetryInterfaceMixin):
         self.nav_icon: Union[FluentIconBase, QIcon, str] = nav_icon
         self.setObjectName(object_name)
 
-    @auto_telemetry_method("interface_shown")
     def on_interface_shown(self) -> None:
         """
         子界面显示时 进行初始化
         :return:
         """
-        self.track_interface_shown()
+        pass
 
-    @auto_telemetry_method("interface_hidden")
     def on_interface_hidden(self) -> None:
         """
         子界面隐藏时的回调
         :return:
         """
-        self.track_interface_hidden()
+        pass
 
     def show_info_bar(
             self,
