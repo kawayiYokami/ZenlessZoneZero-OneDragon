@@ -594,6 +594,8 @@ def __debug_read_extract():
     for file_name in os.listdir(base_dir):
         if not file_name.endswith('.png'):
             continue
+        if file_name.endswith('_gray.png'):
+            continue
 
         image = cv2.imread(os.path.join(base_dir, file_name), cv2.IMREAD_UNCHANGED)
         gray = image[:, :, 0]
@@ -602,41 +604,9 @@ def __debug_read_extract():
 
         temp_world_patrol_map = WorldPatrolLargeMap("", road_mask, [])
         lm = LargeMapSnapshot(temp_world_patrol_map, Point(0, 0))
-        expand_lm = _expand_edges_if_needed(lm, (210, 210))
         new_file_name = f'{os.path.splitext(file_name)[0]}_gray.png'
-        cv2_utils.save_image(expand_lm.road_mask, os.path.join(base_dir, new_file_name))
-
-
-def __debug_cal_pos():
-    from one_dragon.utils import os_utils
-    base_dir = os_utils.get_path_under_work_dir('assets', 'game_data', 'world_patrol', 'lemnian_hollow', 'production_area_building_west_side')
-    road_mask = cv2_utils.read_image(os.path.join(base_dir, 'road_mask.png'))
-
-    from one_dragon.utils import debug_utils
-    mm_image = debug_utils.get_debug_image('332_1')
-    mm_wrapper = MiniMapWrapper(mm_image)
-
-    # 44
-    for scale in range(50, 30, -1):
-        f = scale / 100.0
-        new_road_mask = cv2.resize(road_mask, (0, 0), fx=f, fy=f)
-
-        temp_world_patrol_map = WorldPatrolLargeMap("", new_road_mask, [])
-        lm = LargeMapSnapshot(temp_world_patrol_map, Point(0, 0))
-        mm = MiniMapSnapshot(mm_wrapper.road_mask, [])
-        mr = cal_pos_by_road(None, lm, mm, Point(2162 * f, 351 * f))
-        if mr is not None:
-            lt = mr.left_top + Point(-100, -100)
-            rb = mr.right_bottom + Point(100, 100)
-            from one_dragon.base.geometry.rectangle import Rect
-            lm_part, rect = cv2_utils.crop_image(new_road_mask, Rect(lt.x, lt.y, rb.x, rb.y))
-            lm_rgb = cv2.cvtColor(lm_part, cv2.COLOR_GRAY2RGB)
-            left_top = mr.left_top - rect.left_top
-            print(scale)
-            cv2_utils.show_overlap(lm_rgb, mm_image, left_top.x, left_top.y, win_name='rgb', template_mask=mm_wrapper.circle_mask)
-            cv2_utils.show_overlap(lm_part, mm_wrapper.road_mask, left_top.x, left_top.y, win_name='gray', template_mask=mm_wrapper.circle_mask)
-            cv2.waitKey(0)
+        cv2_utils.save_image(lm.road_mask, os.path.join(base_dir, new_file_name))
 
 
 if __name__ == '__main__':
-    __debug_cal_pos()
+    __debug_read_extract()
