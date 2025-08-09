@@ -5,7 +5,7 @@ import numpy as np
 from cv2.typing import MatLike
 
 from one_dragon.base.geometry.point import Point
-from one_dragon.base.matcher.match_result import MatchResult
+from one_dragon.base.matcher.match_result import MatchResult, MatchResultList
 from one_dragon.utils import cv2_utils, cal_utils
 from zzz_od.application.devtools.large_map_recorder.large_map_recorder_wrapper import LargeMapSnapshot, MiniMapSnapshot
 from zzz_od.application.world_patrol.world_patrol_area import WorldPatrolLargeMapIcon, WorldPatrolLargeMap
@@ -332,6 +332,7 @@ def get_large_map_display(
 def create_mini_map_snapshot(
         ctx: ZContext,
         new_mini_map: MiniMapWrapper,
+        icon_threshold: float = 0.7,
 ) -> MiniMapSnapshot:
     """
     创建一个小地图快照
@@ -339,11 +340,13 @@ def create_mini_map_snapshot(
     Args:
         ctx: 上下文
         new_mini_map: 小地图截图
+        icon_threshold: 图标匹配阈值，默认0.7
 
     Returns:
         MiniMapSnapshot: 小地图快照
     """
     icon_list: list[tuple[str, Point]] = []
+    all_mrl = MatchResultList(only_best=False)
     for i in range(1, 100):
         template = ctx.template_loader.get_template('map', f'map_icon_{i:02d}')
         if template is None:
@@ -353,15 +356,17 @@ def create_mini_map_snapshot(
             source=new_mini_map.rgb,
             template=template.raw,
             mask=template.mask,
-            threshold=0.7,
+            threshold=icon_threshold,
             only_best=False,
             ignore_inf=True
         )
         for mr in mrl:
-            # 计算图标中心点坐标
-            center_x = mr.left_top.x + template.raw.shape[1] // 2
-            center_y = mr.left_top.y + template.raw.shape[0] // 2
-            icon_list.append((template.template_id, Point(center_x, center_y)))
+            mr.data = template.template_id
+            all_mrl.append(mr)
+
+    for mr in all_mrl:
+        # 计算图标中心点坐标
+        icon_list.append((mr.data, mr.rect.center))
 
     return MiniMapSnapshot(
         new_mini_map.road_mask,

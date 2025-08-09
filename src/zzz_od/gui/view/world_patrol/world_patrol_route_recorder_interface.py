@@ -422,7 +422,7 @@ class WorldPatrolRouteRecorderInterface(VerticalScrollInterface):
         self.chosen_route = None
 
         # 重置路线选择
-        self.route_combo_box.setCurrentIndex(0)
+        self.route_combo_box.setCurrentIndex(-1)
 
         # 清除计算结果
         self.mini_map_pos_mr = None
@@ -544,7 +544,7 @@ class WorldPatrolRouteRecorderInterface(VerticalScrollInterface):
         log.info('[截图] 开始')
         _, screen = self.ctx.controller.screenshot()
         mini_map_wrapper = self.ctx.world_patrol_service.cut_mini_map(screen)
-        self.mini_map = large_map_recorder_utils.create_mini_map_snapshot(self.ctx, mini_map_wrapper)
+        self.mini_map = large_map_recorder_utils.create_mini_map_snapshot(self.ctx, mini_map_wrapper, 0.7)
 
         self._update_mini_map_display()
         log.info('[截图] 完成')
