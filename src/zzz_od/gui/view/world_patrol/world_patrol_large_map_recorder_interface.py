@@ -162,7 +162,7 @@ class LargeMapRecorderInterface(VerticalScrollInterface):
         control_layout.addWidget(self.icon_opt)
 
         self.scale_input = QSpinBox()
-        self.scale_input.setValue(100)
+        self.scale_input.setValue(40)
         self.scale_save_btn = PushButton(text=gt('应用'))
         self.scale_save_btn.clicked.connect(self._on_scale_save_clicked)
         self.scale_opt = MultiPushSettingCard(icon=FluentIcon.MOVE, title='缩放', content='调整大地图的，只有第一次需要',
@@ -607,5 +607,6 @@ class LargeMapRecorderInterface(VerticalScrollInterface):
 
         f = self.scale_input.value() / 100.0
         self.large_map.road_mask = cv2.resize(self.large_map.road_mask, (0, 0), fx=f, fy=f)
+        self.large_map = large_map_recorder_utils._expand_edges_if_needed(self.large_map, (210, 210))
 
         self._update_large_map_display()

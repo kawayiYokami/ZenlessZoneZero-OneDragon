@@ -98,9 +98,14 @@ def __debug_extract_map_icon(icon: str):
             ((100, 80, 0), (170, 150, 80)),
             ((40, 170, 70), (60, 210, 100)),
         ],
+
+        # 应该是机关桥
+        'map_icon_06': [
+            ((160, 160, 160), (230, 230, 230)),
+        ],
     }
 
     extract_map_icon(ctx, icon, icon_map.get(icon, []))
 
 if __name__ == '__main__':
-    __debug_extract_map_icon('3d_map_tp_icon_1')
+    __debug_extract_map_icon('map_icon_06')
