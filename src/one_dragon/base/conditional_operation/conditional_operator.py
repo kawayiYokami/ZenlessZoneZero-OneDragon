@@ -72,6 +72,7 @@ class ConditionalOperator(YamlConfig):
                     if state in usage_states:
                         raise ValueError('状态监听 %s 出现在多个场景中' % state)
                     self.trigger_scene_handler[state] = handler
+                    usage_states.append(state)  # 修复bug：将状态添加到已使用状态列表中
             elif self.normal_scene_handler is not None:
                 raise ValueError('存在多个无状态监听的场景')
             else:

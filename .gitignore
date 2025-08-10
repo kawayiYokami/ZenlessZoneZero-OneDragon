@@ -8,6 +8,7 @@ deploy/build/
 deploy/dist/
 .env
 recording.jsonl
+QWEN.md
 
 # 子模块
 test/

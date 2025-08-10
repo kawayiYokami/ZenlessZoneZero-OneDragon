@@ -25,6 +25,8 @@ dev = [
     "matplotlib==3.10.3",
     "polib==1.2.0",
     "pyinstaller==6.7.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
 ]
 
 [tool.uv]
