@@ -471,8 +471,8 @@ class ImageViewerWidget(QWidget):
         # 模式选择
         toolbar_layout.addWidget(QLabel(gt("模式:")))
         self.mode_combo = ComboBox()
-        self.mode_combo.addItem(gt("点击模式"), "click")
-        self.mode_combo.addItem(gt("框选模式"), "select")
+        self.mode_combo.addItem(gt("点击模式"), userData="click")
+        self.mode_combo.addItem(gt("框选模式"), userData="select")
         self.mode_combo.currentTextChanged.connect(self.on_mode_changed)
         toolbar_layout.addWidget(self.mode_combo)
 

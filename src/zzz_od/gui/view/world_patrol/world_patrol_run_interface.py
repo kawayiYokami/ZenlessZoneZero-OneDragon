@@ -87,7 +87,7 @@ class WorldPatrolRunInterface(AppRunInterface):
             for i in self.ctx.world_patrol_service.get_world_patrol_route_lists()
         ]
         self.route_list_opt.set_options_by_list(
-            [ConfigItem('无', value='')]
+            [ConfigItem('全部', value='')]
             +
             config_list
         )
