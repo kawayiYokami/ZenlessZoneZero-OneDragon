@@ -283,6 +283,11 @@ class EnterGame(ZOperation):
             '取消',  # 上一次战斗还没结束 出现是否继续的对话框 issue #957 '确定'/'确认' 要放在'取消'之后 因为有对话框同时出现这两个词
             '确认',  # 每个版本出现的10连抽奖励 点击领取后确认
             '领取×01',  # 每个版本出现的10连抽奖励 issue #893
+            '领取×02',  # 每个版本出现的10连抽奖励 issue #893
+            '领取x03',  # 每个版本出现的10连抽奖励 issue #893
+            '已领取×01', # 需要有这个词 防止画面出现"已领取x01"也匹配到"领取x01"
+            '已领取x02', # 需要有这个词 防止画面出现"已领取x02"也匹配到"领取x02"
+            '已领取x03', # 需要有这个词 防止画面出现"已领取x03"也匹配到"领取x03"
             '领取',  # 每个版本出现的10连抽奖励 issue #893
             '已领取',  # 需要有这个词 防止画面出现"已领取"也匹配到"领取"
             '待领取',  # 需要有这个词 防止画面出现"待领取"也匹配到"领取"
@@ -293,6 +298,9 @@ class EnterGame(ZOperation):
         ignore_list: list[str] = [
             '已领取',
             '待领取',
+            '已领取×01',
+            '已领取x02',
+            '已领取x03',
         ]
         target_word_idx_map: dict[str, int] = {}
         to_match_list: list[str] = []
@@ -306,6 +314,7 @@ class EnterGame(ZOperation):
             ignore_list=ignore_list
         )
         if match_word is not None and match_word_mrl is not None and match_word_mrl.max is not None:
+            time.sleep(0.5) # 等待画面稳定
             self.ctx.controller.click(match_word_mrl.max.center)
             return self.round_wait(status=match_word, wait=1)
 
