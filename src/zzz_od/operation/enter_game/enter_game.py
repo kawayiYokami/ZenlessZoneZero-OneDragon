@@ -282,12 +282,6 @@ class EnterGame(ZOperation):
         target_word_list: list[str] = [
             '取消',  # 上一次战斗还没结束 出现是否继续的对话框 issue #957 '确定'/'确认' 要放在'取消'之后 因为有对话框同时出现这两个词
             '确认',  # 每个版本出现的10连抽奖励 点击领取后确认
-            '领取×01',  # 每个版本出现的10连抽奖励 issue #893
-            '领取×02',  # 每个版本出现的10连抽奖励 issue #893
-            '领取x03',  # 每个版本出现的10连抽奖励 issue #893
-            '已领取×01', # 需要有这个词 防止画面出现"已领取x01"也匹配到"领取x01"
-            '已领取x02', # 需要有这个词 防止画面出现"已领取x02"也匹配到"领取x02"
-            '已领取x03', # 需要有这个词 防止画面出现"已领取x03"也匹配到"领取x03"
             '领取',  # 每个版本出现的10连抽奖励 issue #893
             '已领取',  # 需要有这个词 防止画面出现"已领取"也匹配到"领取"
             '待领取',  # 需要有这个词 防止画面出现"待领取"也匹配到"领取"
@@ -298,9 +292,6 @@ class EnterGame(ZOperation):
         ignore_list: list[str] = [
             '已领取',
             '待领取',
-            '已领取×01',
-            '已领取x02',
-            '已领取x03',
         ]
         target_word_idx_map: dict[str, int] = {}
         to_match_list: list[str] = []
@@ -322,11 +313,6 @@ class EnterGame(ZOperation):
             # 左上角的返回
             self.round_by_click_area('菜单', '返回')
             return self.round_wait(status=back_btn_result.status, wait=1)
-
-        # 一周年自选奖励 应该在2.1时候删除相关资源
-        annual_reward_result = self.round_by_find_and_click_area(screen, '打开游戏', '一周年自选奖励')
-        if annual_reward_result.is_success:
-            return self.round_wait(status=annual_reward_result.status, wait=1)
 
         return None
 
