@@ -41,7 +41,7 @@ class WorldPatrolApp(ZApplication):
                     break
 
             if config is not None:
-                route_id_list = [route.area_full_id + '_' + str(route.idx) for route in config.route_items]
+                route_id_list = config.route_items.copy()
                 if config.list_type == RouteListType.BLACKLIST:
                     self.route_list = [
                         route
