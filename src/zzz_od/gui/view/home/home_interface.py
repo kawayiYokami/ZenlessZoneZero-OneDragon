@@ -25,14 +25,12 @@ from qfluentwidgets import (
 
 from one_dragon.utils import os_utils
 from one_dragon.utils.log_utils import log
+from one_dragon_qt.services.theme_manager import ThemeManager
 from one_dragon_qt.utils.color_utils import ColorUtils
 from one_dragon_qt.widgets.banner import Banner
 from one_dragon_qt.widgets.icon_button import IconButton
 from one_dragon_qt.widgets.notice_card import NoticeCardContainer
-from one_dragon_qt.widgets.vertical_scroll_interface import (
-    VerticalScrollInterface,
-)
-from one_dragon_qt.services.theme_manager import theme_manager
+from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
 from zzz_od.context.zzz_context import ZContext
 
 
@@ -576,20 +574,25 @@ class HomeInterface(VerticalScrollInterface):
 
         # 获取主题色
         theme_color = self._get_theme_color()
+        self.ctx.custom_config.theme_color = theme_color
 
         # 更新全局主题色
-        self._update_global_theme(theme_color)
+        ThemeManager.set_theme_color(theme_color)
 
         # 应用按钮样式
         self._apply_button_style(theme_color)
 
     def _get_theme_color(self) -> tuple[int, int, int]:
         """获取主题色，优先使用缓存，否则从图片提取"""
+        # 如果是自定义模式，直接返回自定义颜色
+        if self.ctx.custom_config.is_custom_theme_color:
+            return self.ctx.custom_config.theme_color
+
         current_banner_path = self.choose_banner_image()
 
         # 检查是否能使用缓存的主题色
         if self._can_use_cached_theme_color(current_banner_path):
-            lr, lg, lb = self.ctx.custom_config.global_theme_color
+            lr, lg, lb = self.ctx.custom_config.theme_color
             log.debug(f"使用缓存的主题色: ({lr}, {lg}, {lb})")
             return lr, lg, lb
 
@@ -597,7 +600,7 @@ class HomeInterface(VerticalScrollInterface):
         theme_color = self._extract_color_from_image()
 
         # 更新缓存
-        self._update_theme_color_cache(current_banner_path, theme_color)
+        self._update_theme_color_cache(current_banner_path)
 
         return theme_color
 
@@ -636,10 +639,6 @@ class HomeInterface(VerticalScrollInterface):
 
         return lr, lg, lb
 
-    def _update_global_theme(self, theme_color: tuple[int, int, int]) -> None:
-        """更新全局主题色管理器"""
-        theme_manager.set_theme_color(theme_color, self.ctx)
-
     def _apply_button_style(self, theme_color: tuple[int, int, int]) -> None:
         """应用样式到启动按钮"""
         lr, lg, lb = theme_color
@@ -662,19 +661,12 @@ class HomeInterface(VerticalScrollInterface):
     def _clear_theme_color_cache(self) -> None:
         """清空主题色缓存"""
         self.ctx.custom_config.theme_color_banner_path = ''
-        self.ctx.custom_config.global_theme_color_str = ''
+        self.ctx.custom_config.theme_color_banner_mtime = 0.0
 
     def _can_use_cached_theme_color(self, current_banner_path: str) -> bool:
         """检查是否可以使用缓存的主题色"""
-        if not self.ctx.custom_config.has_custom_theme_color:
-            return False
-
         cached_path = self.ctx.custom_config.theme_color_banner_path
-        if cached_path != current_banner_path:
-            return False
-
-        # 检查文件是否存在
-        if not os.path.exists(current_banner_path):
+        if cached_path != current_banner_path or not os.path.exists(current_banner_path):
             return False
 
         # 检查文件修改时间是否改变
@@ -692,12 +684,9 @@ class HomeInterface(VerticalScrollInterface):
 
         return True
 
-    def _update_theme_color_cache(self, banner_path: str, theme_color: tuple[int, int, int]) -> None:
+    def _update_theme_color_cache(self, banner_path: str) -> None:
         """更新主题色缓存"""
         self.ctx.custom_config.theme_color_banner_path = banner_path
-        self.ctx.custom_config.global_theme_color = theme_color
-
-        # 记录文件修改时间
         try:
             self.ctx.custom_config.theme_color_banner_mtime = os.path.getmtime(banner_path)
         except OSError:
