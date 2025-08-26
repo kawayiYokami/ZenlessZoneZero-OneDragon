@@ -938,7 +938,7 @@ class Operation(OperationBase):
             ocr_result_map = self.ctx.ocr_service.get_ocr_result_map(
                 image=screen,
                 color_range=color_range,
-                rect=None if area is None else area.rect
+                rect=area.rect if area is not None else None
             )
         else:
             # 回退到原有方法
@@ -1024,7 +1024,7 @@ class Operation(OperationBase):
             ocr_result_map = self.ctx.ocr_service.get_ocr_result_map(
                 image=screen,
                 color_range=color_range,
-                rect=area.rect,
+                rect=area.rect if area is not None else None
             )
         else:
             # 回退到原有方法
