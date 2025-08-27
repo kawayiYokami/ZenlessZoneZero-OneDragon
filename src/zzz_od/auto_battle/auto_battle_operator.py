@@ -53,7 +53,7 @@ class AutoBattleOperator(ConditionalOperator):
         check_operator = ConditionalOperator(
             sub_dir=sub_dir,
             template_name=template_name,
-            is_mock=True
+            is_mock=is_mock
         )
 
         # 检查文件是否存在，如果不存在则使用回退配置
