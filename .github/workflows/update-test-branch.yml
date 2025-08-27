@@ -12,7 +12,7 @@ concurrency:
 jobs:
   update-test-branch:
     runs-on: ubuntu-latest
-
+    if: ${{ github.repository_owner == 'OneDragon-Anything' }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
