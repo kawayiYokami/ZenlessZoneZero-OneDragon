@@ -82,8 +82,8 @@ class SourceConfigInterface(VerticalScrollInterface):
         self.help_btn.clicked.connect(self._on_help_clicked)
         links_layout.addWidget(self.help_btn)
         
-        # QQ频道按钮
-        self.qq_channel_btn = PushButton('💬 QQ频道')
+        # 官方社区按钮
+        self.qq_channel_btn = PushButton('💬 官方社区')
         self.qq_channel_btn.setFixedSize(140, 35)
         self.qq_channel_btn.clicked.connect(self._on_qq_channel_clicked)
         links_layout.addWidget(self.qq_channel_btn)
@@ -223,28 +223,16 @@ class SourceConfigInterface(VerticalScrollInterface):
 
     def _on_help_clicked(self):
         """点击帮助按钮时打开排障文档"""
-        try:
-            webbrowser.open("https://docs.qq.com/doc/p/7add96a4600d363b75d2df83bb2635a7c6a969b5")
-        except Exception as e:
-            print(f"无法打开浏览器: {e}")
+        webbrowser.open(self.ctx.project_config.doc_link)
 
     def _on_qq_channel_clicked(self):
-        """点击QQ频道按钮时打开QQ频道"""
-        try:
-            webbrowser.open("https://pd.qq.com/g/onedrag00n")
-        except Exception as e:
-            print(f"无法打开QQ频道: {e}")
+        """点击官方社区按钮时打开官方社区"""
+        webbrowser.open(self.ctx.project_config.chat_link)
 
     def _on_website_clicked(self):
         """点击官网按钮时打开官网"""
-        try:
-            webbrowser.open("https://one-dragon.com/zzz/zh/home.html")
-        except Exception as e:
-            print(f"无法打开官网: {e}")
+        webbrowser.open(self.ctx.project_config.home_page_link)
 
     def _on_github_clicked(self):
         """点击GitHub按钮时打开GitHub仓库"""
-        try:
-            webbrowser.open("https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon")
-        except Exception as e:
-            print(f"无法打开GitHub仓库: {e}")
+        webbrowser.open(self.ctx.project_config.github_homepage)
