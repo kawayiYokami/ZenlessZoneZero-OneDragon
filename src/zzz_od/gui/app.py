@@ -238,7 +238,7 @@ try:
             """首次运行时显示防倒卖弹窗"""
             if self.ctx.env_config.is_first_run:
                 from one_dragon_qt.widgets.welcome_dialog import WelcomeDialog
-                dialog = WelcomeDialog(self.ctx, self, gt('欢迎使用绝区零一条龙'))
+                dialog = WelcomeDialog(self, gt('欢迎使用绝区零一条龙'))
                 if dialog.exec():
                     self.ctx.env_config.is_first_run = False
 
