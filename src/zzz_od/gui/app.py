@@ -24,7 +24,6 @@ try:
     from zzz_od.gui.view.home.home_interface import HomeInterface
     from zzz_od.gui.view.one_dragon.zzz_one_dragon_interface import ZOneDragonInterface
     from zzz_od.gui.view.setting.app_setting_interface import AppSettingInterface
-    from zzz_od.gui.widgets.zzz_welcome_dialog import ZWelcomeDialog
     from zzz_od.gui.view.world_patrol.world_patrol_interface import WorldPatrolInterface
 
     _init_error = None
@@ -238,7 +237,8 @@ try:
         def _check_first_run(self):
             """首次运行时显示防倒卖弹窗"""
             if self.ctx.env_config.is_first_run:
-                dialog = ZWelcomeDialog(self)
+                from one_dragon_qt.widgets.welcome_dialog import WelcomeDialog
+                dialog = WelcomeDialog(self.ctx, self, gt('欢迎使用绝区零一条龙'))
                 if dialog.exec():
                     self.ctx.env_config.is_first_run = False
 
@@ -307,7 +307,7 @@ except Exception as e:
 
     stack_trace = traceback.format_exc()
     _init_error = f"启动一条龙失败，报错信息如下:\n{stack_trace}"
-    
+
     # 自动打开浏览器访问错误排障文档
     webbrowser.open("https://docs.qq.com/doc/p/7add96a4600d363b75d2df83bb2635a7c6a969b5")
 
