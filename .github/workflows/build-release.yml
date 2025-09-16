@@ -26,17 +26,66 @@ jobs:
       shell: pwsh
       run: |
         if ($env:GITHUB_REF -like 'refs/tags/*') {
+          # 已由 tag 推送触发，直接使用该 tag 作为版本
           $version = $env:GITHUB_REF.Substring(10)
           $tag = $version
         } else {
-          $date = (Get-Date).ToUniversalTime().AddHours(8).ToString('yyyy.MMdd.HHmm')
-          $tag = "v$date"
+          # 手动 workflow_dispatch 触发：按语义版本排序选出最新 tag，生成 / 递增 beta 版本
+          git fetch --tags --force | Out-Null
+
+          $allTags = git tag
+          $parsed = @()
+          foreach ($t in $allTags) {
+            if ($t -match '^v(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$') {
+              $parsed += [pscustomobject]@{
+                Tag    = $t
+                Major  = [int]$matches[1]
+                Minor  = [int]$matches[2]
+                Patch  = [int]$matches[3]
+                IsBeta = [bool]$matches[4]
+                Beta   = if ($matches[4]) { [int]$matches[4] } else { 0 }
+              }
+            }
+          }
+
+          if ($parsed.Count -eq 0) {
+            # 仓库还没有任何符合语义版本的 tag，初始化为 v0.0.0-beta.1
+            $baseVersion = 'v0.0.0'
+            $betaNumber = 1
+            $tag = "$baseVersion-beta.$betaNumber"
+          } else {
+            # 按语义版本排序：Major DESC, Minor DESC, Patch DESC, Stable(=IsBeta:$false) < Beta, Beta number DESC
+            $latest = $parsed | Sort-Object -Property @(
+              @{Expression='Major';Descending=$true}
+              @{Expression='Minor';Descending=$true}
+              @{Expression='Patch';Descending=$true}
+              @{Expression='IsBeta';Descending=$true}
+              @{Expression='Beta';Descending=$true}
+            ) | Select-Object -First 1
+
+            $latestTag = $latest.Tag
+            if ($latestTag -match '^(v\d+\.\d+\.\d+)-beta\.(\d+)$') {
+              # 已经是 beta，递增 beta 号
+              $baseVersion = $matches[1]
+              $betaNumber = [int]$matches[2] + 1
+              $tag = "$baseVersion-beta.$betaNumber"
+            } else {
+              # 稳定版本，开始新的 beta 序列
+              $baseVersion = $latestTag
+              $betaNumber = 1
+              $tag = "$baseVersion-beta.$betaNumber"
+            }
+          }
+
           $version = $tag
+
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
+          # 创建并推送新 beta tag
           git tag $tag
           git push origin $tag
         }
+
         echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         echo "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         echo "__version__ = '$version'" | Out-File -FilePath src/one_dragon/version.py -Encoding utf8
@@ -445,6 +494,6 @@ jobs:
           deploy/dist/ZenlessZoneZero-OneDragon-Environment.zip
           deploy/dist/ZenlessZoneZero-OneDragon-Launcher.zip
         generate_release_notes: false
-        prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+        prerelease: ${{ contains(steps.get_version.outputs.tag, '-beta.') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
