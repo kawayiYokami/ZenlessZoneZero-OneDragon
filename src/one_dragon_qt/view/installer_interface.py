@@ -35,22 +35,16 @@ class UnpackResourceRunner(QThread):
         self.work_dir = work_dir
 
     def run(self):
-        if Path(self.installer_dir) != Path(self.work_dir):
-            # 复制完整包资源
+        uv_zip_dir = Path(self.installer_dir) / '.install' / 'uv-x86_64-pc-windows-msvc.zip'
+        if Path(self.installer_dir) != Path(self.work_dir) and uv_zip_dir.exists():
             try:
-                install_dir = Path(self.installer_dir) / '.install'
-                dest_install_dir = Path(self.work_dir) / '.install'
-                if install_dir.exists():
-                    shutil.copytree(install_dir, dest_install_dir, dirs_exist_ok=True)
-
-                assets_dir = Path(self.installer_dir) / 'assets'
-                dest_assets_dir = Path(self.work_dir) / 'assets'
-                if assets_dir.exists():
-                    shutil.copytree(assets_dir, dest_assets_dir, dirs_exist_ok=True)
+                shutil.copytree(self.installer_dir, self.work_dir, dirs_exist_ok=True)
                 self.finished.emit(True)
             except Exception as e:
                 log.error(f"解包资源失败: {e}")
                 self.finished.emit(False)
+        else:
+            self.finished.emit(True)
 
 
 class ClickableStepCircle(QLabel):
@@ -320,7 +314,7 @@ class InstallStepWidget(QWidget):
             self.status_label.setText(gt('✗ 安装失败'))
             self.status_label.setStyleSheet("color: #d13438; font-weight: bold;")
             self.installing_idx = -1
-            
+
             # 安装失败时自动打开帮助文档
             # 通过父级的ctx获取配置
             ctx = None
@@ -329,13 +323,13 @@ class InstallStepWidget(QWidget):
                     if hasattr(card, 'ctx'):
                         ctx = card.ctx
                         break
-            
+
             if ctx and hasattr(ctx, 'project_config'):
                 webbrowser.open(ctx.project_config.doc_link)
             else:
                 log.warning("未找到可用的 ctx，无法打开帮助文档")
             log.info("步骤安装失败，已自动打开帮助文档")
-            
+
             self.step_completed.emit(False)
         else:
             self.installing_idx += 1
@@ -675,7 +669,7 @@ class InstallerInterface(VerticalScrollInterface):
             # 更新进度标签显示文档已打开的信息
             self.progress_label.setText(gt('安装失败！已自动打开排障文档'))
             self.progress_label.setStyleSheet("color: #d13438;")
-            
+
             self.progress_label.setVisible(True)
             self.install_btn.setVisible(True)
             self.progress_ring.setVisible(False)
