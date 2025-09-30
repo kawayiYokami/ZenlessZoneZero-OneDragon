@@ -339,7 +339,7 @@ class NoticeCard(SimpleCardWidget):
         self.mainLayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.notice_url = notice_url
-        self.banners, self.banner_urls, self.posts = [], [], {"announces": [], "activities": [], "infos": []}
+        self.banners, self.banner_urls, self.posts = [], [], {"announcements": [], "software_research": [], "game_guides": []}
         self._banner_loader = None
         self._is_loading_banners = False
 
@@ -485,9 +485,9 @@ class NoticeCard(SimpleCardWidget):
 
     def load_posts(self, posts):
         post_types = {
-            "POST_TYPE_ANNOUNCE": "announces",
-            "POST_TYPE_ACTIVITY": "activities",
-            "POST_TYPE_INFO": "infos",
+            "POST_TYPE_ANNOUNCE": "announcements",
+            "POST_TYPE_RESEARCHS": "software_research",
+            "POST_TYPE_GUIDES": "game_guides",
         }
         for post in posts:
             if post_type := post_types.get(post["type"]):
@@ -564,10 +564,10 @@ class NoticeCard(SimpleCardWidget):
 
         # 创建三个列表组件
         widgets = [ListWidget() for _ in range(3)]
-        self.activityWidget, self.announceWidget, self.infoWidget = widgets
+        self.announcementsWidget, self.softwareResearchWidget, self.gameGuidesWidget = widgets
 
-        types = ["activities", "announces", "infos"]
-        type_names = ["活动", "公告", "资讯"]
+        types = ["announcements", "software_research", "game_guides"]
+        type_names = ["公告要闻", "软件科研", "游戏攻略"]
 
         for widget, post_type, name in zip(widgets, types, type_names):
             self.add_posts_to_widget(widget, post_type)
@@ -578,9 +578,9 @@ class NoticeCard(SimpleCardWidget):
             self.addSubInterface(widget, post_type, name)
 
         self.stackedWidget.currentChanged.connect(self.onCurrentIndexChanged)
-        self.stackedWidget.setCurrentWidget(self.activityWidget)
-        self.pivot.setCurrentItem(self.activityWidget.objectName())
-        self.mainLayout.addWidget(self.pivot, 0, Qt.AlignmentFlag.AlignLeft)
+        self.stackedWidget.setCurrentWidget(self.announcementsWidget)
+        self.pivot.setCurrentItem(self.announcementsWidget.objectName())
+        self.mainLayout.addWidget(self.pivot, 0, Qt.AlignmentFlag.AlignCenter)
         self.mainLayout.addWidget(self.stackedWidget)
 
     def eventFilter(self, obj, event):
@@ -616,8 +616,8 @@ class NoticeCard(SimpleCardWidget):
             self._start_auto_scroll()
 
         # 清空并重新添加posts
-        widgets = [self.activityWidget, self.announceWidget, self.infoWidget]
-        types = ["activities", "announces", "infos"]
+        widgets = [self.announcementsWidget, self.softwareResearchWidget, self.gameGuidesWidget]
+        types = ["announcements", "software_research", "game_guides"]
 
         for widget, post_type in zip(widgets, types):
             widget.clear()
@@ -770,7 +770,7 @@ class NoticeCard(SimpleCardWidget):
     def create_post_widget(self, post):
         item_widget = QWidget()
         layout = QHBoxLayout(item_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 4, 0, 4)  # 增加上下边距，从(0,0,0,0)改为(0,4,0,4)
         title_label = EllipsisLabel(post["title"])
         title_label.setObjectName("title")
         title_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
