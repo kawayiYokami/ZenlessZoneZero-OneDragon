@@ -369,7 +369,7 @@ class ChargePlanInterface(VerticalScrollInterface):
 
     def _on_add_clicked(self) -> None:
         from zzz_od.gui.view.one_dragon.charge_plan_dialog import ChargePlanDialog
-        dialog = ChargePlanDialog(self.ctx, parent=self)
+        dialog = ChargePlanDialog(self.ctx, self.config, parent=self)
         result = dialog.exec()
         if result:
             self.config.add_plan(dialog.plan)
