@@ -46,8 +46,8 @@ class ExeLauncher(LauncherBase):
         if args.version:
             self.show_version()
 
-        if not args.onedragon and (args.close_game or args.shutdown or args.instance or args.app):
-            print("错误：参数 --close-game, --shutdown, --instance, --app 只能在指定 --onedragon 时使用")
+        if not args.onedragon and (args.close_game or args.shutdown or args.instance):
+            print("错误：参数 --close-game, --shutdown, --instance 只能在指定 --onedragon 时使用")
             sys.exit(1)
 
         if args.onedragon:
