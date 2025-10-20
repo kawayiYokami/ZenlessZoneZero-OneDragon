@@ -452,24 +452,24 @@ jobs:
 
           安装前请查看 [安装指南](https://one-dragon.com/zzz/zh/quickstart.html)
           若运行出错请查看 [自助排障指南](https://docs.qq.com/doc/p/7add96a4600d363b75d2df83bb2635a7c6a969b5)
-          
+
           已有 Mirror酱 CDK？前往 [Mirror酱](https://mirrorchyan.com/zh/projects?rid=ZZZ-OneDragon&source=zzzgh-release) 高速下载
-          
-          ## 签名策略 (Code signing policy)
+
+          ## 📝 签名策略 (Code Signing Policy)
 
           免费代码签名由 [SignPath.io](https://signpath.io/) 提供，证书由 [SignPath Foundation](https://signpath.org/) 颁发
-          
+
           审批人：[DoctorReid](https://github.com/DoctorReid) [ShadowLemoon](https://github.com/ShadowLemoon)
-          
+
           Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
-          
+
           Approvers: [DoctorReid](https://github.com/DoctorReid) [ShadowLemoon](https://github.com/ShadowLemoon)
-          
-          ## 隐私政策 (Privacy policy)
-          
-          本程序不会向其他网络系统传输任何信息，除非用户或安装、操作该程序的人员特别要求。
-          
-          This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+          ## 🔒 隐私政策 (Privacy Policy)
+
+          本程序的隐私政策详见：[隐私政策](.github/PRIVACY.md)。
+
+          See the [Privacy Policy](.github/PRIVACY.md). unless specifically requested by the user or the person installing or operating it.
 
         files: |
           ZenlessZoneZero-OneDragon-${{ needs.build.outputs.version }}-Full-Environment.zip
