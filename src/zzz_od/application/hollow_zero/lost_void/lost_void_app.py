@@ -256,7 +256,7 @@ class LostVoidApp(ZApplication):
                     log.debug("【追新模式】 找到一个未满级/无等级目标，准备点击。")
                     target_contour_to_click = frame_contour
                     break
-            
+
             if target_contour_to_click is not None:
                 M = cv2.moments(target_contour_to_click)
                 center_x = int(M["m10"] / M["m00"])
@@ -272,7 +272,7 @@ class LostVoidApp(ZApplication):
             self._swipe_strategy_list()
             self.screenshot()
             swipe_attempts += 1
-        
+
         # 回退逻辑: 选择第一个
         frame_context = self.ctx.cv_service.run_pipeline('调查战略等级圈圈', self.last_screenshot)
         if frame_context.is_success and frame_context.contours:
@@ -293,7 +293,8 @@ class LostVoidApp(ZApplication):
         """
         滑动调查战略列表
         """
-        start = Point(self.ctx.controller.standard_width // 2, self.ctx.controller.standard_height // 2)
+        # 调查战略的详情打开之后鼠标不能在详情处滑, 会滑不动
+        start = Point(self.ctx.controller.standard_width // 2, self.ctx.controller.standard_height // 2.5)
         end = start + Point(-800, 0)
         self.ctx.controller.drag_to(start=start, end=end)
         time.sleep(1)
