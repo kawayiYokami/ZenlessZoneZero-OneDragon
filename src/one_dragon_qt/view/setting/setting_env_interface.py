@@ -1,16 +1,31 @@
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import QThread, Signal
-from qfluentwidgets import FluentIcon, SettingCardGroup, VBoxLayout, PushButton, HyperlinkButton, InfoBar, InfoBarPosition
+from qfluentwidgets import (
+    FluentIcon,
+    HyperlinkButton,
+    InfoBar,
+    InfoBarPosition,
+    PushButton,
+    SettingCardGroup,
+    VBoxLayout,
+)
 
 from one_dragon.base.operation.one_dragon_context import OneDragonContext
-from one_dragon.envs.env_config import RepositoryTypeEnum, GitMethodEnum, ProxyTypeEnum, PipSourceEnum, CpythonSourceEnum
+from one_dragon.envs.env_config import (
+    CpythonSourceEnum,
+    PipSourceEnum,
+    ProxyTypeEnum,
+    RepositoryTypeEnum,
+)
+from one_dragon.utils.i18_utils import gt
+from one_dragon_qt.widgets.setting_card.combo_box_setting_card import (
+    ComboBoxSettingCard,
+)
 from one_dragon_qt.widgets.setting_card.key_setting_card import KeySettingCard
-from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
-from one_dragon_qt.widgets.setting_card.combo_box_setting_card import ComboBoxSettingCard
 from one_dragon_qt.widgets.setting_card.switch_setting_card import SwitchSettingCard
 from one_dragon_qt.widgets.setting_card.text_setting_card import TextSettingCard
-from one_dragon.utils.i18_utils import gt
+from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
 
 
 class SettingEnvInterface(VerticalScrollInterface):
