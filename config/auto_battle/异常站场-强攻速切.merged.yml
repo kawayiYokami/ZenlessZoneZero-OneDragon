@@ -103,9 +103,8 @@
         "post_delay": 0.05
       - "op_name": "按键-切换角色-下一个"
         "post_delay": 0.1
-      - "data":
-        - "自定义-黄光切人"
-        "op_name": "设置状态"
+      - "op_name": "设置状态"
+        "state": "自定义-黄光切人"
       "states": ""
   - "states": "![自定义-动作不打断, 0, 999]{1, 1} & ([闪避识别-红光] | [闪避识别-声音])"
     "sub_handlers":
@@ -131,35 +130,69 @@
   - "states": "[按键可用-连携技]"
     "sub_handlers":
     - "operations":
+      - "op_name": "等待秒数"
+        "seconds": 0.5
+      - "op_name": "设置状态"
+        "seconds_add": -0.5
+        "state": "自定义-失衡时间"
       - "op_name": "按键-连携技-左"
       - "op_name": "设置状态"
         "state": "自定义-连携换人"
+      - "op_name": "设置状态"
+        "state": "自定义-失衡时间"
       "states": "[连携技-1-强攻]"
     - "operations":
+      - "op_name": "等待秒数"
+        "seconds": 0.5
+      - "op_name": "设置状态"
+        "seconds_add": -0.5
+        "state": "自定义-失衡时间"
       - "op_name": "按键-连携技-右"
       - "op_name": "设置状态"
         "state": "自定义-连携换人"
+      - "op_name": "设置状态"
+        "state": "自定义-失衡时间"
       "states": "[连携技-2-强攻]"
     - "operations":
+      - "op_name": "等待秒数"
+        "seconds": 0.5
+      - "op_name": "设置状态"
+        "seconds_add": -0.5
+        "state": "自定义-失衡时间"
       - "op_name": "按键-连携技-左"
       - "op_name": "设置状态"
         "state": "自定义-连携换人"
+      - "op_name": "设置状态"
+        "state": "自定义-失衡时间"
       "states": "[连携技-1-支援] & ![连携技-1-苍角] & ![连携技-1-耀嘉音]"
     - "operations":
+      - "op_name": "等待秒数"
+        "seconds": 0.5
+      - "op_name": "设置状态"
+        "seconds_add": -0.5
+        "state": "自定义-失衡时间"
       - "op_name": "按键-连携技-右"
       - "op_name": "设置状态"
         "state": "自定义-连携换人"
+      - "op_name": "设置状态"
+        "state": "自定义-失衡时间"
       "states": "[连携技-2-支援] & ![连携技-2-苍角] & ![连携技-2-耀嘉音]"
-    - "operations":
-      - "op_name": "等待秒数"
-        "seconds": 0.1
+    - "debug_name": "跳过连携"
+      "operations":
       - "op_name": "设置状态"
         "state": "自定义-连携跳过"
       - "op_name": "设置状态"
-        "state": "自定义-连携换人"
+        "state": "自定义-失衡时间"
+      - "op_name": "等待秒数"
+        "seconds": 0.5
+      - "op_name": "设置状态"
+        "seconds_add": -0.5
+        "state": "自定义-失衡时间"
       - "op_name": "按键-连携技-取消-按下"
       - "op_name": "等待秒数"
-        "seconds": 1
+        "seconds": 0.4
+      - "op_name": "设置状态"
+        "state": "自定义-连携取消"
       - "op_name": "清除状态"
         "state": "按键可用-连携技"
       "states": ""
@@ -167,18 +200,15 @@
   "triggers":
   - "按键可用-连携技"
 - "handlers":
-  - "debug_name": "角色识别中，检查皮肤设置"
+  - "debug_name": "角色识别中"
     "operations":
-    - "op_name": "按键-特殊攻击"
-      "way": "松开"
-    - "op_name": "按键-移动-前"
-      "way": "松开"
-    - "op_name": "按键-移动-左"
-      "way": "松开"
-    - "op_name": "按键-移动-后"
-      "way": "松开"
-    - "op_name": "按键-移动-右"
-      "way": "松开"
+    - "op_name": "设置状态"
+      "state": "自定义-角色未识别"
+    - "op_name": "按键-特殊攻击-松开"
+    - "op_name": "按键-移动-前-松开"
+    - "op_name": "按键-移动-左-松开"
+    - "op_name": "按键-移动-后-松开"
+    - "op_name": "按键-移动-右-松开"
     - "op_name": "等待秒数"
       "seconds": 0.1
     "states": "![前台-击破] & ![前台-强攻] & ![前台-支援] & ![前台-防护] & ![前台-异常]& ![前台-命破]"
@@ -232,13 +262,11 @@
           "state": "自定义-动作不打断"
         "states": "[按键可用-终结技] & ![自定义-动作不打断, 0, 30] & ![自定义-青衣-醉花云月转, 0, 3]"
       - "operations":
-        - "op_name": "按键-移动-前"
+        - "op_name": "按键-移动-前-按下"
           "post_delay": 0.1
-          "way": "按下"
         - "op_name": "按键-闪避"
           "post_delay": 0.2
-        - "op_name": "按键-移动-前"
-          "way": "松开"
+        - "op_name": "按键-移动-前-松开"
         - "op_name": "清除状态"
           "state": "自定义-青衣-特殊技续普攻"
         - "op_name": "按键-普通攻击"
@@ -329,7 +357,7 @@
         - "data":
           - "2"
           "op_name": "等待秒数"
-        "states": "[自定义-连携换人]"
+        "states": "[自定义-失衡时间]"
       - "operations":
         - "data":
           - "0.5"
@@ -446,7 +474,7 @@
         - "operations":
           - "op_name": "清除状态"
             "state_list":
-            - "自定义-速切结束"
+            - "自定义-合轴时间"
             - "自定义-动作不打断"
           - "op_name": "设置状态"
             "seconds": 2
@@ -462,23 +490,23 @@
       - "operations":
         - "op_name": "设置状态"
           "seconds_add": -1
-          "state": "自定义-连携换人"
+          "state": "自定义-失衡时间"
         - "op_name": "设置状态"
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "等待秒数"
           "seconds": 2
-        "states": "[自定义-连携换人, 0, 1]"
+        "states": "[自定义-失衡时间, 0, 1]"
       - "operations":
         - "op_name": "设置状态"
           "seconds_add": -1
-          "state": "自定义-连携换人"
+          "state": "自定义-失衡时间"
         - "op_name": "设置状态"
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "等待秒数"
           "seconds": 2
-        "states": "[自定义-连携换人, 0, 1]"
+        "states": "[自定义-失衡时间, 0, 1]"
       - "operations":
         - "op_name": "按键-普通攻击"
           "post_delay": 1
@@ -638,7 +666,7 @@
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
           "repeat": 20
-        "states": "[自定义-连携换人, 0, 1]"
+        "states": "[自定义-失衡时间, 0, 1]"
       - "operations":
         - "op_name": "按键-终结技"
           "post_delay": 0.1
@@ -646,18 +674,18 @@
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
           "repeat": 30
-        "states": "[按键可用-终结技] & [自定义-连携换人, 0, 10]"
+        "states": "[按键可用-终结技] & [自定义-失衡时间, 0, 10]"
       - "operations":
         - "op_name": "设置状态"
           "state": "自定义-可琳-这次不打特殊技"
         - "op_name": "按键-特殊攻击"
           "post_delay": 0.1
           "repeat": 40
-        "states": "[按键可用-特殊攻击] & [自定义-连携换人, 2, 10] & ![自定义-可琳-这次不打特殊技, 0, 12]"
+        "states": "[按键可用-特殊攻击] & [自定义-失衡时间, 2, 10] & ![自定义-可琳-这次不打特殊技, 0, 12]"
       - "operations":
         - "op_name": "清除状态"
           "state": "自定义-可琳-这次不打特殊技"
-        "states": "[自定义-连携换人, 10, 999] & [自定义-可琳-这次不打特殊技, 0, 12]"
+        "states": "[自定义-失衡时间, 10, 999] & [自定义-可琳-这次不打特殊技, 0, 12]"
       - "operations":
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
@@ -901,7 +929,7 @@
           "repeat": 20
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
-        "states": "[自定义-连携换人, 0, 2]"
+        "states": "[自定义-失衡时间, 0, 2]"
       - "operations":
         - "data":
           - "0.4"
@@ -925,7 +953,7 @@
           "repeat": 2
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
-        "states": "[按键可用-终结技] & [自定义-连携换人, 0, 10]"
+        "states": "[按键可用-终结技] & [自定义-失衡时间, 0, 10]"
       - "operations":
         - "op_name": "按键-普通攻击"
           "press": 1.2
@@ -955,7 +983,7 @@
         - "0.3"
         "op_name": "等待秒数"
       "states": ""
-  - "states": "[自定义-连携换人, 0, 12] | [自定义-连携换人, 0, 12]"
+  - "states": "[自定义-失衡时间, 0, 12] | [自定义-失衡时间, 0, 12]"
     "sub_handlers":
     - "states": "[前台-强攻]"
       "sub_handlers":
@@ -1007,13 +1035,11 @@
             "state": "自定义-动作不打断"
           "states": "[按键可用-终结技] & ![自定义-动作不打断, 0, 30] & ![自定义-青衣-醉花云月转, 0, 3]"
         - "operations":
-          - "op_name": "按键-移动-前"
+          - "op_name": "按键-移动-前-按下"
             "post_delay": 0.1
-            "way": "按下"
           - "op_name": "按键-闪避"
             "post_delay": 0.2
-          - "op_name": "按键-移动-前"
-            "way": "松开"
+          - "op_name": "按键-移动-前-松开"
           - "op_name": "清除状态"
             "state": "自定义-青衣-特殊技续普攻"
           - "op_name": "按键-普通攻击"
@@ -1104,7 +1130,7 @@
           - "data":
             - "2"
             "op_name": "等待秒数"
-          "states": "[自定义-连携换人]"
+          "states": "[自定义-失衡时间]"
         - "operations":
           - "data":
             - "0.5"
@@ -1221,7 +1247,7 @@
           - "operations":
             - "op_name": "清除状态"
               "state_list":
-              - "自定义-速切结束"
+              - "自定义-合轴时间"
               - "自定义-动作不打断"
             - "op_name": "设置状态"
               "seconds": 2
@@ -1237,23 +1263,23 @@
         - "operations":
           - "op_name": "设置状态"
             "seconds_add": -1
-            "state": "自定义-连携换人"
+            "state": "自定义-失衡时间"
           - "op_name": "设置状态"
             "seconds": 2
             "state": "自定义-动作不打断"
           - "op_name": "等待秒数"
             "seconds": 2
-          "states": "[自定义-连携换人, 0, 1]"
+          "states": "[自定义-失衡时间, 0, 1]"
         - "operations":
           - "op_name": "设置状态"
             "seconds_add": -1
-            "state": "自定义-连携换人"
+            "state": "自定义-失衡时间"
           - "op_name": "设置状态"
             "seconds": 2
             "state": "自定义-动作不打断"
           - "op_name": "等待秒数"
             "seconds": 2
-          "states": "[自定义-连携换人, 0, 1]"
+          "states": "[自定义-失衡时间, 0, 1]"
         - "operations":
           - "op_name": "按键-普通攻击"
             "post_delay": 1
@@ -1413,7 +1439,7 @@
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
             "repeat": 20
-          "states": "[自定义-连携换人, 0, 1]"
+          "states": "[自定义-失衡时间, 0, 1]"
         - "operations":
           - "op_name": "按键-终结技"
             "post_delay": 0.1
@@ -1421,18 +1447,18 @@
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
             "repeat": 30
-          "states": "[按键可用-终结技] & [自定义-连携换人, 0, 10]"
+          "states": "[按键可用-终结技] & [自定义-失衡时间, 0, 10]"
         - "operations":
           - "op_name": "设置状态"
             "state": "自定义-可琳-这次不打特殊技"
           - "op_name": "按键-特殊攻击"
             "post_delay": 0.1
             "repeat": 40
-          "states": "[按键可用-特殊攻击] & [自定义-连携换人, 2, 10] & ![自定义-可琳-这次不打特殊技, 0, 12]"
+          "states": "[按键可用-特殊攻击] & [自定义-失衡时间, 2, 10] & ![自定义-可琳-这次不打特殊技, 0, 12]"
         - "operations":
           - "op_name": "清除状态"
             "state": "自定义-可琳-这次不打特殊技"
-          "states": "[自定义-连携换人, 10, 999] & [自定义-可琳-这次不打特殊技, 0, 12]"
+          "states": "[自定义-失衡时间, 10, 999] & [自定义-可琳-这次不打特殊技, 0, 12]"
         - "operations":
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
@@ -1676,7 +1702,7 @@
             "repeat": 20
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
-          "states": "[自定义-连携换人, 0, 2]"
+          "states": "[自定义-失衡时间, 0, 2]"
         - "operations":
           - "data":
             - "0.4"
@@ -1700,7 +1726,7 @@
             "repeat": 2
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
-          "states": "[按键可用-终结技] & [自定义-连携换人, 0, 10]"
+          "states": "[按键可用-终结技] & [自定义-失衡时间, 0, 10]"
         - "operations":
           - "op_name": "按键-普通攻击"
             "press": 1.2
@@ -1794,13 +1820,11 @@
           "state": "自定义-动作不打断"
         "states": "[按键可用-终结技] & ![自定义-动作不打断, 0, 30] & ![自定义-青衣-醉花云月转, 0, 3]"
       - "operations":
-        - "op_name": "按键-移动-前"
+        - "op_name": "按键-移动-前-按下"
           "post_delay": 0.1
-          "way": "按下"
         - "op_name": "按键-闪避"
           "post_delay": 0.2
-        - "op_name": "按键-移动-前"
-          "way": "松开"
+        - "op_name": "按键-移动-前-松开"
         - "op_name": "清除状态"
           "state": "自定义-青衣-特殊技续普攻"
         - "op_name": "按键-普通攻击"
@@ -1891,7 +1915,7 @@
         - "data":
           - "2"
           "op_name": "等待秒数"
-        "states": "[自定义-连携换人]"
+        "states": "[自定义-失衡时间]"
       - "operations":
         - "data":
           - "0.5"
@@ -2008,7 +2032,7 @@
         - "operations":
           - "op_name": "清除状态"
             "state_list":
-            - "自定义-速切结束"
+            - "自定义-合轴时间"
             - "自定义-动作不打断"
           - "op_name": "设置状态"
             "seconds": 2
@@ -2024,23 +2048,23 @@
       - "operations":
         - "op_name": "设置状态"
           "seconds_add": -1
-          "state": "自定义-连携换人"
+          "state": "自定义-失衡时间"
         - "op_name": "设置状态"
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "等待秒数"
           "seconds": 2
-        "states": "[自定义-连携换人, 0, 1]"
+        "states": "[自定义-失衡时间, 0, 1]"
       - "operations":
         - "op_name": "设置状态"
           "seconds_add": -1
-          "state": "自定义-连携换人"
+          "state": "自定义-失衡时间"
         - "op_name": "设置状态"
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "等待秒数"
           "seconds": 2
-        "states": "[自定义-连携换人, 0, 1]"
+        "states": "[自定义-失衡时间, 0, 1]"
       - "operations":
         - "op_name": "按键-普通攻击"
           "post_delay": 1
@@ -2200,7 +2224,7 @@
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
           "repeat": 20
-        "states": "[自定义-连携换人, 0, 1]"
+        "states": "[自定义-失衡时间, 0, 1]"
       - "operations":
         - "op_name": "按键-终结技"
           "post_delay": 0.1
@@ -2208,18 +2232,18 @@
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
           "repeat": 30
-        "states": "[按键可用-终结技] & [自定义-连携换人, 0, 10]"
+        "states": "[按键可用-终结技] & [自定义-失衡时间, 0, 10]"
       - "operations":
         - "op_name": "设置状态"
           "state": "自定义-可琳-这次不打特殊技"
         - "op_name": "按键-特殊攻击"
           "post_delay": 0.1
           "repeat": 40
-        "states": "[按键可用-特殊攻击] & [自定义-连携换人, 2, 10] & ![自定义-可琳-这次不打特殊技, 0, 12]"
+        "states": "[按键可用-特殊攻击] & [自定义-失衡时间, 2, 10] & ![自定义-可琳-这次不打特殊技, 0, 12]"
       - "operations":
         - "op_name": "清除状态"
           "state": "自定义-可琳-这次不打特殊技"
-        "states": "[自定义-连携换人, 10, 999] & [自定义-可琳-这次不打特殊技, 0, 12]"
+        "states": "[自定义-失衡时间, 10, 999] & [自定义-可琳-这次不打特殊技, 0, 12]"
       - "operations":
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
@@ -2463,7 +2487,7 @@
           "repeat": 20
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
-        "states": "[自定义-连携换人, 0, 2]"
+        "states": "[自定义-失衡时间, 0, 2]"
       - "operations":
         - "data":
           - "0.4"
@@ -2487,7 +2511,7 @@
           "repeat": 2
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
-        "states": "[按键可用-终结技] & [自定义-连携换人, 0, 10]"
+        "states": "[按键可用-终结技] & [自定义-失衡时间, 0, 10]"
       - "operations":
         - "op_name": "按键-普通攻击"
           "press": 1.2
