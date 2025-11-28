@@ -531,7 +531,8 @@
         "seconds": 5
         "state": "自定义-不使用快速支援"
       - "op_name": "按键-移动-前-按下"
-        "post_delay": 0.01
+      - "op_name": "等待秒数"
+        "seconds": 0.01
       - "op_name": "按键-闪避-按下"
       - "op_name": "等待秒数"
         "seconds": 0.1
@@ -626,7 +627,8 @@
           "post_delay": 0.1
           "repeat": 8
         - "op_name": "按键-移动-前-按下"
-          "post_delay": 0.1
+        - "op_name": "等待秒数"
+          "seconds": 0.1
         - "op_name": "按键-闪避"
           "post_delay": 0.2
         - "op_name": "按键-移动-前-松开"
@@ -642,7 +644,8 @@
           "seconds": 5
           "state": "自定义-不使用快速支援"
         - "op_name": "按键-移动-前-按下"
-          "post_delay": 0.01
+        - "op_name": "等待秒数"
+          "seconds": 0.01
         - "op_name": "按键-闪避-按下"
         - "op_name": "等待秒数"
           "seconds": 0.1
@@ -668,7 +671,8 @@
           "post_delay": 0.1
           "repeat": 8
         - "op_name": "按键-移动-前-按下"
-          "post_delay": 0.1
+        - "op_name": "等待秒数"
+          "seconds": 0.1
         - "op_name": "按键-闪避"
           "post_delay": 0.2
         - "op_name": "按键-移动-前-松开"
@@ -694,7 +698,8 @@
           "post_delay": 0.1
           "repeat": 8
         - "op_name": "按键-移动-前-按下"
-          "post_delay": 0.1
+        - "op_name": "等待秒数"
+          "seconds": 0.1
         - "op_name": "按键-闪避"
           "post_delay": 0.2
         - "op_name": "按键-移动-前-松开"
@@ -710,7 +715,8 @@
         "seconds": 5
         "state": "自定义-不使用快速支援"
       - "op_name": "按键-移动-前-按下"
-        "post_delay": 0.01
+      - "op_name": "等待秒数"
+        "seconds": 0.01
       - "op_name": "按键-闪避-按下"
       - "op_name": "等待秒数"
         "seconds": 0.3
@@ -841,7 +847,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.1
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 1.6
+      - "op_name": "等待秒数"
+        "seconds": 1.6
       - "op_name": "按键-普通攻击-松开"
       "states": "[自定义-黄光切人, 0, 1]"
     - "operations":
@@ -870,7 +877,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.05
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 1.5
+      - "op_name": "等待秒数"
+        "seconds": 1.5
       - "op_name": "按键-普通攻击-松开"
       "states": "[自定义-连携换人, 0, 0.5]"
     - "debug_name": "切人后等待"
@@ -878,7 +886,8 @@
       "sub_handlers":
       - "operations":
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 1.3
+        - "op_name": "等待秒数"
+          "seconds": 1.3
         - "op_name": "按键-普通攻击-松开"
         "states": "[按键可用-快速支援, 0, 0.5]"
       - "operations":
@@ -960,7 +969,8 @@
         "post_delay": 0.1
         "repeat": 15
       - "op_name": "按键-特殊攻击-按下"
-        "post_delay": 2
+      - "op_name": "等待秒数"
+        "seconds": 2
       - "op_name": "按键-特殊攻击-松开"
       - "op_name": "设置状态"
         "seconds": 2
@@ -1017,7 +1027,8 @@
     - "debug_name": "超级帅的引擎转下砸合轴"
       "operations":
       - "op_name": "按键-移动-左-按下"
-        "post_delay": 0.05
+      - "op_name": "等待秒数"
+        "seconds": 0.05
       - "op_name": "按键-闪避"
         "post_delay": 0.05
       - "op_name": "按键-移动-左-松开"
@@ -1042,7 +1053,8 @@
     - "debug_name": "超级帅的轮胎转下砸合轴"
       "operations":
       - "op_name": "按键-移动-左-按下"
-        "post_delay": 0.05
+      - "op_name": "等待秒数"
+        "seconds": 0.05
       - "op_name": "按键-闪避"
         "post_delay": 0.05
       - "op_name": "按键-移动-左-松开"
@@ -1162,7 +1174,8 @@
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击-按下"
-          "post_delay": 1
+        - "op_name": "等待秒数"
+          "seconds": 1
         - "op_name": "按键-特殊攻击-松开"
         - "op_name": "设置状态"
           "state": "自定义-柳-森罗万象"
@@ -1265,7 +1278,8 @@
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击-按下"
-          "post_delay": 1
+        - "op_name": "等待秒数"
+          "seconds": 1
         - "add": 103
           "op_name": "设置状态"
           "state": "自定义-异常-电"
@@ -1386,7 +1400,8 @@
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击-按下"
-          "post_delay": 1
+        - "op_name": "等待秒数"
+          "seconds": 1
         - "add": 103
           "op_name": "设置状态"
           "state": "自定义-异常-电"
@@ -1707,7 +1722,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.1
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 2
+      - "op_name": "等待秒数"
+        "seconds": 2
       - "op_name": "按键-普通攻击-松开"
       - "op_name": "等待秒数"
         "seconds": 0.1
@@ -1811,11 +1827,13 @@
       - "op_name": "设置状态"
         "state": "自定义-赛斯-意气风发"
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 2.2
+      - "op_name": "等待秒数"
+        "seconds": 2.2
       "states": "[赛斯-意气]{95, 101}"
     - "operations":
       - "op_name": "按键-特殊攻击-按下"
-        "post_delay": 0.4
+      - "op_name": "等待秒数"
+        "seconds": 0.4
       - "op_name": "设置状态"
         "state": "自定义-合轴时间"
       - "op_name": "按键-普通攻击"
@@ -2082,7 +2100,8 @@
         - "op_name": "等待秒数"
           "seconds": 0.1
         - "op_name": "按键-特殊攻击-按下"
-          "post_delay": 0.4
+        - "op_name": "等待秒数"
+          "seconds": 0.4
         - "op_name": "设置状态"
           "state": "自定义-合轴时间"
         - "op_name": "按键-特殊攻击-松开"
@@ -2169,7 +2188,8 @@
           - "op_name": "等待秒数"
             "seconds": 2
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -2180,7 +2200,8 @@
             "post_delay": 0.1
             "repeat": 8
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -2190,7 +2211,8 @@
           "states": "[悠真-终结技可用]"
         - "operations":
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -2201,7 +2223,8 @@
             "post_delay": 0.1
             "repeat": 8
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -2242,7 +2265,8 @@
             - "op_name": "等待秒数"
               "seconds": 2
             - "op_name": "按键-普通攻击-按下"
-              "post_delay": 0.8
+            - "op_name": "等待秒数"
+              "seconds": 0.8
             - "op_name": "按键-普通攻击-松开"
             - "op_name": "等待秒数"
               "seconds": 0.1
@@ -2252,7 +2276,8 @@
             "states": "[悠真-终结技可用]"
           - "operations":
             - "op_name": "按键-普通攻击-按下"
-              "post_delay": 0.8
+            - "op_name": "等待秒数"
+              "seconds": 0.8
             - "op_name": "按键-普通攻击-松开"
             - "op_name": "等待秒数"
               "seconds": 0.1
@@ -2285,7 +2310,8 @@
             - "op_name": "等待秒数"
               "seconds": 2
             - "op_name": "按键-普通攻击-按下"
-              "post_delay": 0.8
+            - "op_name": "等待秒数"
+              "seconds": 0.8
             - "op_name": "按键-普通攻击-松开"
             - "op_name": "等待秒数"
               "seconds": 0.1
@@ -2388,7 +2414,8 @@
         - "debug_name": "清空电壶离场"
           "operations":
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -2436,7 +2463,8 @@
         - "debug_name": "清空电壶离场"
           "operations":
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -2474,7 +2502,8 @@
       - "debug_name": "清空电壶离场"
         "operations":
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 0.8
+        - "op_name": "等待秒数"
+          "seconds": 0.8
         - "op_name": "按键-普通攻击-松开"
         - "op_name": "等待秒数"
           "seconds": 0.1
@@ -2723,7 +2752,8 @@
         - "op_name": "等待秒数"
           "seconds": 0.1
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 0.8
+        - "op_name": "等待秒数"
+          "seconds": 0.8
         - "op_name": "设置状态"
           "state": "自定义-合轴时间"
         "states": ""
@@ -2754,7 +2784,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.1
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 0.8
+      - "op_name": "等待秒数"
+        "seconds": 0.8
       - "op_name": "等待秒数"
         "seconds": 0.5
       - "op_name": "设置状态"
@@ -3272,7 +3303,8 @@
       - "operations":
         - "op_name": "按键-移动-左-按下"
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 2.5
+        - "op_name": "等待秒数"
+          "seconds": 2.5
         - "op_name": "按键-普通攻击-松开"
         - "op_name": "按键-移动-左-松开"
         - "op_name": "等待秒数"
@@ -3323,7 +3355,8 @@
     - "operations":
       - "op_name": "按键-移动-左-按下"
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 2.5
+      - "op_name": "等待秒数"
+        "seconds": 2.5
       - "op_name": "按键-普通攻击-松开"
       - "op_name": "按键-移动-左-松开"
       - "op_name": "等待秒数"
@@ -3360,7 +3393,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.1
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 1.2
+      - "op_name": "等待秒数"
+        "seconds": 1.2
       - "op_name": "按键-普通攻击-松开"
       "states": "[自定义-黄光切人, 0, 1]"
     - "operations":
@@ -4997,7 +5031,8 @@
         "post_delay": 0.1
         "repeat": 10
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 3.0
+      - "op_name": "等待秒数"
+        "seconds": 3.0
       - "op_name": "按键-普通攻击-松开"
       "states": "[自定义-红光闪避, 0, 1]"
     - "operations":
@@ -5018,7 +5053,8 @@
           "post_delay": 0.1
           "repeat": 10
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 3.0
+        - "op_name": "等待秒数"
+          "seconds": 3.0
         - "op_name": "按键-普通攻击-松开"
         "states": "[按键可用-快速支援, 0, 0.5]"
       - "operations":
@@ -5040,7 +5076,8 @@
         - "op_name": "等待秒数"
           "seconds": 2
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 3.0
+        - "op_name": "等待秒数"
+          "seconds": 3.0
         - "op_name": "按键-普通攻击-松开"
         "states": "[雨果-终结技可用]"
       - "operations":
@@ -5053,7 +5090,8 @@
         - "op_name": "等待秒数"
           "seconds": 1
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 3.0
+        - "op_name": "等待秒数"
+          "seconds": 3.0
         - "op_name": "按键-普通攻击-松开"
         "states": "[雨果-特殊技可用]"
     - "debug_name": "无能量普攻"
@@ -5065,7 +5103,8 @@
         "post_delay": 0.1
         "repeat": 22
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 3.0
+      - "op_name": "等待秒数"
+        "seconds": 3.0
       - "op_name": "按键-普通攻击-松开"
       "states": "[后台-1-击破] | [后台-2-击破]"
     - "debug_name": "无能量普攻"
@@ -5074,7 +5113,8 @@
         "post_delay": 0.1
         "repeat": 22
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 3.0
+      - "op_name": "等待秒数"
+        "seconds": 3.0
       - "op_name": "按键-普通攻击-松开"
       - "op_name": "设置状态"
         "state_list":
@@ -6899,7 +6939,8 @@
         "seconds": 5
         "state": "自定义-不使用快速支援"
       - "op_name": "按键-移动-前-按下"
-        "post_delay": 0.01
+      - "op_name": "等待秒数"
+        "seconds": 0.01
       - "op_name": "按键-闪避-按下"
       - "op_name": "等待秒数"
         "seconds": 0.1
@@ -6994,7 +7035,8 @@
           "post_delay": 0.1
           "repeat": 8
         - "op_name": "按键-移动-前-按下"
-          "post_delay": 0.1
+        - "op_name": "等待秒数"
+          "seconds": 0.1
         - "op_name": "按键-闪避"
           "post_delay": 0.2
         - "op_name": "按键-移动-前-松开"
@@ -7010,7 +7052,8 @@
           "seconds": 5
           "state": "自定义-不使用快速支援"
         - "op_name": "按键-移动-前-按下"
-          "post_delay": 0.01
+        - "op_name": "等待秒数"
+          "seconds": 0.01
         - "op_name": "按键-闪避-按下"
         - "op_name": "等待秒数"
           "seconds": 0.1
@@ -7036,7 +7079,8 @@
           "post_delay": 0.1
           "repeat": 8
         - "op_name": "按键-移动-前-按下"
-          "post_delay": 0.1
+        - "op_name": "等待秒数"
+          "seconds": 0.1
         - "op_name": "按键-闪避"
           "post_delay": 0.2
         - "op_name": "按键-移动-前-松开"
@@ -7062,7 +7106,8 @@
           "post_delay": 0.1
           "repeat": 8
         - "op_name": "按键-移动-前-按下"
-          "post_delay": 0.1
+        - "op_name": "等待秒数"
+          "seconds": 0.1
         - "op_name": "按键-闪避"
           "post_delay": 0.2
         - "op_name": "按键-移动-前-松开"
@@ -7078,7 +7123,8 @@
         "seconds": 5
         "state": "自定义-不使用快速支援"
       - "op_name": "按键-移动-前-按下"
-        "post_delay": 0.01
+      - "op_name": "等待秒数"
+        "seconds": 0.01
       - "op_name": "按键-闪避-按下"
       - "op_name": "等待秒数"
         "seconds": 0.3
@@ -7209,7 +7255,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.1
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 1.6
+      - "op_name": "等待秒数"
+        "seconds": 1.6
       - "op_name": "按键-普通攻击-松开"
       "states": "[自定义-黄光切人, 0, 1]"
     - "operations":
@@ -7238,7 +7285,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.05
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 1.5
+      - "op_name": "等待秒数"
+        "seconds": 1.5
       - "op_name": "按键-普通攻击-松开"
       "states": "[自定义-连携换人, 0, 0.5]"
     - "debug_name": "切人后等待"
@@ -7246,7 +7294,8 @@
       "sub_handlers":
       - "operations":
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 1.3
+        - "op_name": "等待秒数"
+          "seconds": 1.3
         - "op_name": "按键-普通攻击-松开"
         "states": "[按键可用-快速支援, 0, 0.5]"
       - "operations":
@@ -7328,7 +7377,8 @@
         "post_delay": 0.1
         "repeat": 15
       - "op_name": "按键-特殊攻击-按下"
-        "post_delay": 2
+      - "op_name": "等待秒数"
+        "seconds": 2
       - "op_name": "按键-特殊攻击-松开"
       - "op_name": "设置状态"
         "seconds": 2
@@ -7385,7 +7435,8 @@
     - "debug_name": "超级帅的引擎转下砸合轴"
       "operations":
       - "op_name": "按键-移动-左-按下"
-        "post_delay": 0.05
+      - "op_name": "等待秒数"
+        "seconds": 0.05
       - "op_name": "按键-闪避"
         "post_delay": 0.05
       - "op_name": "按键-移动-左-松开"
@@ -7410,7 +7461,8 @@
     - "debug_name": "超级帅的轮胎转下砸合轴"
       "operations":
       - "op_name": "按键-移动-左-按下"
-        "post_delay": 0.05
+      - "op_name": "等待秒数"
+        "seconds": 0.05
       - "op_name": "按键-闪避"
         "post_delay": 0.05
       - "op_name": "按键-移动-左-松开"
@@ -7530,7 +7582,8 @@
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击-按下"
-          "post_delay": 1
+        - "op_name": "等待秒数"
+          "seconds": 1
         - "op_name": "按键-特殊攻击-松开"
         - "op_name": "设置状态"
           "state": "自定义-柳-森罗万象"
@@ -7633,7 +7686,8 @@
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击-按下"
-          "post_delay": 1
+        - "op_name": "等待秒数"
+          "seconds": 1
         - "add": 103
           "op_name": "设置状态"
           "state": "自定义-异常-电"
@@ -7754,7 +7808,8 @@
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击-按下"
-          "post_delay": 1
+        - "op_name": "等待秒数"
+          "seconds": 1
         - "add": 103
           "op_name": "设置状态"
           "state": "自定义-异常-电"
@@ -8075,7 +8130,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.1
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 2
+      - "op_name": "等待秒数"
+        "seconds": 2
       - "op_name": "按键-普通攻击-松开"
       - "op_name": "等待秒数"
         "seconds": 0.1
@@ -8179,11 +8235,13 @@
       - "op_name": "设置状态"
         "state": "自定义-赛斯-意气风发"
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 2.2
+      - "op_name": "等待秒数"
+        "seconds": 2.2
       "states": "[赛斯-意气]{95, 101}"
     - "operations":
       - "op_name": "按键-特殊攻击-按下"
-        "post_delay": 0.4
+      - "op_name": "等待秒数"
+        "seconds": 0.4
       - "op_name": "设置状态"
         "state": "自定义-合轴时间"
       - "op_name": "按键-普通攻击"
@@ -8450,7 +8508,8 @@
         - "op_name": "等待秒数"
           "seconds": 0.1
         - "op_name": "按键-特殊攻击-按下"
-          "post_delay": 0.4
+        - "op_name": "等待秒数"
+          "seconds": 0.4
         - "op_name": "设置状态"
           "state": "自定义-合轴时间"
         - "op_name": "按键-特殊攻击-松开"
@@ -8537,7 +8596,8 @@
           - "op_name": "等待秒数"
             "seconds": 2
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -8548,7 +8608,8 @@
             "post_delay": 0.1
             "repeat": 8
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -8558,7 +8619,8 @@
           "states": "[悠真-终结技可用]"
         - "operations":
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -8569,7 +8631,8 @@
             "post_delay": 0.1
             "repeat": 8
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -8610,7 +8673,8 @@
             - "op_name": "等待秒数"
               "seconds": 2
             - "op_name": "按键-普通攻击-按下"
-              "post_delay": 0.8
+            - "op_name": "等待秒数"
+              "seconds": 0.8
             - "op_name": "按键-普通攻击-松开"
             - "op_name": "等待秒数"
               "seconds": 0.1
@@ -8620,7 +8684,8 @@
             "states": "[悠真-终结技可用]"
           - "operations":
             - "op_name": "按键-普通攻击-按下"
-              "post_delay": 0.8
+            - "op_name": "等待秒数"
+              "seconds": 0.8
             - "op_name": "按键-普通攻击-松开"
             - "op_name": "等待秒数"
               "seconds": 0.1
@@ -8653,7 +8718,8 @@
             - "op_name": "等待秒数"
               "seconds": 2
             - "op_name": "按键-普通攻击-按下"
-              "post_delay": 0.8
+            - "op_name": "等待秒数"
+              "seconds": 0.8
             - "op_name": "按键-普通攻击-松开"
             - "op_name": "等待秒数"
               "seconds": 0.1
@@ -8756,7 +8822,8 @@
         - "debug_name": "清空电壶离场"
           "operations":
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -8804,7 +8871,8 @@
         - "debug_name": "清空电壶离场"
           "operations":
           - "op_name": "按键-普通攻击-按下"
-            "post_delay": 0.8
+          - "op_name": "等待秒数"
+            "seconds": 0.8
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -8842,7 +8910,8 @@
       - "debug_name": "清空电壶离场"
         "operations":
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 0.8
+        - "op_name": "等待秒数"
+          "seconds": 0.8
         - "op_name": "按键-普通攻击-松开"
         - "op_name": "等待秒数"
           "seconds": 0.1
@@ -9091,7 +9160,8 @@
         - "op_name": "等待秒数"
           "seconds": 0.1
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 0.8
+        - "op_name": "等待秒数"
+          "seconds": 0.8
         - "op_name": "设置状态"
           "state": "自定义-合轴时间"
         "states": ""
@@ -9122,7 +9192,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.1
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 0.8
+      - "op_name": "等待秒数"
+        "seconds": 0.8
       - "op_name": "等待秒数"
         "seconds": 0.5
       - "op_name": "设置状态"
@@ -9640,7 +9711,8 @@
       - "operations":
         - "op_name": "按键-移动-左-按下"
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 2.5
+        - "op_name": "等待秒数"
+          "seconds": 2.5
         - "op_name": "按键-普通攻击-松开"
         - "op_name": "按键-移动-左-松开"
         - "op_name": "等待秒数"
@@ -9691,7 +9763,8 @@
     - "operations":
       - "op_name": "按键-移动-左-按下"
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 2.5
+      - "op_name": "等待秒数"
+        "seconds": 2.5
       - "op_name": "按键-普通攻击-松开"
       - "op_name": "按键-移动-左-松开"
       - "op_name": "等待秒数"
@@ -9728,7 +9801,8 @@
       - "op_name": "等待秒数"
         "seconds": 0.1
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 1.2
+      - "op_name": "等待秒数"
+        "seconds": 1.2
       - "op_name": "按键-普通攻击-松开"
       "states": "[自定义-黄光切人, 0, 1]"
     - "operations":
@@ -11365,7 +11439,8 @@
         "post_delay": 0.1
         "repeat": 10
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 3.0
+      - "op_name": "等待秒数"
+        "seconds": 3.0
       - "op_name": "按键-普通攻击-松开"
       "states": "[自定义-红光闪避, 0, 1]"
     - "operations":
@@ -11386,7 +11461,8 @@
           "post_delay": 0.1
           "repeat": 10
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 3.0
+        - "op_name": "等待秒数"
+          "seconds": 3.0
         - "op_name": "按键-普通攻击-松开"
         "states": "[按键可用-快速支援, 0, 0.5]"
       - "operations":
@@ -11408,7 +11484,8 @@
         - "op_name": "等待秒数"
           "seconds": 2
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 3.0
+        - "op_name": "等待秒数"
+          "seconds": 3.0
         - "op_name": "按键-普通攻击-松开"
         "states": "[雨果-终结技可用]"
       - "operations":
@@ -11421,7 +11498,8 @@
         - "op_name": "等待秒数"
           "seconds": 1
         - "op_name": "按键-普通攻击-按下"
-          "post_delay": 3.0
+        - "op_name": "等待秒数"
+          "seconds": 3.0
         - "op_name": "按键-普通攻击-松开"
         "states": "[雨果-特殊技可用]"
     - "debug_name": "无能量普攻"
@@ -11433,7 +11511,8 @@
         "post_delay": 0.1
         "repeat": 22
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 3.0
+      - "op_name": "等待秒数"
+        "seconds": 3.0
       - "op_name": "按键-普通攻击-松开"
       "states": "[后台-1-击破] | [后台-2-击破]"
     - "debug_name": "无能量普攻"
@@ -11442,7 +11521,8 @@
         "post_delay": 0.1
         "repeat": 22
       - "op_name": "按键-普通攻击-按下"
-        "post_delay": 3.0
+      - "op_name": "等待秒数"
+        "seconds": 3.0
       - "op_name": "按键-普通攻击-松开"
       - "op_name": "设置状态"
         "state_list":
@@ -13009,7 +13089,8 @@
       "states": "[按键可用-终结技] & ![自定义-动作不打断, 0, 30] & ![自定义-青衣-醉花云月转, 0, 3]"
     - "operations":
       - "op_name": "按键-移动-前-按下"
-        "post_delay": 0.1
+      - "op_name": "等待秒数"
+        "seconds": 0.1
       - "op_name": "按键-闪避"
         "post_delay": 0.2
       - "op_name": "按键-移动-前-松开"
@@ -13283,16 +13364,14 @@
     - "states": ""
       "sub_handlers":
       - "operations":
-        - "op_name": "按键-移动-前"
-          "way": "按下"
+        - "op_name": "按键-移动-前-按下"
         - "data":
           - "0.2"
           "op_name": "等待秒数"
         - "op_name": "按键-闪避"
           "post_delay": 0.1
         - "op_name": "按键-普通攻击"
-        - "op_name": "按键-移动-前"
-          "way": "松开"
+        - "op_name": "按键-移动-前-松开"
         - "data":
           - "0.3"
           "op_name": "等待秒数"
@@ -13311,16 +13390,14 @@
             "op_name": "设置状态"
           "states": "[自定义-朱鸢-下发普攻前滑]"
         - "operations":
-          - "op_name": "按键-移动-前"
-            "way": "按下"
+          - "op_name": "按键-移动-前-按下"
           - "data":
             - "0.2"
             "op_name": "等待秒数"
           - "op_name": "按键-闪避"
             "post_delay": 0.1
           - "op_name": "按键-普通攻击"
-          - "op_name": "按键-移动-前"
-            "way": "松开"
+          - "op_name": "按键-移动-前-松开"
           - "op_name": "按键-特殊攻击"
             "post_delay": 1.2
             "pre_delay": 0.8
@@ -13334,40 +13411,34 @@
         - "op_name": "按键-普通攻击"
           "press": 1
           "way": "按下"
-        - "op_name": "按键-普通攻击"
-          "way": "松开"
+        - "op_name": "按键-普通攻击-松开"
         - "op_name": "等待秒数"
           "seconds": 0.1
-        - "op_name": "按键-普通攻击"
+        - "op_name": "按键-普通攻击-按下"
           "press": 0.5
           "repeat": 3
-          "way": "按下"
         - "op_name": "等待秒数"
           "seconds": 1
         "states": "[自定义-朱鸢-特殊攻击]"
       - "operations":
-        - "op_name": "按键-移动-前"
-          "way": "按下"
+        - "op_name": "按键-移动-前-按下"
         - "data":
           - "0.2"
           "op_name": "等待秒数"
         - "op_name": "按键-闪避"
           "post_delay": 0.1
         - "op_name": "按键-普通攻击"
-        - "op_name": "按键-移动-前"
-          "way": "松开"
+        - "op_name": "按键-移动-前-松开"
         - "op_name": "按键-普通攻击"
           "pre_delay": 0.3
           "press": 0.5
           "way": "按下"
-        - "op_name": "按键-普通攻击"
-          "way": "松开"
+        - "op_name": "按键-普通攻击-松开"
         - "op_name": "等待秒数"
           "seconds": 0.1
-        - "op_name": "按键-普通攻击"
+        - "op_name": "按键-普通攻击-按下"
           "press": 0.5
           "repeat": 3
-          "way": "按下"
         - "op_name": "等待秒数"
           "seconds": 1
         "states": "[朱鸢-子弹数, 0, 999]{2, 9}"
@@ -13382,16 +13453,14 @@
           "op_name": "设置状态"
         "states": "[自定义-朱鸢-下发普攻前滑]"
       - "operations":
-        - "op_name": "按键-移动-前"
-          "way": "按下"
+        - "op_name": "按键-移动-前-按下"
         - "data":
           - "0.2"
           "op_name": "等待秒数"
         - "op_name": "按键-闪避"
           "post_delay": 0.1
         - "op_name": "按键-普通攻击"
-        - "op_name": "按键-移动-前"
-          "way": "松开"
+        - "op_name": "按键-移动-前-松开"
         - "data":
           - "0.6"
           "op_name": "等待秒数"
@@ -13479,13 +13548,12 @@
         "way": "按下"
       - "op_name": "按键-普通攻击"
         "way": "松开"
-      - "op_name": "按键-特殊攻击"
+      - "op_name": "按键-特殊攻击-按下"
         "press": 0.8
         "repeat": 5
-        "way": "按下"
-      - "op_name": "按键-特殊攻击"
-        "post_delay": 0.8
-        "way": "松开"
+      - "op_name": "按键-特殊攻击-松开"
+      - "op_name": "等待秒数"
+        "seconds": 0.8
       - "data":
         - "自定义-黄光切人"
         "op_name": "清除状态"
@@ -13502,13 +13570,12 @@
         "way": "按下"
       - "op_name": "按键-普通攻击"
         "way": "松开"
-      - "op_name": "按键-特殊攻击"
+      - "op_name": "按键-特殊攻击-按下"
         "press": 0.8
         "repeat": 5
-        "way": "按下"
-      - "op_name": "按键-特殊攻击"
-        "post_delay": 0.8
-        "way": "松开"
+      - "op_name": "按键-特殊攻击-松开"
+      - "op_name": "等待秒数"
+        "seconds": 0.8
       - "data":
         - "自定义-红光闪避"
         "op_name": "清除状态"
@@ -13517,25 +13584,23 @@
       - "op_name": "按键-普通攻击"
         "post_delay": 0.6
         "repeat": 2
-      - "op_name": "按键-特殊攻击"
+      - "op_name": "按键-特殊攻击-按下"
         "press": 0.8
         "repeat": 5
-        "way": "按下"
-      - "op_name": "按键-特殊攻击"
-        "post_delay": 0.8
-        "way": "松开"
+      - "op_name": "按键-特殊攻击-松开"
+      - "op_name": "等待秒数"
+        "seconds": 0.8
       "states": "[按键可用-特殊攻击]"
     - "operations":
       - "op_name": "按键-普通攻击"
         "post_delay": 0.6
         "repeat": 2
-      - "op_name": "按键-特殊攻击"
+      - "op_name": "按键-特殊攻击-按下"
         "press": 0.8
         "repeat": 5
-        "way": "按下"
-      - "op_name": "按键-特殊攻击"
-        "post_delay": 0.8
-        "way": "松开"
+      - "op_name": "按键-特殊攻击-松开"
+      - "op_name": "等待秒数"
+        "seconds": 0.8
       "states": ""
   - "states": "[前台-雅]"
     "sub_handlers":
