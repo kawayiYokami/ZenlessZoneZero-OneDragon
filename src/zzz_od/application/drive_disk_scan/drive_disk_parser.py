@@ -34,20 +34,26 @@ class DriveDiskParser:
         'Anomaly Proficiency': 'anomProf',
         'PEN Ratio': 'pen_',
         'Impact': 'impact',
-        'Energy Regen': 'energyRegen_',  # ✅ 修正：能量回复是百分比
+        'Energy Regen': 'energyRegen_',  # 能量回复（完整识别）
+        'Energy': 'energyRegen_',         # 能量回复（简写识别）
+        'Regen': 'energyRegen_',          # 能量回复（另一种简写）
     }
 
-    # 副属性映射（百分比属性需要下划线后缀）
+    # 副属性映射
+    # 注意：副属性中HP/ATK/DEF可能是固定值或百分比，需要通过OCR的%符号判断
     SUB_STAT_MAP = {
-        'HP': 'hp_',          # HP百分比
-        'ATK': 'atk_',        # ATK百分比
-        'ATK.': 'atk_',       # ATK百分比（另一种写法）
-        'DEF': 'def_',        # DEF百分比
-        'CRIT Rate': 'crit_', # 暴击率（只有百分比）
-        'CRIT DMG': 'crit_dmg_', # 暴击伤害（只有百分比）
+        # 可能是固定值或百分比的属性（需要根据OCR的%判断）
+        'HP': 'hp',           # HP（待定，后续根据%判断）
+        'ATK': 'atk',         # ATK（待定，后续根据%判断）
+        'ATK.': 'atk',        # ATK（另一种写法）
+        'DEF': 'def',         # DEF（待定，后续根据%判断）
+        # 只有百分比的属性
+        'CRIT Rate': 'crit_',
+        'CRIT DMG': 'crit_dmg_',
+        'PEN Ratio': 'pen_',
+        # 只有固定值的属性
+        'PEN': 'pen',
         'Anomaly Proficiency': 'anomProf',
-        'PEN': 'pen',         # PEN固定值
-        'PEN Ratio': 'pen_',  # PEN百分比
         'Impact': 'impact',
     }
 
@@ -225,6 +231,8 @@ class DriveDiskParser:
         """
         解析副属性
         副属性不能和主属性重复！需要过滤掉主属性
+        
+        OCR结果按Y坐标排序，相邻的文本属于同一行，通过顺序合并判断百分比
         """
         # 找到 "Sub-Stats" 关键字的索引
         sub_stat_idx = -1
@@ -264,26 +272,49 @@ class DriveDiskParser:
                     break
 
             if stat_key:
-                # 如果文本中没有升级标记，查找下一个文本
-                if upgrades == 0 and i + 1 < len(sub_texts):
-                    next_text = sub_texts[i + 1].strip()
-                    # 检查下一个是否是独立的升级标记
-                    upgrade_match = re.match(r'^\+(\d+)$', next_text)
-                    if upgrade_match:
-                        upgrades = int(upgrade_match.group(1))
-                        i += 1  # 跳过下一个文本
+                # 如果文本中没有升级标记，向后查找直到找到升级标记或数值
+                if upgrades == 0:
+                    j = i + 1
+                    while j < len(sub_texts):
+                        next_text = sub_texts[j].strip()
+                        
+                        # 检查是否是独立的升级标记
+                        upgrade_match = re.match(r'^\+(\d+)$', next_text)
+                        if upgrade_match:
+                            upgrades = int(upgrade_match.group(1))
+                            i = j  # 更新索引，跳过已处理的文本
+                            break
+                        
+                        # 检查是否是纯数字或百分比数字（表示已到数值）
+                        if re.match(r'^\d+(?:\.\d+)?%?$', next_text):
+                            # 到达数值了，不再是升级标记
+                            break
+                        
+                        j += 1
+                
+                # 副属性默认有1次升级，加上额外升级次数
+                # 例如：+0表示1次，+1表示2次，+4表示5次
+                upgrades += 1
 
-                # 判断是否是百分比属性
-                # 查找接下来的几个文本中是否有百分比数值
-                is_percent = False
-                for j in range(i + 1, min(i + 5, len(sub_texts))):
-                    if '%' in sub_texts[j]:
-                        is_percent = True
-                        break
-
-                # 如果是百分比，添加下划线后缀
-                if is_percent and not stat_key.endswith('_') and stat_key in ['hp', 'atk', 'def']:
-                    stat_key += '_'
+                # 判断HP/ATK/DEF是否是百分比
+                # 向后查找直到遇到纯数字或百分比数字
+                if stat_key in ['hp', 'atk', 'def']:
+                    is_percent = False
+                    j = i + 1
+                    while j < len(sub_texts):
+                        next_text = sub_texts[j].strip()
+                        
+                        # 检查是否是纯数字或百分比数字
+                        if re.match(r'^\d+(?:\.\d+)?%?$', next_text):
+                            # 找到数值，判断是否包含%
+                            if '%' in next_text:
+                                is_percent = True
+                            break
+                        
+                        j += 1
+                    
+                    if is_percent:
+                        stat_key += '_'
 
                 # **关键过滤：副属性不能和主属性重复！**
                 if stat_key != main_stat_key:
