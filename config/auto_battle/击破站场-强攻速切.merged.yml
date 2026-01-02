@@ -5510,6 +5510,9 @@
           - "op_name": "设置状态"
             "seconds": 2
             "state": "自定义-动作不打断"
+          - "op_name": "设置状态"
+            "seconds": 2
+            "state": "自定义-无视闪光"
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
             "repeat": 10
@@ -5590,9 +5593,9 @@
             "seconds": 2
           "states": "[自定义-连携换人, 0, 0.5]"
         - "debug_name": "切人后等待"
-          "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
+          "states": "([按键-切换角色-下一个, 0, 0.2]|[按键-切换角色-上一个, 0, 0.2])"
           "sub_handlers":
-          - "states": "[按键可用-快速支援, 0, 0.5]"
+          - "states": "[按键可用-快速支援, 0, 0.2]"
             "sub_handlers":
             - "operations":
               - "op_name": "设置状态"
@@ -5690,10 +5693,6 @@
               - "op_name": "等待秒数"
                 "seconds": 2
               "states": "![薇薇安-特殊技可用]"
-          - "operations":
-            - "op_name": "等待秒数"
-              "seconds": 0.3
-            "states": ""
         - "debug_name": "羽毛很多了快走吧"
           "operations":
           - "op_name": "设置状态"
@@ -5929,7 +5928,7 @@
             - "op_name": "等待秒数"
               "seconds": 0.3
             "states": ""
-        - "states": "[自定义-失衡时间, 0, 15]"
+        - "states": "[自定义-失衡时间, -5, 15]"
           "sub_handlers":
           - "debug_name": "法术终结技"
             "operations":
@@ -6296,6 +6295,8 @@
           - "op_name": "设置状态"
             "seconds": 5
             "state": "自定义-动作不打断"
+          - "op_name": "设置状态"
+            "state": "自定义-浮波柚叶-狸之愿"
           - "op_name": "按键-终结技"
             "post_delay": 0.1
             "repeat": 30
@@ -6303,6 +6304,11 @@
             "seconds": 2
           "states": "[浮波柚叶-终结技可用] & ![自定义-失衡时间, -10, 10]"
         - "operations":
+          - "op_name": "设置状态"
+            "seconds": 2.5
+            "state": "自定义-动作不打断"
+          - "op_name": "设置状态"
+            "state": "自定义-浮波柚叶-狸之愿"
           - "op_name": "按键-特殊攻击"
             "post_delay": 0.1
             "repeat": 25
@@ -6310,11 +6316,16 @@
             "state": "自定义-合轴时间"
           "states": "[浮波柚叶-特殊技可用] & [浮波柚叶-能量]{ 60, 120}"
         - "operations":
-          - "op_name": "按键-普通攻击"
-            "post_delay": 0.1
-            "repeat": 20
           - "op_name": "设置状态"
             "state": "自定义-合轴时间"
+          - "op_name": "按键-普通攻击"
+            "post_delay": 0.1
+            "repeat": 10
+          - "op_name": "设置状态"
+            "state": "自定义-合轴时间"
+          - "op_name": "按键-普通攻击"
+            "post_delay": 0.1
+            "repeat": 10
           "states": ""
       - "interrupt_states": "[前台-能量, 0, 0.1] & ![前台-爱丽丝]"
         "states": "[前台-爱丽丝]"
@@ -6379,7 +6390,7 @@
             "seconds": 4.5
             "state": "自定义-爱丽丝-蓄力中"
           - "op_name": "设置状态"
-            "seconds": 4.5
+            "seconds": 1
             "state": "自定义-无视闪光"
           - "op_name": "设置状态"
             "seconds": 4.5
@@ -6721,10 +6732,15 @@
           "states": "[卢西娅-能量]{120,120}"
         - "operations":
           - "op_name": "设置状态"
-            "state": "自定义-卢西娅-暗破"
+            "state": "自定义-合轴时间"
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
-            "repeat": 35
+            "repeat": 10
+          - "op_name": "设置状态"
+            "state": "自定义-合轴时间"
+          - "op_name": "按键-普通攻击"
+            "post_delay": 0.1
+            "repeat": 10
           - "op_name": "设置状态"
             "state": "自定义-合轴时间"
           - "op_name": "按键-普通攻击"
