@@ -29,10 +29,10 @@ class PcScreenshotController:
         self.standard_height: int = standard_height
 
         self.strategies: dict[str, ScreencapperBase] = {
-            ScreenshotMethodEnum.PRINT_WINDOW.value: PrintWindowScreencapper(game_win, standard_width, standard_height),
-            ScreenshotMethodEnum.BITBLT.value: BitBltScreencapper(game_win, standard_width, standard_height),
-            ScreenshotMethodEnum.MSS.value: MssScreencapper(game_win, standard_width, standard_height),
-            ScreenshotMethodEnum.PIL.value: PilScreencapper(game_win, standard_width, standard_height),
+            ScreenshotMethodEnum.PRINT_WINDOW.value.value: PrintWindowScreencapper(game_win, standard_width, standard_height),
+            ScreenshotMethodEnum.BITBLT.value.value: BitBltScreencapper(game_win, standard_width, standard_height),
+            ScreenshotMethodEnum.MSS.value.value: MssScreencapper(game_win, standard_width, standard_height),
+            ScreenshotMethodEnum.PIL.value.value: PilScreencapper(game_win, standard_width, standard_height),
         }
         self.active_strategy_name: str | None = None
 
@@ -55,7 +55,7 @@ class PcScreenshotController:
 
         if independent:
             # 独立模式，按默认优先级尝试，不依赖已初始化的实例
-            methods_to_try_names = self._get_method_priority_list(ScreenshotMethodEnum.AUTO.value)
+            methods_to_try_names = self._get_method_priority_list(ScreenshotMethodEnum.AUTO.value.value)
         else:
             # 从已激活的策略开始尝试
             methods_to_try_names = self._get_method_priority_list(self.active_strategy_name)
@@ -90,7 +90,7 @@ class PcScreenshotController:
         # 如果请求的方法与当前活动策略相同，跳过重新初始化
         if (
             self.active_strategy_name is not None
-            and method != ScreenshotMethodEnum.AUTO.value
+            and method != ScreenshotMethodEnum.AUTO.value.value
             and method == self.active_strategy_name
         ):
             return self.active_strategy_name
@@ -128,13 +128,13 @@ class PcScreenshotController:
             方法名称列表，按优先级排序
         """
         default_priority = [
-            ScreenshotMethodEnum.PRINT_WINDOW.value,
-            ScreenshotMethodEnum.BITBLT.value,
-            ScreenshotMethodEnum.MSS.value,
-            ScreenshotMethodEnum.PIL.value,
+            ScreenshotMethodEnum.PRINT_WINDOW.value.value,
+            ScreenshotMethodEnum.BITBLT.value.value,
+            ScreenshotMethodEnum.MSS.value.value,
+            ScreenshotMethodEnum.PIL.value.value,
         ]
 
-        if method == ScreenshotMethodEnum.AUTO.value or method not in self.strategies:
+        if method == ScreenshotMethodEnum.AUTO.value.value or method not in self.strategies:
             return default_priority.copy()
 
         priority_list = [method]
