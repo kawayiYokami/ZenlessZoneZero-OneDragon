@@ -49,10 +49,10 @@ area_list:
 - area_name: 驱动盘仓库
   id_mark: false
   pc_rect:
-  - 79
-  - 190
-  - 1331
-  - 968
+  - 93
+  - 202
+  - 1320
+  - 897
   text: 街区
   lcs_percent: 0.5
   template_sub_dir: ''
