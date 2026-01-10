@@ -53,8 +53,9 @@ class AgentScanApp(ZApplication):
 
         # 点击"按钮-代理人基础"
         btn_basic = self.ctx.screen_loader.get_area('代理人-信息', '按钮-代理人基础')
+        time.sleep(0.2)
         self.ctx.controller.click(btn_basic.center)
-        time.sleep(0.4)
+        time.sleep(0.3)
         _, screen_basic = self.ctx.controller.screenshot()
 
         # 检查终止条件：达到最大扫描次数或到达列表末尾
@@ -183,7 +184,7 @@ class AgentScanApp(ZApplication):
     def _is_end_of_list(self, screen: MatLike) -> bool:
         """
         检测是否到达列表末尾（检测标志点是否纯黑色）
-        
+
         Args:
             screen: 当前截图
         """

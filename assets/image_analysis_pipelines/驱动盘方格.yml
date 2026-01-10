@@ -19,6 +19,6 @@
     draw_contours: 0
 - step: 按面积过滤
   params:
-    min_area: 100
+    min_area: 300
     max_area: 9999
     draw_contours: true

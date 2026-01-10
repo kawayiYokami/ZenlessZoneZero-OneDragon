@@ -182,9 +182,6 @@ class ZContext(OneDragonContext):
         from zzz_od.application.drive_disc_dismantle.drive_disc_dismantle_app_factory import (
             DriveDiscDismantleAppFactory,
         )
-        from zzz_od.application.drive_disk_scan.drive_disk_scan_app_factory import (
-            DriveDiskScanAppFactory,
-        )
         from zzz_od.application.inventory_scan.inventory_scan_app_factory import (
             InventoryScanAppFactory,
         )
@@ -245,7 +242,6 @@ class ZContext(OneDragonContext):
                 WitheredDomainAppFactory(self),
                 RiduWeeklyAppFactory(self),
                 DriveDiscDismantleAppFactory(self),
-                DriveDiskScanAppFactory(self),
                 InventoryScanAppFactory(self),
                 LostVoidAppFactory(self),
                 NotifyAppFactory(self),

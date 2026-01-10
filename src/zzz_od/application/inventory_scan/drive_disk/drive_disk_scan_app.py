@@ -15,8 +15,8 @@ from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.base.operation.operation_round_result import OperationRoundResult
 from one_dragon.utils import cv2_utils, os_utils
-from zzz_od.application.drive_disk_scan import drive_disk_scan_const
-from zzz_od.application.drive_disk_scan.drive_disk_scan_config import DriveDiskScanConfig
+from zzz_od.application.inventory_scan.drive_disk import drive_disk_scan_const
+from zzz_od.application.inventory_scan.drive_disk.drive_disk_scan_config import DriveDiskScanConfig
 from zzz_od.application.inventory_scan.parser.drive_disk_parser import DriveDiskParser
 from zzz_od.application.inventory_scan.screenshot_cache import ScreenshotCache
 from zzz_od.application.zzz_application import ZApplication
@@ -32,11 +32,6 @@ class DriveDiskScanApp(ZApplication):
             app_id=drive_disk_scan_const.APP_ID,
             op_name=drive_disk_scan_const.APP_NAME,
             node_max_retry_times=100000,
-        )
-        self.config: DriveDiskScanConfig = self.ctx.run_context.get_config(
-            app_id=drive_disk_scan_const.APP_ID,
-            instance_idx=self.ctx.current_instance_idx,
-            group_id=application_const.DEFAULT_GROUP_ID,
         )
 
         # 当前位置（行，列）从(0,0)开始，对应界面上的(1,1)

@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from zzz_od.application.drive_disk_scan.drive_disk_parser import DriveDiskParser
+from zzz_od.application.inventory_scan.parser.drive_disk_parser import DriveDiskParser
 
 
 def test_white_water_ballad():

@@ -82,14 +82,38 @@ class AgentParser:
             skill_levels = self._parse_skill_levels(all_results)
             core_skill_level = self._parse_core_skill_level(all_results)
 
+            # 解析level和promotion
+            level_parts = agent_level.split('/')
+            current_level = int(level_parts[0])
+            max_level = int(level_parts[1])
+            promotion = max_level // 10 - 1
+
+            # 解析mindscape
+            mindscape = int(cinema_level.split('/')[0])
+
+            # 展开skills
+            basic = int(skill_levels.get('normal', '1/12').split('/')[0])
+            dodge = int(skill_levels.get('dodge', '1/12').split('/')[0])
+            assist = int(skill_levels.get('assist', '1/12').split('/')[0])
+            special = int(skill_levels.get('special', '1/12').split('/')[0])
+            chain = int(skill_levels.get('chain', '1/12').split('/')[0])
+
             # 构建代理人数据
             self.agent_counter += 1
             agent_data = {
                 'key': agent_name,
-                'level': agent_level,
-                'cinema': cinema_level,
-                'skills': skill_levels,
-                'core_skill': core_skill_level,
+                'level': current_level,
+                'core': core_skill_level,
+                'mindscape': mindscape,
+                'dodge': dodge,
+                'basic': basic,
+                'chain': chain,
+                'special': special,
+                'assist': assist,
+                'promotion': promotion,
+                'potential': 0,
+                'equippedDiscs': {},
+                'equippedWengine': "",
                 'id': f'zzz_agent_{self.agent_counter}'
             }
 
