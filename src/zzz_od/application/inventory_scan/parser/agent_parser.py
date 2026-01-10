@@ -201,11 +201,17 @@ class AgentParser:
         """解析代理人等级"""
         for result in results:
             text = result['text']
-            # 匹配"等级XX"格式，但排除"等级X"（核心技能）
+            # 优先匹配"等级XX/XX"格式（完整等级）
+            match = re.search(r'等级(\d{2,})/(\d{2,})', text)
+            if match:
+                current = int(match.group(1))
+                max_level = int(match.group(2))
+                return f"{current}/{max_level}"
+            # 兼容旧格式，只匹配"等级XX"
             match = re.search(r'等级(\d{2,})', text)
             if match:
-                return int(match.group(1))
-        return 1
+                return f"{match.group(1)}/60"  # 默认最大等级为60
+        return "1/60"  # 默认返回1/60
 
     def _parse_cinema_level(self, results: List[Dict]) -> str:
         """解析影画等级（命座）"""
