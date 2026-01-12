@@ -49,8 +49,7 @@ operations:
   # 摧岳+倾山 - 长按A退出怒相
   # 释放2个不同EX技后长按A会先摧岳(756.7%)再倾山(1739.9%)
   - op_name: "按键-普通攻击-按下"
-  - op_name: "等待秒数"
-    seconds: 2.8
+    press: 2.8
   - op_name: "按键-普通攻击-松开"
   - op_name: "等待秒数"
     seconds: 0.3

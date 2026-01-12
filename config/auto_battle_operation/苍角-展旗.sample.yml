@@ -13,5 +13,4 @@ operations:
     seconds: 0.1
 
   - op_name: "按键-特殊攻击-按下"
-  - op_name: "等待秒数"
-    seconds: 2
+    press: 2.0

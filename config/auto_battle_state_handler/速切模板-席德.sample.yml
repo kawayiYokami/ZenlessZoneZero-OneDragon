@@ -47,15 +47,8 @@ handlers:
         operations:
           - op_name: "设置状态"
             state: "自定义-席德-准备合轴"
-          - op_name: "按键-普通攻击"
-            post_delay: 0.1
-            repeat: 5
           - op_name: "按键-普通攻击-按下"
-          - op_name: "等待秒数"
-            seconds: 0.5
-          - op_name: "按键-普通攻击"
-            post_delay: 0.1
-            repeat: 30
+            press: 4.0
 
       - states: "[席德-终结技可用] & ![自定义-席德-铁拳冲击, 0, 5]"
         debug_name: "席德终结技"

@@ -10,3 +10,4 @@ operations:
     state: "自定义-动作不打断"
     seconds: 4.5
   - op_name: "按键-普通攻击-按下"
+    press: 0.1

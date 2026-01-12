@@ -14,8 +14,7 @@ handlers:
       - states: "[自定义-红光闪避, 0, 1]"
         operations:
           - op_name: "按键-普通攻击-按下"
-          - op_name: "等待秒数"
-            seconds: 1
+            press: 1.0
 
       - states: "[自定义-连携换人, 0, 0.5]"
         operations:

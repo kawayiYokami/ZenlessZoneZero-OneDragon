@@ -19,9 +19,7 @@ handlers:
           - op_name: "等待秒数"
             data: ["0.2"]
           - op_name: "按键-普通攻击-按下"
-            data: ["1"]
-          - op_name: "等待秒数"
-            data: ["1"]
+            press: 2.0
           - op_name: "清除状态"
             data: ["自定义-黄光切人"]
 
@@ -39,9 +37,7 @@ handlers:
           - op_name: "等待秒数"
             data: ["0.2"]
           - op_name: "按键-普通攻击-按下"
-            data: ["1"]
-          - op_name: "等待秒数"
-            data: ["1"]
+            press: 2.0
           - op_name: "清除状态"
             data: ["自定义-红光闪避"]
 

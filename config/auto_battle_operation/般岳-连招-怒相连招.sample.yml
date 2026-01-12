@@ -45,8 +45,7 @@ operations:
   # 摧岳+倾山 - 长按A退出怒相
   # 摧岳756.7%倍率，倾山1739.9%倍率
   - op_name: "按键-普通攻击-按下"
-  - op_name: "等待秒数"
-    seconds: 2.8
+    press: 2.8
   - op_name: "按键-普通攻击-松开"
   - op_name: "等待秒数"
     seconds: 0.3

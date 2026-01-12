@@ -15,7 +15,6 @@ operations:
     seconds: 0.1
 
   - op_name: "按键-特殊攻击-按下"
-  - op_name: "等待秒数"
-    seconds: 1.8
+    press: 1.8
 
   - operation_template: "苍角-闪2A合轴"

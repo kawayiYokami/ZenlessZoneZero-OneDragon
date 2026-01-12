@@ -58,6 +58,7 @@ handlers:
         interrupt_states: "[格莉丝-电能]{1,1}"
         operations:
           - op_name: "按键-移动-前-按下"
+            press: 0.1
           - op_name: "按键-普通攻击"
             post_delay: 0.1
             repeat: 10

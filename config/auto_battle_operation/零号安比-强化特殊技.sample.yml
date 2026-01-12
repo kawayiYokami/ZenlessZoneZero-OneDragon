@@ -9,8 +9,7 @@ operations:
     state: "自定义-零号安比-白雷"
     add: 990
   - op_name: "按键-特殊攻击-按下"
-  - op_name: "等待秒数"
-    seconds: 0.7
+    press: 0.7
   - op_name: "按键-特殊攻击-松开"
   - op_name: "等待秒数"
     seconds: 0.8

@@ -7,8 +7,7 @@ operations:
     post_delay: 0.1
     repeat: 4
   - op_name: "按键-特殊攻击-按下"
-  - op_name: "等待秒数"
-    seconds: 1.8
+    press: 1.8
   - op_name: "按键-特殊攻击-松开"
 
   - op_name: "按键-普通攻击"
