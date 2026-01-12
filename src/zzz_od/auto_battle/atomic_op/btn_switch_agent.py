@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from one_dragon.base.conditional_operation.atomic_op import AtomicOp
 from one_dragon.base.conditional_operation.operation_def import OperationDef
-from zzz_od.auto_battle.atomic_op.btn_common import BtnRunStatus
 
 if TYPE_CHECKING:
     from zzz_od.auto_battle.auto_battle_context import AutoBattleContext
@@ -28,27 +27,20 @@ class AtomicBtnSwitchAgent(AtomicOp):
 
         AtomicOp.__init__(self, op_name='%s %s' % (AtomicBtnSwitchAgent.OP_NAME, self.agent_name))
 
-        self._status = BtnRunStatus.WAIT
-        self._update_lock = threading.Lock()
+        self._stop_event = threading.Event()
 
     def execute(self):
-        with self._update_lock:
-            if self._status != BtnRunStatus.WAIT:
+        self._stop_event.clear()
+
+        if self.pre_delay > 0:
+            self._stop_event.wait(self.pre_delay)
+            if self._stop_event.is_set():
                 return
-            self._status = BtnRunStatus.RUNNING
 
-        if self._status == BtnRunStatus.RUNNING and self.pre_delay > 0:
-            time.sleep(self.pre_delay)
+        self.ctx.switch_by_name(self.agent_name)
 
-        if self._status == BtnRunStatus.RUNNING:
-            self.ctx.switch_by_name(self.agent_name)
-
-        if self._status == BtnRunStatus.RUNNING and self.post_delay > 0:
-            time.sleep(self.post_delay)
-
-        with self._update_lock:
-            self._status = BtnRunStatus.WAIT
+        if self.post_delay > 0:
+            self._stop_event.wait(self.post_delay)
 
     def stop(self) -> None:
-        with self._update_lock:
-            self._status = BtnRunStatus.STOP
+        self._stop_event.set()

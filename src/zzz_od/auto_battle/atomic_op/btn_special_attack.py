@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from typing import Optional, TYPE_CHECKING
 
 from one_dragon.base.conditional_operation.atomic_op import AtomicOp
@@ -11,7 +13,8 @@ if TYPE_CHECKING:
 
 class AtomicBtnSpecialAttack(AtomicOp):
 
-    def __init__(self, ctx: AutoBattleContext, press: bool = False, press_time: Optional[float] = None, release: bool = False):
+    def __init__(self, ctx: AutoBattleContext, press: bool = False, press_time: Optional[float] = None,
+                 release: bool = False):
         if press:
             op_name = BattleStateEnum.BTN_SWITCH_SPECIAL_ATTACK.value + '按下'
         elif release:
@@ -24,9 +27,24 @@ class AtomicBtnSpecialAttack(AtomicOp):
         self.press_time: Optional[float] = press_time
         self.release: bool = release
 
-    def execute(self):
-        self.ctx.special_attack(self.press, self.press_time, self.release)
+        self._stop_event = threading.Event()
 
-    def stop(self) -> None:
+    def execute(self):
+        self._stop_event.clear()
+
+        if self.press and self.press_time is not None and self.press_time > 0:
+            start_time = time.time()
+            while time.time() - start_time < self.press_time:
+                self.ctx.special_attack(press=True)
+                if self._stop_event.wait(0.02):
+                    return
+
+            if not self._stop_event.is_set():
+                self.ctx.special_attack(release=True)
+        else:
+            self.ctx.special_attack(press=self.press, release=self.release)
+
+    def stop(self):
+        self._stop_event.set()
         if self.press:
             self.ctx.special_attack(release=True)

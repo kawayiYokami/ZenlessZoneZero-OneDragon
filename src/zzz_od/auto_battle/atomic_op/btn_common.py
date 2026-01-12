@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from enum import StrEnum, IntEnum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Callable
 
 from one_dragon.base.conditional_operation.atomic_op import AtomicOp
@@ -29,13 +29,6 @@ class BtnWayEnum(StrEnum):
         return None
 
 
-class BtnRunStatus(IntEnum):
-
-    WAIT = 0
-    RUNNING = 1
-    STOP = 2
-
-
 class AtomicBtnCommon(AtomicOp):
 
     def __init__(self, ctx: AutoBattleContext, op_def: OperationDef):
@@ -53,8 +46,7 @@ class AtomicBtnCommon(AtomicOp):
         AtomicOp.__init__(self, op_name=op_name,
                           async_op=self.is_press and self.press_time is None)
 
-        self._status = BtnRunStatus.WAIT
-        self._update_lock = threading.Lock()
+        self._stop_event = threading.Event()
         self._method: Callable[[bool, float, bool], None] = None
         if op_name == BattleStateEnum.BTN_DODGE.value:
             self._method = self.ctx.dodge
@@ -88,31 +80,26 @@ class AtomicBtnCommon(AtomicOp):
             raise ValueError(f'非法按键 {self.btn_name}')
 
     def execute(self):
-        with self._update_lock:
-            if self._status != BtnRunStatus.WAIT:
-                return
-            self._status = BtnRunStatus.RUNNING
+        self._stop_event.clear()
 
         for i in range(self.repeat_times):
-            if self._status != BtnRunStatus.RUNNING:
+            if self._stop_event.is_set():
                 break
 
-            if self._status == BtnRunStatus.RUNNING and self.pre_delay > 0:
-                time.sleep(self.pre_delay)
+            if self.pre_delay > 0:
+                self._stop_event.wait(self.pre_delay)
+                if self._stop_event.is_set():
+                    break
 
-            if self._status == BtnRunStatus.RUNNING:
-                self._method(press=self.is_press, press_time=self.press_time, release=self.is_release)
+            self._method(press=self.is_press, press_time=self.press_time, release=self.is_release)
 
-            if self._status == BtnRunStatus.RUNNING and self.post_delay > 0:
-                time.sleep(self.post_delay)
+            if self._stop_event.is_set():
+                break
 
-        with self._update_lock:
-            self._status = BtnRunStatus.WAIT
+            if self.post_delay > 0:
+                self._stop_event.wait(self.post_delay)
 
     def stop(self) -> None:
-        with self._update_lock:
-            if self._status == BtnRunStatus.RUNNING:
-                self._status = BtnRunStatus.STOP
-
+        self._stop_event.set()
         if self.is_press:
             self._method(release=True)
