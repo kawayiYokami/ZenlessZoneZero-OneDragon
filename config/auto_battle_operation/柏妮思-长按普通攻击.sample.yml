@@ -5,14 +5,12 @@ operations:
     seconds: 0.1
 
   - op_name: "按键-普通攻击-按下"
-    press: 0.2
+    press: 0.8
   - op_name: "设置状态"
     state: "自定义-动作不打断"
   - op_name: "设置状态"
     state: "自定义-异常-火"
     add: 100
-  - op_name: "等待秒数"
-    seconds: 0.6
   - op_name: "按键-普通攻击-松开"
   - op_name: "等待秒数"
     seconds: 1
