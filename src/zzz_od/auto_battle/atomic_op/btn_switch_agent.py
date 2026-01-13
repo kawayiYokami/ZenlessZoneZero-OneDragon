@@ -23,7 +23,7 @@ class AtomicBtnSwitchAgent(AtomicOp):
         self.post_delay: float = op_def.post_delay
 
         AtomicOp.__init__(
-            self, op_name="%s %s" % (AtomicBtnSwitchAgent.OP_NAME, self.agent_name)
+            self, op_name=f"{AtomicBtnSwitchAgent.OP_NAME} {self.agent_name}"
         )
 
         self._stop_event = threading.Event()

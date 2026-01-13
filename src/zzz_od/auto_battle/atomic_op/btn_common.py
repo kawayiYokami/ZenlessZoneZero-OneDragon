@@ -81,7 +81,7 @@ class AtomicBtnCommon(AtomicOp):
     def execute(self):
         self._stop_event.clear()
 
-        for i in range(self.repeat_times):
+        for _i in range(self.repeat_times):
             if self._stop_event.is_set():
                 break
 

@@ -167,4 +167,4 @@ class AtomicOpFactory:
         elif op_name == AtomicClearState.OP_NAME:
             return AtomicClearState(self.auto_battle_context.custom_context, op_def)
         else:
-            raise ValueError("非法的指令 %s" % op_name)
+            raise ValueError(f"非法的指令 {op_name}")

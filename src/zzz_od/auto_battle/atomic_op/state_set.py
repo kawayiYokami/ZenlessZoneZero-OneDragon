@@ -30,7 +30,7 @@ class AtomicSetState(AtomicOp):
                 self.value = int(op_def.data[2])
 
         AtomicOp.__init__(
-            self, op_name="%s %s" % (AtomicSetState.OP_NAME, self.state_name)
+            self, op_name=f"{AtomicSetState.OP_NAME} {self.state_name}"
         )
 
     def execute(self):
