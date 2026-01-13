@@ -72,9 +72,6 @@ class AtomicBtnBase(AtomicOp):
                 self._execute_press(press=True, press_time=None, release=False)
                 if self._stop_event.wait(0.02):
                     return
-
-            if not self._stop_event.is_set():
-                self._execute_press(press=False, press_time=None, release=True)
         else:
             # 普通按下/松开/点按
             self._execute_press(
