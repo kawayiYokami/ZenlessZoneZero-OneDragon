@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import threading
-import time
+from collections.abc import Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from one_dragon.base.conditional_operation.atomic_op import AtomicOp
 from one_dragon.base.conditional_operation.operation_def import OperationDef
@@ -14,10 +14,9 @@ if TYPE_CHECKING:
 
 
 class BtnWayEnum(StrEnum):
-
-    PRESS = '按下'
-    RELEASE = '松开'
-    TAP = '点按'
+    PRESS = "按下"
+    RELEASE = "松开"
+    TAP = "点按"
 
     @classmethod
     def from_value(cls, value: str):
@@ -30,12 +29,11 @@ class BtnWayEnum(StrEnum):
 
 
 class AtomicBtnCommon(AtomicOp):
-
     def __init__(self, ctx: AutoBattleContext, op_def: OperationDef):
         op_name = op_def.op_name
 
         self.ctx: AutoBattleContext = ctx
-        self.btn_name: str = op_name[op_name.index('-')+1:]
+        self.btn_name: str = op_name[op_name.index("-") + 1 :]
         self.btn_way: BtnWayEnum = BtnWayEnum.from_value(op_def.btn_way)
         self.is_press: bool = self.btn_way == BtnWayEnum.PRESS
         self.press_time: float = op_def.btn_press
@@ -43,8 +41,9 @@ class AtomicBtnCommon(AtomicOp):
         self.repeat_times: int = op_def.btn_repeat_times
         self.pre_delay: float = op_def.pre_delay
         self.post_delay: float = op_def.post_delay
-        AtomicOp.__init__(self, op_name=op_name,
-                          async_op=self.is_press and self.press_time is None)
+        AtomicOp.__init__(
+            self, op_name=op_name, async_op=self.is_press and self.press_time is None
+        )
 
         self._stop_event = threading.Event()
         self._method: Callable[[bool, float, bool], None] = None
@@ -77,7 +76,7 @@ class AtomicBtnCommon(AtomicOp):
         elif op_name == BattleStateEnum.BTN_LOCK.value:
             self._method = self.ctx.lock
         else:
-            raise ValueError(f'非法按键 {self.btn_name}')
+            raise ValueError(f"非法按键 {self.btn_name}")
 
     def execute(self):
         self._stop_event.clear()
@@ -91,7 +90,9 @@ class AtomicBtnCommon(AtomicOp):
                 if self._stop_event.is_set():
                     break
 
-            self._method(press=self.is_press, press_time=self.press_time, release=self.is_release)
+            self._method(
+                press=self.is_press, press_time=self.press_time, release=self.is_release
+            )
 
             if self._stop_event.is_set():
                 break

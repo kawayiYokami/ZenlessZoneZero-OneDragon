@@ -6,14 +6,13 @@ from one_dragon.base.conditional_operation.operation_def import OperationDef
 
 
 class AtomicWait(AtomicOp):
-
-    OP_NAME: ClassVar[str] = '等待秒数'
+    OP_NAME: ClassVar[str] = "等待秒数"
 
     def __init__(self, op_def: OperationDef):
         wait_seconds = op_def.wait_seconds
         if op_def.data is not None and len(op_def.data) > 0:
             wait_seconds = float(op_def.data[0])
-        AtomicOp.__init__(self, op_name=f'{AtomicWait.OP_NAME} {wait_seconds:.2f}')
+        AtomicOp.__init__(self, op_name=f"{AtomicWait.OP_NAME} {wait_seconds:.2f}")
         self.wait_seconds: float = wait_seconds
         self._stop_event = threading.Event()  # 用于中断的Event
 

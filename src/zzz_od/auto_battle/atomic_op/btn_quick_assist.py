@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from typing import TYPE_CHECKING, ClassVar
 
 from one_dragon.base.conditional_operation.atomic_op import AtomicOp
@@ -12,8 +11,7 @@ if TYPE_CHECKING:
 
 
 class AtomicBtnQuickAssist(AtomicOp):
-
-    OP_NAME: ClassVar[str] = '按键-快速支援'
+    OP_NAME: ClassVar[str] = "按键-快速支援"
 
     def __init__(self, ctx: AutoBattleContext, op_def: OperationDef):
         self.ctx: AutoBattleContext = ctx

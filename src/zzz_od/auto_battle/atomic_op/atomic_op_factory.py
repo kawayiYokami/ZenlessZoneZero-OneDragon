@@ -31,7 +31,6 @@ if TYPE_CHECKING:
 
 
 class AtomicOpFactory:
-    
     def __init__(self, auto_battle_context: AutoBattleContext):
         self.auto_battle_context = auto_battle_context
 
@@ -43,8 +42,8 @@ class AtomicOpFactory:
         op_name = op_def.op_name
         op_data = op_def.data
         # 有几个特殊参数 在这里统一提取
-        press: bool = op_name.endswith('-按下')
-        release: bool = op_name.endswith('-松开')
+        press: bool = op_name.endswith("-按下")
+        release: bool = op_name.endswith("-松开")
         press_time = None
         if press:
             if op_def.btn_press is not None:
@@ -52,41 +51,115 @@ class AtomicOpFactory:
             elif op_data is not None and len(op_data) > 0:
                 press_time = float(op_data[0])
 
-        if op_name == AtomicBtnSwitchAgent.OP_NAME or op_name == '切换角色':
+        if op_name == AtomicBtnSwitchAgent.OP_NAME or op_name == "切换角色":
             # 切换角色 只是一个兼容 后续删掉
             return AtomicBtnSwitchAgent(self.auto_battle_context, op_def)
         elif op_name == AtomicBtnQuickAssist.OP_NAME:
             return AtomicBtnQuickAssist(self.auto_battle_context, op_def)
-        elif op_name.startswith('按键') and not op_name.endswith('按下') and not op_name.endswith('松开'):
+        elif (
+            op_name.startswith("按键")
+            and not op_name.endswith("按下")
+            and not op_name.endswith("松开")
+        ):
             return AtomicBtnCommon(self.auto_battle_context, op_def)
         elif op_name.startswith(BattleStateEnum.BTN_DODGE.value):
-            return AtomicBtnDodge(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnDodge(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_SWITCH_NEXT.value):
-            return AtomicBtnSwitchNext(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnSwitchNext(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_SWITCH_PREV.value):
-            return AtomicBtnSwitchPrev(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnSwitchPrev(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_SWITCH_NORMAL_ATTACK.value):
-            return AtomicBtnNormalAttack(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnNormalAttack(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_SWITCH_SPECIAL_ATTACK.value):
-            return AtomicBtnSpecialAttack(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnSpecialAttack(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_ULTIMATE.value):
-            return AtomicBtnUltimate(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnUltimate(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_CHAIN_LEFT.value):
-            return AtomicBtnChainLeft(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnChainLeft(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_CHAIN_RIGHT.value):
-            return AtomicBtnChainRight(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnChainRight(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_CHAIN_CANCEL.value):
-            return AtomicBtnChainCancel(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnChainCancel(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_MOVE_W.value):
-            return AtomicBtnMoveW(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnMoveW(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_MOVE_S.value):
-            return AtomicBtnMoveS(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnMoveS(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_MOVE_A.value):
-            return AtomicBtnMoveA(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnMoveA(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_MOVE_D.value):
-            return AtomicBtnMoveD(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnMoveD(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name.startswith(BattleStateEnum.BTN_LOCK.value):
-            return AtomicBtnLock(self.auto_battle_context, press=press, press_time=press_time, release=release)
+            return AtomicBtnLock(
+                self.auto_battle_context,
+                press=press,
+                press_time=press_time,
+                release=release,
+            )
         elif op_name == AtomicWait.OP_NAME:
             return AtomicWait(op_def)
         elif op_name == AtomicSetState.OP_NAME:
@@ -94,4 +167,4 @@ class AtomicOpFactory:
         elif op_name == AtomicClearState.OP_NAME:
             return AtomicClearState(self.auto_battle_context.custom_context, op_def)
         else:
-            raise ValueError('非法的指令 %s' % op_name)
+            raise ValueError("非法的指令 %s" % op_name)

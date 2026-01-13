@@ -9,9 +9,8 @@ if TYPE_CHECKING:
 
 
 class AtomicTurn(AtomicOp):
-
     def __init__(self, ctx: AutoBattleContext, turn_x: float):
-        AtomicOp.__init__(self, op_name='转向', async_op=False)
+        AtomicOp.__init__(self, op_name="转向", async_op=False)
         self.ctx: AutoBattleContext = ctx
         self.turn_x: float = turn_x
 

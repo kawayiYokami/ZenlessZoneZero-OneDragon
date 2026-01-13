@@ -10,8 +10,7 @@ if TYPE_CHECKING:
 
 
 class AtomicSetState(AtomicOp):
-
-    OP_NAME: ClassVar[str] = '设置状态'
+    OP_NAME: ClassVar[str] = "设置状态"
 
     def __init__(self, ctx: AutoBattleCustomContext, op_def: OperationDef):
         self.ctx: AutoBattleCustomContext = ctx
@@ -30,10 +29,24 @@ class AtomicSetState(AtomicOp):
             if len(op_def.data) > 2:
                 self.value = int(op_def.data[2])
 
-        AtomicOp.__init__(self, op_name='%s %s' % (AtomicSetState.OP_NAME,self.state_name))
+        AtomicOp.__init__(
+            self, op_name="%s %s" % (AtomicSetState.OP_NAME, self.state_name)
+        )
 
     def execute(self):
         if self.state_name_list is not None:
-            self.ctx.set_state(self.state_name_list, self.diff_time, self.diff_time_add , self.value, self.value_add)
+            self.ctx.set_state(
+                self.state_name_list,
+                self.diff_time,
+                self.diff_time_add,
+                self.value,
+                self.value_add,
+            )
         else:
-            self.ctx.set_state([self.state_name], self.diff_time, self.diff_time_add , self.value, self.value_add)
+            self.ctx.set_state(
+                [self.state_name],
+                self.diff_time,
+                self.diff_time_add,
+                self.value,
+                self.value_add,
+            )
