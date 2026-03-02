@@ -64,19 +64,25 @@ class PcControllerBase(ControllerBase):
             return
         self._last_check_input_time = now
 
+        btn_controller = self.btn_controller
+        should_auto_pause = (
+            self._ctx is not None
+            and self._ctx.env_config.auto_pause_on_background
+        )
+
         if self.game_win.is_win_active:
-            if not self._input_enabled:
-                self._input_enabled = True
-                self.btn_controller.enable_input()
+            self._input_enabled = True
+            if btn_controller is not None:
+                btn_controller.enable_input()
             # 窗口前台时，自动恢复运行
-            if self._ctx is not None and self._ctx.run_context.is_context_pause:
+            if should_auto_pause and self._ctx.run_context.is_context_pause:
                 self._ctx.run_context.switch_context_pause_and_run()
         else:
-            if self._input_enabled:
-                self._input_enabled = False
-                self.btn_controller.disable_input()
+            self._input_enabled = False
+            if btn_controller is not None:
+                btn_controller.disable_input()
             # 窗口非前台时，自动暂停运行
-            if self._ctx is not None and self._ctx.run_context.is_context_running:
+            if should_auto_pause and self._ctx.run_context.is_context_running:
                 self._ctx.run_context.switch_context_pause_and_run()
 
     def init_game_win(self) -> bool:
@@ -124,6 +130,8 @@ class PcControllerBase(ControllerBase):
                 self.xbox_controller = XboxButtonController()
             self.btn_controller = self.xbox_controller
             self.btn_controller.reset()
+            if not self._input_enabled:
+                self.btn_controller.disable_input()
 
     def enable_ds4(self):
         if pc_button_utils.is_vgamepad_installed():
@@ -131,9 +139,13 @@ class PcControllerBase(ControllerBase):
                 self.ds4_controller = Ds4ButtonController()
             self.btn_controller = self.ds4_controller
             self.btn_controller.reset()
+            if not self._input_enabled:
+                self.btn_controller.disable_input()
 
     def enable_keyboard(self):
         self.btn_controller = self.keyboard_controller
+        if not self._input_enabled:
+            self.btn_controller.disable_input()
 
     @property
     def is_game_window_ready(self) -> bool:
@@ -144,7 +156,7 @@ class PcControllerBase(ControllerBase):
         return self.game_win.is_win_valid
 
     def click(
-        self, pos: Point = None, press_time: float = 0, pc_alt: bool = False
+        self, pos: Point | None = None, press_time: float = 0, pc_alt: bool = False
     ) -> bool:
         """
         点击位置
@@ -157,7 +169,7 @@ class PcControllerBase(ControllerBase):
         if pos is not None:
             click_pos: Point = self.game_win.game2win_pos(pos)
             if click_pos is None:
-                log.error("点击非游戏窗口区域 (%s)", pos)
+                log.error(f"点击非游戏窗口区域 ({pos})")
                 return False
         else:
             click_pos = get_current_mouse_pos()
@@ -170,7 +182,7 @@ class PcControllerBase(ControllerBase):
             self.keyboard_controller.keyboard.release(keyboard.Key.alt)
         return True
 
-    def get_screenshot(self, independent: bool = False) -> MatLike | None:
+    def get_screenshot(self, independent: bool = False) -> MatLike:
         self.update_input_state()
         if self.is_game_window_ready:
             # 确保截图器已初始化
@@ -183,7 +195,7 @@ class PcControllerBase(ControllerBase):
         else:
             raise RuntimeError("游戏窗口未就绪")
 
-    def scroll(self, down: int, pos: Point = None):
+    def scroll(self, down: int, pos: Point | None = None):
         """
         向下滚动
         :param down: 负数时为相上滚动
@@ -194,11 +206,11 @@ class PcControllerBase(ControllerBase):
             pos = get_current_mouse_pos()
         win_pos = self.game_win.game2win_pos(pos)
         if win_pos is None:
-            log.error("滚动位置不在游戏窗口区域 (%s)", pos)
+            log.error(f"滚动位置不在游戏窗口区域 ({pos})")
             return
         win_scroll(down, win_pos)
 
-    def drag_to(self, end: Point, start: Point = None, duration: float = 0.5):
+    def drag_to(self, end: Point, start: Point | None = None, duration: float = 0.5):
         """
         按住拖拽
         :param end: 拖拽目的点
@@ -212,12 +224,12 @@ class PcControllerBase(ControllerBase):
         else:
             from_pos = self.game_win.game2win_pos(start)
             if from_pos is None:
-                log.error("拖拽起点不在游戏窗口区域 (%s)", start)
+                log.error(f"拖拽起点不在游戏窗口区域 ({start})")
                 return
 
         to_pos = self.game_win.game2win_pos(end)
         if to_pos is None:
-            log.error("拖拽终点不在游戏窗口区域 (%s)", end)
+            log.error(f"拖拽终点不在游戏窗口区域 ({end})")
             return
         drag_mouse(from_pos, to_pos, duration=duration)
 

@@ -150,6 +150,7 @@ class AutoBattleOperator(ConditionalOperator):
         if timed_out:
             log.warning(f'周期性线程未在规定时间内停止，可能仍在运行')
 
+        self._stop_event.clear()
         success = ConditionalOperator.start_running_async(self)
         if success:
             lock_f = _auto_battle_operator_executor.submit(self.operate_periodically)
