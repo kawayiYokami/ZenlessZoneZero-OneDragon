@@ -51,7 +51,7 @@ def run_sync(fn: Callable[..., T], /, *args, timeout: float | None = _DEFAULT_RU
         return f.result(timeout=timeout)
     except FutureTimeoutError as e:
         if f.done():
-            raise e
+            raise
         cancelled = f.cancel()
         log.warning(
             "OCR task timeout after %.2fs; cancel=%s running=%s done=%s future=%r",
