@@ -385,8 +385,8 @@ class OnnxOcrMatcher(OcrMatcher, ZipDownloader):
             ocr_result_list: 识别结果列表
         """
         start_time = time.time()
-        if image is None:
-            log.warning('OCR输入的图片为None')
+        if image is None or getattr(image, 'size', 0) == 0:
+            log.warning('OCR输入的图片为None或空图')
             return []
         if self._model is None and not self.init_model():
             return []
