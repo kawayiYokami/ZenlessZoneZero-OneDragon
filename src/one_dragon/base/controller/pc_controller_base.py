@@ -53,13 +53,13 @@ class PcControllerBase(ControllerBase):
         self.screenshot_method: str = screenshot_method
 
         self._input_enabled: bool = True  # 输入是否启用
-        self._last_check_input_time: float = 0  # 上次检查输入状态的时间
+        self._last_check_input_time: float = time.monotonic()  # 上次检查输入状态的时间
 
     def update_input_state(self) -> None:
         """
         更新输入状态
         """
-        now = time.time()
+        now = time.monotonic()
         if now - self._last_check_input_time < 0.5:  # 限制检查频率，避免影响性能
             return
         self._last_check_input_time = now
@@ -165,6 +165,10 @@ class PcControllerBase(ControllerBase):
         :param pc_alt: 只在PC端有用 使用ALT键进行点击
         :return: 不在窗口区域时不点击 返回False
         """
+        self.update_input_state()
+        if not self._input_enabled:
+            return False
+
         click_pos: Point
         if pos is not None:
             click_pos: Point = self.game_win.game2win_pos(pos)
@@ -195,13 +199,17 @@ class PcControllerBase(ControllerBase):
         else:
             raise RuntimeError("游戏窗口未就绪")
 
-    def scroll(self, down: int, pos: Point | None = None):
+    def scroll(self, down: int, pos: Point | None = None) -> None:
         """
         向下滚动
         :param down: 负数时为相上滚动
         :param pos: 滚动位置 默认分辨率下的游戏窗口里的坐标
         :return:
         """
+        self.update_input_state()
+        if not self._input_enabled:
+            return
+
         if pos is None:
             pos = get_current_mouse_pos()
         win_pos = self.game_win.game2win_pos(pos)
@@ -210,7 +218,7 @@ class PcControllerBase(ControllerBase):
             return
         win_scroll(down, win_pos)
 
-    def drag_to(self, end: Point, start: Point | None = None, duration: float = 0.5):
+    def drag_to(self, end: Point, start: Point | None = None, duration: float = 0.5) -> None:
         """
         按住拖拽
         :param end: 拖拽目的点
@@ -218,6 +226,10 @@ class PcControllerBase(ControllerBase):
         :param duration: 拖拽持续时间
         :return:
         """
+        self.update_input_state()
+        if not self._input_enabled:
+            return
+
         from_pos: Point
         if start is None:
             from_pos = get_current_mouse_pos()

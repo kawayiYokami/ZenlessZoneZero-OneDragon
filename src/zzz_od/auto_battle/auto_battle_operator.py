@@ -148,7 +148,8 @@ class AutoBattleOperator(ConditionalOperator):
             time.sleep(0.1)
 
         if timed_out:
-            log.warning(f'周期性线程未在规定时间内停止，可能仍在运行')
+            log.warning('周期性线程未在规定时间内停止，取消本次启动')
+            return False
 
         self._stop_event.clear()
         success = ConditionalOperator.start_running_async(self)
@@ -169,9 +170,9 @@ class AutoBattleOperator(ConditionalOperator):
         if self.auto_lock_interval <= 0 and self.auto_turn_interval <= 0:  # 不开启自动锁定 和 自动转向
             return
         self._periodic_thread_running = True
-        lock_op = AtomicBtnLock(self.ctx)
-        turn_op = AtomicTurn(self.ctx, 100)
         try:
+            lock_op = AtomicBtnLock(self.ctx)
+            turn_op = AtomicTurn(self.ctx, 100)
             while self.is_running:
                 now = time.time()
 
