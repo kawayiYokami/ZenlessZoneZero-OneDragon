@@ -54,6 +54,7 @@ class PcControllerBase(ControllerBase):
 
         self._input_enabled: bool = True  # 输入是否启用
         self._last_check_input_time: float = time.monotonic()  # 上次检查输入状态的时间
+        self._ctx = None  # 上下文对象，由子类或外部注入
 
     def update_input_state(self) -> None:
         """
