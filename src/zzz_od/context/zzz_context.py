@@ -150,12 +150,18 @@ class ZContext(OneDragonContext):
             return
         try:
             from zzz_od.mcp.mcp_service import GuiMcpService
-            self._mcp_service = GuiMcpService(self)
-            self._mcp_service.start()
+            svc = GuiMcpService(self)
+            svc.start()
+            self._mcp_service = svc
         except Exception:
             from one_dragon.utils.log_utils import log
-            log.error('MCP服务启动失败，将继续初始化主程序', exc_info=True)
+            if 'svc' in locals():
+                try:
+                    svc.stop()
+                except Exception:
+                    log.error('MCP服务清理失败', exc_info=True)
             self._mcp_service = None
+            log.error('MCP服务启动失败，将继续初始化主程序', exc_info=True)
 
     def _stop_mcp_service(self) -> None:
         if self._mcp_service is None:
@@ -166,8 +172,13 @@ class ZContext(OneDragonContext):
         except Exception:
             from one_dragon.utils.log_utils import log
             log.error('停止自动战斗失败', exc_info=True)
-        self._mcp_service.stop()
-        self._mcp_service = None
+        try:
+            self._mcp_service.stop()
+        except Exception:
+            from one_dragon.utils.log_utils import log
+            log.error('MCP服务停止失败', exc_info=True)
+        finally:
+            self._mcp_service = None
 
     def start_mcp_service(self) -> None:
         self._start_mcp_service()
