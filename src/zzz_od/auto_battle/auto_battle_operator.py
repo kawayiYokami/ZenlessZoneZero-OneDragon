@@ -114,8 +114,8 @@ class AutoBattleOperator(ConditionalOperator):
             ConditionalOperator.init(self)
             log.info(f'自动战斗配置加载成功 {self.get_template_name()}')
             return True, ''
-        except Exception as e:
-            log.error('自动战斗初始化失败 共享配队文件请在群内提醒对应作者修复', exc_info=True)
+        except Exception:
+            log.error('自动战斗初始化失败 如果是共享配队文件请在群内提醒对应作者修复', exc_info=True)
             return False, '初始化失败'
 
     def get_atomic_op(self, op_def: OperationDef) -> AtomicOp:
@@ -138,10 +138,10 @@ class AutoBattleOperator(ConditionalOperator):
         ConditionalOperator.dispose(self)
 
     def start_running_async(self) -> bool:
-        self._periodic_generation += 1
-        self._stop_event.clear()
         success = ConditionalOperator.start_running_async(self)
         if success:
+            self._periodic_generation += 1
+            self._stop_event.clear()
             gen = self._periodic_generation
             lock_f = _auto_battle_operator_executor.submit(self.operate_periodically, gen)
             lock_f.add_done_callback(thread_utils.handle_future_result)

@@ -31,14 +31,14 @@ class KeyboardMouseController(PcButtonController):
         :param press_time: 持续按键时间
         :return:
         """
-        if press_time is None:
-            self._pressed_keys.add(key)
         is_mouse = pc_button_utils.is_mouse_button(key)
         real_key = pc_button_utils.get_mouse_button(key) if is_mouse else pc_button_utils.get_keyboard_button(key)
         if is_mouse:
             self.mouse.press(real_key)
         else:
             self.keyboard.press(real_key)
+        if press_time is None:
+            self._pressed_keys.add(key)
 
         if press_time is not None:
             time.sleep(press_time)
