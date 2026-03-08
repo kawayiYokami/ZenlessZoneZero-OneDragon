@@ -117,7 +117,7 @@ class InventoryScanInterface(AppRunInterface):
 
     def _on_analyze_clicked(self):
         """打开分析网站"""
-        webbrowser.open('https://zzzop.netlify.app/')
+        webbrowser.open('http://zzz.233618.xyz/')
 
     def on_interface_shown(self) -> None:
         AppRunInterface.on_interface_shown(self)
