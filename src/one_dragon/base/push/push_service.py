@@ -255,8 +255,8 @@ class PushService:
 
         return None
 
-    def shutdown(self) -> None:
+    def after_app_shutdown(self) -> None:
         """
-        关闭
+        整个脚本运行结束后的清理
         """
         self._executor.shutdown(wait=False, cancel_futures=True)

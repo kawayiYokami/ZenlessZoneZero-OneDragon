@@ -415,5 +415,5 @@ class OneDragonContext(ContextEventBus, OneDragonEnvContext):
         PcButtonListener.after_app_shutdown()
         from one_dragon.base.operation.application_base import Application
         Application.after_app_shutdown()
-        self.push_service.shutdown()
-        self.run_context.shutdown()
+        self.push_service.after_app_shutdown()
+        self.run_context.after_app_shutdown()
