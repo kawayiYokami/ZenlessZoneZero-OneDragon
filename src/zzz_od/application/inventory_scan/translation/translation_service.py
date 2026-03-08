@@ -6,8 +6,6 @@ from one_dragon.utils import os_utils
 from one_dragon.utils.log_utils import log
 import difflib
 
-from .translation_updater import TranslationUpdater
-
 
 class TranslationService:
     """翻译服务"""
@@ -34,16 +32,7 @@ class TranslationService:
             '昇常掌控': '异常掌控',  # 错别字修复
         }
 
-        self._check_update()
         self._load_dict()
-
-    def _check_update(self):
-        """检查并更新翻译字典"""
-        try:
-            updater = TranslationUpdater()
-            updater.update_if_needed()
-        except Exception as e:
-            log.error(f"检查翻译更新失败: {e}")
 
     def _load_dict(self):
         """加载翻译字典"""
