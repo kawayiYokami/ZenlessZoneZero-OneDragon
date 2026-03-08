@@ -79,7 +79,7 @@ class AutoBattleOperator(ConditionalOperator):
 
         # 停止事件
         self._stop_event = Event()
-        self._periodic_thread_running: bool = False  # 周期性线程是否正在运行
+        self._periodic_generation: int = 0  # 会话代际计数器
 
     def load_other_info(self, data: dict[str, Any]) -> None:
         """
@@ -138,28 +138,17 @@ class AutoBattleOperator(ConditionalOperator):
         ConditionalOperator.dispose(self)
 
     def start_running_async(self) -> bool:
-        # 等待旧线程退出
-        end_time = time.time() + 2
-        timed_out = False
-        while self._periodic_thread_running:
-            if time.time() > end_time:
-                timed_out = True
-                break
-            time.sleep(0.1)
-
-        if timed_out:
-            log.warning('周期性线程未在规定时间内停止，取消本次启动')
-            return False
-
+        self._periodic_generation += 1
         self._stop_event.clear()
         success = ConditionalOperator.start_running_async(self)
         if success:
-            lock_f = _auto_battle_operator_executor.submit(self.operate_periodically)
+            gen = self._periodic_generation
+            lock_f = _auto_battle_operator_executor.submit(self.operate_periodically, gen)
             lock_f.add_done_callback(thread_utils.handle_future_result)
 
         return success
 
-    def operate_periodically(self) -> None:
+    def operate_periodically(self, generation: int) -> None:
         """
         周期性完成动作
 
@@ -169,11 +158,10 @@ class AutoBattleOperator(ConditionalOperator):
         """
         if self.auto_lock_interval <= 0 and self.auto_turn_interval <= 0:  # 不开启自动锁定 和 自动转向
             return
-        self._periodic_thread_running = True
         try:
             lock_op = AtomicBtnLock(self.ctx)
             turn_op = AtomicTurn(self.ctx, 100)
-            while self.is_running:
+            while self.is_running and self._periodic_generation == generation:
                 now = time.time()
 
                 if not self.ctx.last_check_in_battle:  # 当前画面不是战斗画面 就不运行了
@@ -200,27 +188,13 @@ class AutoBattleOperator(ConditionalOperator):
                         break
         except Exception:
             log.error('自动转向线程异常', exc_info=True)
-        finally:
-            self._periodic_thread_running = False
 
     def stop_running(self) -> None:
         """
         停止执行
         """
         self._stop_event.set()
-        super().stop_running()
-
-        # 等待线程退出
-        end_time = time.time() + 2
-        timed_out = False
-        while self._periodic_thread_running:
-            if time.time() > end_time:
-                timed_out = True
-                break
-            time.sleep(0.05)
-
-        if timed_out:
-            log.warning(f'周期性线程未在规定时间内停止，可能仍在运行')
+        ConditionalOperator.stop_running(self)
 
     @staticmethod
     def after_app_shutdown() -> None:
