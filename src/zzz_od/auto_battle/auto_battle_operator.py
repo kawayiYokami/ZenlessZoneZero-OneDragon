@@ -158,36 +158,33 @@ class AutoBattleOperator(ConditionalOperator):
         """
         if self.auto_lock_interval <= 0 and self.auto_turn_interval <= 0:  # 不开启自动锁定 和 自动转向
             return
-        try:
-            lock_op = AtomicBtnLock(self.ctx)
-            turn_op = AtomicTurn(self.ctx, 100)
-            while self.is_running and self._periodic_generation == generation:
-                now = time.time()
+        lock_op = AtomicBtnLock(self.ctx)
+        turn_op = AtomicTurn(self.ctx, 100)
+        while self.is_running and self._periodic_generation == generation:
+            now = time.time()
 
-                if not self.ctx.last_check_in_battle:  # 当前画面不是战斗画面 就不运行了
-                    if self._stop_event.wait(timeout=0.2):
-                        break
-                    continue
-
-                any_done: bool = False
-                if not self.is_running:
+            if not self.ctx.last_check_in_battle:  # 当前画面不是战斗画面 就不运行了
+                if self._stop_event.wait(timeout=0.2):
                     break
-                if self.auto_lock_interval > 0 and now - self.last_lock_time > self.auto_lock_interval:
-                    lock_op.execute()
-                    self.last_lock_time = now
-                    any_done = True
-                if not self.is_running:
-                    break
-                if self.auto_turn_interval > 0 and now - self.last_turn_time > self.auto_turn_interval:
-                    turn_op.execute()
-                    self.last_turn_time = now
-                    any_done = True
+                continue
 
-                if not any_done:
-                    if self._stop_event.wait(timeout=0.2):
-                        break
-        except Exception:
-            log.error('自动转向线程异常', exc_info=True)
+            any_done: bool = False
+            if not self.is_running:
+                break
+            if self.auto_lock_interval > 0 and now - self.last_lock_time > self.auto_lock_interval:
+                lock_op.execute()
+                self.last_lock_time = now
+                any_done = True
+            if not self.is_running:
+                break
+            if self.auto_turn_interval > 0 and now - self.last_turn_time > self.auto_turn_interval:
+                turn_op.execute()
+                self.last_turn_time = now
+                any_done = True
+
+            if not any_done:
+                if self._stop_event.wait(timeout=0.2):
+                    break
 
     def stop_running(self) -> None:
         """
