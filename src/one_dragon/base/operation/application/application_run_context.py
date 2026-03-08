@@ -398,13 +398,13 @@ class ApplicationRunContext:
         while not self.ctx.ready_for_application:
             now = time.time()
             if now - start_time >= init_timeout:
-                log.error("等待应用 {} 初始化超时", app_id)
+                log.error("等待应用 %s 初始化超时", app_id)
                 return False
 
             time.sleep(1)
 
         if not self.is_app_registered(app_id):
-            log.error("应用 {} 未注册", app_id)
+            log.error("应用 %s 未注册", app_id)
             return False
 
         if not self.start_running():
@@ -412,7 +412,7 @@ class ApplicationRunContext:
 
         app = self.get_application(app_id, instance_idx, group_id)
         if app is None:
-            log.error("应用 {} 未注册", app_id)
+            log.error("应用 %s 未注册", app_id)
             return False
 
         try:
@@ -423,7 +423,7 @@ class ApplicationRunContext:
 
             op_result = app.execute()
         except Exception:
-            log.error("运行应用 {} 失败", app_id)
+            log.error("运行应用 %s 失败", app_id)
         finally:
             self.stop_running()
             self.current_app_id = None
