@@ -1,7 +1,7 @@
 import json
 import os
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, Optional
 from urllib.error import HTTPError, URLError
 
@@ -109,9 +109,6 @@ class TranslationUpdater:
             self._save_dict(translation_dict)
             log.info(f"翻译字典已保存到: {self.dict_path}")
             
-            # 下载图标（翻译更新完成后自动下载）
-            self._download_icons()
-            
             return True
 
         except Exception as e:
@@ -150,18 +147,6 @@ class TranslationUpdater:
         # 保存完整JSON数据
         with open(self.dict_path, 'w', encoding='utf-8') as f:
             json.dump(translation_dict, f, ensure_ascii=False, indent=2)
-
-    def _download_icons(self):
-        """下载图标（翻译更新完成后自动下载）"""
-        try:
-            log.info("开始下载图标...")
-            from .icon_downloader import IconDownloader
-            downloader = IconDownloader()
-            # 强制下载图标（跳过时间检查）
-            downloader.download_all()
-        except Exception as e:
-            log.error(f"下载图标失败: {e}")
-
 
 def __debug():
     """测试更新"""

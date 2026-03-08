@@ -9,7 +9,7 @@ from one_dragon.utils.log_utils import log
 
 
 class IconDownloader:
-    """游戏图标下载器"""
+    """游戏图标下载器（已废弃，不再自动更新）"""
 
     BASE_URL = "https://api.hakush.in/zzz/UI/"
     
@@ -53,20 +53,9 @@ class IconDownloader:
         )
 
     def download_if_needed(self) -> bool:
-        """检测并下载图标（每次都检测缺失的图标）"""
-        log.info(f"检查是否需要下载图标...")
-        
-        # 离线模式
-        if os.environ.get('OD_OFFLINE', '').strip() == '1':
-            log.info("离线模式，跳过图标下载")
-            return False
-        # 同一次运行中如果已经失败过，就不再尝试
-        if IconDownloader._failed_this_run:
-            log.info("本次运行已失败过，跳过图标下载")
-            return False
-        
-        # 直接下载，_download_file 会跳过已存在的文件
-        return self.download_all()
+        """已废弃：保留接口兼容，始终不下载。"""
+        log.info("头像素材自动更新已废弃，跳过图标下载")
+        return False
 
     def _should_update(self) -> bool:
         """检查是否需要更新（每周一次）"""
@@ -98,28 +87,9 @@ class IconDownloader:
             return True
 
     def download_all(self) -> bool:
-        """下载所有图标"""
-        try:
-            # 确保目录存在
-            os.makedirs(self.icons_dir, exist_ok=True)
-            
-            # 1. 下载静态图标
-            log.info("开始下载静态图标...")
-            static_count = self._download_static_icons()
-            log.info(f"静态图标下载完成，共 {static_count} 个")
-            
-            # 2. 下载角色图标
-            log.info("开始下载角色图标...")
-            char_count = self._download_character_icons()
-            log.info(f"角色图标下载完成，共 {char_count} 个")
-            
-            log.info(f"图标下载完成，保存到: {self.icons_dir}")
-            return True
-            
-        except Exception as e:
-            log.error(f"图标下载失败: {e}")
-            IconDownloader._failed_this_run = True
-            return False
+        """已废弃：保留接口兼容，始终不下载。"""
+        log.info("头像素材自动更新已废弃，跳过图标下载")
+        return False
 
     def _download_static_icons(self) -> int:
         """下载静态图标"""
