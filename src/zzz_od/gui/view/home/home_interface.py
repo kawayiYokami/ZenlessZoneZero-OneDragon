@@ -3,9 +3,10 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
+
 import requests
 from PySide6.QtCore import QSize, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics
+from PySide6.QtGui import QColor, QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -28,9 +29,9 @@ from one_dragon_qt.services.styles_manager import OdQtStyleSheet
 from one_dragon_qt.services.theme_manager import ThemeManager
 from one_dragon_qt.utils.color_utils import ColorUtils
 from one_dragon_qt.widgets.banner import Banner
+from one_dragon_qt.widgets.base_interface import BaseInterface
 from one_dragon_qt.widgets.icon_button import IconButton
 from one_dragon_qt.widgets.notice_card import NoticeCard
-from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
 from zzz_od.context.zzz_context import ZContext
 
 
@@ -437,15 +438,37 @@ class BackgroundImageDownloader(BaseThread):
 
         return True
 
-class HomeInterface(VerticalScrollInterface):
+class HomeInterface(BaseInterface):
     """主页界面"""
 
     def __init__(self, ctx: ZContext, parent=None):
+        # 初始化父类
+        BaseInterface.__init__(
+            self,
+            object_name="home_interface",
+            nav_text_cn="仪表盘",
+            nav_icon=FluentIcon.HOME,
+            parent=parent,
+        )
         self.ctx: ZContext = ctx
         self.main_window = parent
 
+        # 监听背景刷新信号，确保主题色在背景变化时更新
+        self._last_reload_banner_signal = False
+
+        # 记录上次自动检查更新的时间
+        self._last_auto_check_time = 0
+        self._auto_check_interval = 300  # 5分钟冷却时间
+
+        self._init_check_runners()
+        self._init_ui()
+
+    def _init_ui(self) -> None:
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
         self._banner_widget = Banner(self.choose_banner_media())
-        self._banner_widget.set_percentage_size(0.8, 0.5)
+        main_layout.addWidget(self._banner_widget)
 
         v_layout = QVBoxLayout(self._banner_widget)
         # 边缘距离由子布局控制，避免与子布局叠加导致超过 16px
@@ -471,7 +494,7 @@ class HomeInterface(VerticalScrollInterface):
         h2_layout.addStretch()
 
         # 启动游戏按钮布局
-        self.start_button = PillPushButton(FluentIcon.PLAY_SOLID, f'启动一条龙 ({self.ctx.key_start_running.upper()})')
+        self.start_button = PillPushButton(FluentIcon.PLAY_SOLID, '启动一条龙')
         self.start_button.setObjectName("start_button")
         self.start_button.setFont(QFont("Microsoft YaHei", 16, QFont.Weight.Bold))
         self.start_button.setFixedHeight(48)
@@ -502,26 +525,7 @@ class HomeInterface(VerticalScrollInterface):
         # 将底部容器添加到主垂直布局
         v_layout.addWidget(bottom_bar)
 
-        # 初始化父类
-        super().__init__(
-            parent=parent,
-            content_widget=self._banner_widget,
-            object_name="home_interface",
-            nav_text_cn="仪表盘",
-            nav_icon=FluentIcon.HOME,
-        )
-
         QTimer.singleShot(0, self._update_start_button_style_from_banner)
-
-        self.ctx = ctx
-        self._init_check_runners()
-
-        # 监听背景刷新信号，确保主题色在背景变化时更新
-        self._last_reload_banner_signal = False
-
-        # 记录上次自动检查更新的时间
-        self._last_auto_check_time = 0
-        self._auto_check_interval = 300  # 5分钟冷却时间
 
         # 启动阶段有可能被全局样式再次覆盖，做一次延迟兜底
         QTimer.singleShot(0, self._ensure_home_title_bar_style)
@@ -633,15 +637,6 @@ class HomeInterface(VerticalScrollInterface):
     def on_interface_shown(self) -> None:
         """界面显示时启动检查更新的线程"""
         super().on_interface_shown()
-
-        # 更新按钮文本（显示快捷键）
-        self._update_button_text()
-
-        # 仅首页去除 VerticalScrollInterface 根布局默认边距，避免背景四周留白
-        layout = self.layout()
-        if layout is not None:
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(0)
 
         if self._banner_widget:
             self._banner_widget.resume_media()
@@ -756,11 +751,6 @@ class HomeInterface(VerticalScrollInterface):
         self.start_button.setIcon(self._black_icon)
         # 调用父类的 leaveEvent
         PillPushButton.leaveEvent(self.start_button, event)
-
-    def _update_button_text(self) -> None:
-        """更新启动按钮文本（显示快捷键）"""
-        if hasattr(self, 'start_button'):
-            self.start_button.setText(f'启动一条龙 ({self.ctx.key_start_running.upper()})')
 
     def reload_banner(self, show_notification: bool = False) -> None:
         """
