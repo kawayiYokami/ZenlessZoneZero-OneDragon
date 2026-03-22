@@ -106,6 +106,14 @@ class ApplicationRunContext:
             if default_group:
                 self.default_group_apps.append(factory.app_id)
 
+    def clear_applications(self) -> None:
+        """清空所有已注册的应用工厂
+
+        在刷新应用注册前调用，清空现有的注册信息。
+        """
+        self._application_factory_map.clear()
+        self.default_group_apps.clear()
+
     @property
     def notify_app_map(self) -> dict[str, str]:
         """返回需要通知的应用字典: {app_id: app_name}。
@@ -464,3 +472,15 @@ class ApplicationRunContext:
             except Exception:
                 # 部分应用没有运行记录 跳过即可
                 pass
+
+    def after_app_shutdown(self) -> None:
+        """
+        整个脚本运行结束后的清理
+
+        关闭应用运行上下文，包括停止当前运行任务、清除运行状态。
+        """
+        # 首先停止当前运行的应用，清除运行状态
+        self.stop_running()
+
+        # 关闭执行器
+        self._executor.shutdown(wait=False, cancel_futures=True)

@@ -272,8 +272,10 @@ class AgentEnum(Enum):
     CAESAR_KING = Agent('caesar_king', '凯撒', RareTypeEnum.S, AgentTypeEnum.DEFENSE, DmgTypeEnum.PHYSICAL, ['caesar_king'])
 
     BURNICE_WHITE = Agent('burnice_white', '柏妮思', RareTypeEnum.S, AgentTypeEnum.ANOMALY, DmgTypeEnum.FIRE, ['burnice_white'],
-                          state_list=[AgentStateDef('柏妮思-燃点', AgentStateCheckWay.BACKGROUND_GRAY_RANGE_LENGTH,
-                                                    'burnice_white',  lower_color=0, upper_color=70)
+                          state_list=[AgentStateDef('柏妮思-燃点', AgentStateCheckWay.FOREGROUND_COLOR_RANGE_LENGTH,
+                                                    template_id='burnice_white',
+                                                    hsv_color=(0, 255, 255), hsv_color_diff=(90, 200, 100),
+                                                    max_length=100)
                                       ])
 
     YANAGI = Agent('yanagi', '柳', RareTypeEnum.S, AgentTypeEnum.ANOMALY, DmgTypeEnum.ELECTRIC, ['yanagi'])
@@ -339,7 +341,8 @@ class AgentEnum(Enum):
                                      max_length=120)
                    ])
 
-    PANYINHU = Agent('panyinhu', '潘引壶', RareTypeEnum.A, AgentTypeEnum.DEFENSE, DmgTypeEnum.PHYSICAL, ['panyinhu'])
+    PANYINHU = Agent('panyinhu', '潘引壶', RareTypeEnum.A, AgentTypeEnum.DEFENSE, DmgTypeEnum.PHYSICAL,
+                     ['panyinhu', 'panyinhu_culinary_jewel'])
 
     JU_FUFU = Agent('ju_fufu', '橘福福', RareTypeEnum.S, AgentTypeEnum.STUN, DmgTypeEnum.FIRE, ['ju_fufu'],
                     state_list=[
@@ -442,7 +445,7 @@ class AgentEnum(Enum):
         RareTypeEnum.S,
         AgentTypeEnum.SUPPORT,
         DmgTypeEnum.PHYSICAL,
-        ["sunna"],
+        ["sunna", "sunna_afternoon_tea_break"],
     )
 
     YESHUNGUANG = Agent(
@@ -479,3 +482,9 @@ class AgentEnum(Enum):
             ),
         ],
     )
+
+    ARIA = Agent('aria', '爱芮', RareTypeEnum.S, AgentTypeEnum.ANOMALY, DmgTypeEnum.ETHER, ['aria', 'aria_discordant_note'],
+                 state_list=[AgentStateDef('爱芮-应援能量', AgentStateCheckWay.COLOR_RANGE_CONNECT,
+                                           template_id='aria_cheer_energy',
+                                           hsv_color=(90, 255, 255), hsv_color_diff=(90, 200, 100),
+                                           connect_cnt=2)])

@@ -1,26 +1,28 @@
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget
-from qfluentwidgets import FluentIcon, CaptionLabel, LineEdit
-from typing import List, Optional
+from qfluentwidgets import CaptionLabel, FluentIcon, LineEdit, ToolButton
 
 from one_dragon.base.config.config_item import ConfigItem
-from one_dragon.base.operation.application import application_const
 from one_dragon.utils.i18_utils import gt
-from one_dragon_qt.widgets.column import Column
 from one_dragon_qt.widgets.combo_box import ComboBox
-from one_dragon_qt.widgets.setting_card.multi_push_setting_card import MultiLineSettingCard
-from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
-from zzz_od.application.battle_assistant.auto_battle_config import get_auto_battle_op_config_list
+from one_dragon_qt.widgets.draggable_list import DraggableListItem
+from one_dragon_qt.widgets.setting_card.multi_push_setting_card import (
+    MultiLineSettingCard,
+)
+from zzz_od.application.battle_assistant.auto_battle_config import (
+    get_auto_battle_op_config_list,
+)
 from zzz_od.application.charge_plan.charge_plan_config import ChargePlanItem
-from zzz_od.application.notorious_hunt import notorious_hunt_const
-from zzz_od.application.notorious_hunt.notorious_hunt_config import NotoriousHuntLevelEnum, NotoriousHuntBuffEnum, \
-    NotoriousHuntConfig
+from zzz_od.application.notorious_hunt.notorious_hunt_config import (
+    NotoriousHuntBuffEnum,
+    NotoriousHuntLevelEnum,
+)
 from zzz_od.context.zzz_context import ZContext
 
 
-class ChargePlanCard(MultiLineSettingCard):
+class NotoriousHuntCard(DraggableListItem):
 
     changed = Signal(int, ChargePlanItem)
+    move_top = Signal(int)
 
     def __init__(self, ctx: ZContext,
                  idx: int, plan: ChargePlanItem):
@@ -52,8 +54,10 @@ class ChargePlanCard(MultiLineSettingCard):
         self.plan_times_input = LineEdit()
         self.plan_times_input.textChanged.connect(self._on_plan_times_changed)
 
-        MultiLineSettingCard.__init__(
-            self,
+        self.move_top_btn = ToolButton(FluentIcon.PIN, None)
+        self.move_top_btn.clicked.connect(self._on_move_top_clicked)
+
+        content_widget = MultiLineSettingCard(
             icon=FluentIcon.CALENDAR,
             title='',
             line_list=[
@@ -69,9 +73,26 @@ class ChargePlanCard(MultiLineSettingCard):
                     self.run_times_input,
                     plan_times_label,
                     self.plan_times_input,
+                    self.move_top_btn,
                 ]
             ]
         )
+
+        DraggableListItem.__init__(
+            self,
+            data=plan,
+            index=idx,
+            content_widget=content_widget
+        )
+
+        self.init_with_plan(plan)
+
+    def after_update_item(self) -> None:
+        self.idx = self.index
+        self.init_with_plan(self.data)
+
+    def _on_move_top_clicked(self) -> None:
+        self.move_top.emit(self.idx)
 
     def init_with_plan(self, plan: ChargePlanItem) -> None:
         """
@@ -160,63 +181,3 @@ class ChargePlanCard(MultiLineSettingCard):
 
     def _emit_value(self) -> None:
         self.changed.emit(self.idx, self.plan)
-
-
-class NotoriousHuntPlanInterface(VerticalScrollInterface):
-
-    def __init__(self, ctx: ZContext, parent=None):
-        self.ctx: ZContext = ctx
-
-        VerticalScrollInterface.__init__(
-            self,
-            object_name='zzz_notorious_hunt_plan_interface',
-            content_widget=None, parent=parent,
-            nav_text_cn='恶名狩猎计划'
-        )
-
-        self.config: Optional[NotoriousHuntConfig] = None
-
-    def get_content_widget(self) -> QWidget:
-        self.content_widget = Column()
-
-        self.card_list: List[ChargePlanCard] = []
-        self.last_empty_widget: QWidget = QWidget()
-
-        return self.content_widget
-
-    def update_plan_list_display(self):
-        plan_list = self.config.plan_list
-
-        if len(plan_list) > len(self.card_list):
-            self.content_widget.remove_widget(self.last_empty_widget)
-
-            while len(self.card_list) < len(plan_list):
-                idx = len(self.card_list)
-                card = ChargePlanCard(self.ctx, idx, self.config.plan_list[idx])
-                card.changed.connect(self._on_plan_item_changed)
-
-                self.card_list.append(card)
-                self.content_widget.add_widget(card)
-
-            self.content_widget.add_widget(self.last_empty_widget, stretch=1)
-
-        for idx, plan in enumerate(plan_list):
-            card = self.card_list[idx]
-            card.init_with_plan(plan)
-
-    def on_interface_shown(self) -> None:
-        VerticalScrollInterface.on_interface_shown(self)
-
-        self.config = self.ctx.run_context.get_config(
-            app_id=notorious_hunt_const.APP_ID,
-            instance_idx=self.ctx.current_instance_idx,
-            group_id=application_const.DEFAULT_GROUP_ID,
-        )
-
-        self.update_plan_list_display()
-
-    def on_interface_hidden(self) -> None:
-        VerticalScrollInterface.on_interface_hidden(self)
-
-    def _on_plan_item_changed(self, idx: int, plan: ChargePlanItem) -> None:
-        self.config.update_plan(idx, plan)

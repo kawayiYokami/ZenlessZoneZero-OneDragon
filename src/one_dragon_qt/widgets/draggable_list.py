@@ -186,6 +186,22 @@ class DraggableListItem(QWidget):
         )
         layout.addWidget(self.content_widget)
 
+    def update_item(self, data: Any, index: int) -> None:
+        """
+        更新列表项关联的数据和索引
+        :param data: 关联的数据
+        :param index: 列表项的索引
+        """
+        self.data = data
+        self.index = index
+        self.after_update_item()
+
+    def after_update_item(self) -> None:
+        """
+        更新后的钩子函数，子类可以重写以实现特定逻辑
+        """
+        pass
+
     def _ensure_opacity_effect(self) -> None:
         """
         确保 QGraphicsOpacityEffect 已创建（延迟创建）
@@ -377,7 +393,7 @@ class DraggableList(QWidget):
         # 创建主布局
         self._layout = QVBoxLayout(self)
         self._layout.setSpacing(FluentDesignConst.LAYOUT_SPACING)
-        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setContentsMargins(0, 0, 16, 16)  # 右边距16适配滚动条，底部边距16留出空间
 
         # 创建 Fluent Design 风格的位置指示器
         self._drop_indicator = FluentDropIndicator(self)

@@ -1,6 +1,7 @@
 # 开发过程产生的临时文件
 build/
 dist/
+zzz-od-test/
 .idea/
 .vscode/
 __pycache__/
@@ -23,6 +24,7 @@ config/game.yml
 config/dodge_assistant.yml
 config/zzz_one_dragon.yml
 config/one_dragon.yml
+config/pip.yml
 config/push.yml
 config/redemption_codes.yml
 config/[0-9]*/
@@ -59,8 +61,13 @@ config/world_patrol_route_list/*
 .debug/
 .conda/
 .venv/
+.runtime/
 notice_cache/
 *.bak
+
+# 第三方插件目录
+plugins/*
+!plugins/README.md
 
 # 需自行下载的模型文件
 models/
