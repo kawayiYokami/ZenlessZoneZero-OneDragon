@@ -488,7 +488,7 @@ class HomeInterface(BaseInterface):
 
         # 公告卡片
         self.notice_container = NoticeCard(self.ctx.project_config.notice_url)
-        self._apply_shadow(self.notice_container, blur=28, offset_y=8, alpha=150)
+        self._apply_shadow(self.notice_container, blur=28, offset_x=0, offset_y=8, alpha=150)
         h2_layout.addWidget(self.notice_container, alignment=Qt.AlignmentFlag.AlignBottom)
 
         h2_layout.addStretch()
@@ -500,7 +500,7 @@ class HomeInterface(BaseInterface):
         self.start_button.setFixedHeight(48)
         self.start_button.setMinimumWidth(int(self.start_button.sizeHint().width() * 1.1))  # 加宽10%
         self.start_button.clicked.connect(self._on_start_game)
-        self._apply_shadow(self.start_button, blur=24, offset_y=6, alpha=140)
+        self._apply_shadow(self.start_button, blur=24, offset_x=0, offset_y=6, alpha=140)
 
         # 设置图标和文本之间的间距
         if self.start_button.layout():
@@ -520,6 +520,7 @@ class HomeInterface(BaseInterface):
         # 按钮组
         self.button_group = ButtonGroup(self.ctx)
         self.button_group.setMaximumHeight(320)
+        self._apply_button_group_shadows()
         h2_layout.addWidget(self.button_group, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         # 将底部容器添加到主垂直布局
@@ -531,13 +532,55 @@ class HomeInterface(BaseInterface):
         QTimer.singleShot(0, self._ensure_home_title_bar_style)
         QTimer.singleShot(200, self._ensure_home_title_bar_style)
 
-    def _apply_shadow(self, widget: QWidget, blur: int, offset_y: int, alpha: int) -> None:
+    def _apply_shadow(self, widget: QWidget, blur: int, offset_x: int, offset_y: int, alpha: int) -> None:
         """为首页关键控件添加阴影，不影响其他页面样式。"""
         shadow = QGraphicsDropShadowEffect(widget)
         shadow.setBlurRadius(blur)
-        shadow.setOffset(0, offset_y)
+        shadow.setOffset(offset_x, offset_y)
         shadow.setColor(QColor(0, 0, 0, alpha))
         widget.setGraphicsEffect(shadow)
+
+    def _clear_shadow(self, widget: QWidget) -> None:
+        """移除控件阴影，避免离开首页后误伤其他页面。"""
+        widget.setGraphicsEffect(None)
+
+    def _apply_button_group_shadows(self) -> None:
+        """给首页右侧悬浮图标加硬阴影，增强在复杂背景上的辨识度。"""
+        for button in self.button_group.buttons:
+            self._apply_shadow(button, blur=5, offset_x=0, offset_y=0, alpha=255)
+
+    def _apply_title_bar_shadows(self) -> None:
+        """给首页标题栏的文字和按钮补硬阴影，提升海报背景上的可读性。"""
+        if not self.main_window or not hasattr(self.main_window, "titleBar"):
+            return
+
+        title_bar = self.main_window.titleBar
+        shadow_targets = [title_bar.titleLabel]
+        shadow_targets.extend(title_bar.findChildren(QWidget))
+
+        seen = set()
+        for widget in shadow_targets:
+            if widget is title_bar or widget in seen:
+                continue
+            seen.add(widget)
+            if widget.objectName() in {"titleLabel", "launcherVersionButton", "codeVersionButton", "questionButton"}:
+                self._apply_shadow(widget, blur=5, offset_x=1, offset_y=1, alpha=255)
+            elif widget.__class__.__name__ in {"MinimizeButton", "MaximizeButton", "CloseButton"}:
+                self._apply_shadow(widget, blur=5, offset_x=1, offset_y=1, alpha=255)
+
+    def _clear_title_bar_shadows(self) -> None:
+        """离开首页时清理标题栏阴影。"""
+        if not self.main_window or not hasattr(self.main_window, "titleBar"):
+            return
+
+        title_bar = self.main_window.titleBar
+        for widget in [title_bar.titleLabel, *title_bar.findChildren(QWidget)]:
+            if widget is title_bar:
+                continue
+            if widget.objectName() in {"titleLabel", "launcherVersionButton", "codeVersionButton", "questionButton"}:
+                self._clear_shadow(widget)
+            elif widget.__class__.__name__ in {"MinimizeButton", "MaximizeButton", "CloseButton"}:
+                self._clear_shadow(widget)
 
     def _init_check_runners(self):
         """初始化检查更新的线程"""
@@ -893,6 +936,7 @@ class HomeInterface(BaseInterface):
             }
             """
         )
+        self._apply_title_bar_shadows()
         title_bar.update()
 
     def _ensure_home_title_bar_style(self) -> None:
@@ -908,6 +952,7 @@ class HomeInterface(BaseInterface):
         if not self.main_window or not hasattr(self.main_window, "titleBar"):
             return
 
+        self._clear_title_bar_shadows()
         OdQtStyleSheet.TITLE_BAR.apply(self.main_window.titleBar)
         self.main_window.titleBar.update()
 
