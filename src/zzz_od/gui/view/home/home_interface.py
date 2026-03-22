@@ -1011,20 +1011,34 @@ class HomeInterface(BaseInterface):
         """应用样式到启动按钮"""
         from qfluentwidgets import setCustomStyleSheet
 
+        r, g, b = theme_color
+        luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        foreground = "#000000" if luminance >= 160 else "#FFFFFF"
+        theme_bg = "rgb({}, {}, {})".format(r, g, b)
+        hover_bg = foreground
+
+        self._black_icon = FluentIcon.PLAY_SOLID.icon(color=QColor(foreground))
+        self._yellow_icon = FluentIcon.PLAY_SOLID.icon(color=QColor(r, g, b))
+        self.start_button.setIcon(self._black_icon)
+
         # 使用 setCustomStyleSheet 而不是 setStyleSheet，避免破坏按钮的内部布局
         light_qss = """
-        PillPushButton#start_button {
-            background-color: #FFDB29;
-            color: #000000;
+        PillPushButton#start_button {{
+            background-color: {theme_bg};
+            color: {foreground};
             border-radius: 28px;
             height: 48px;
             min-height: 48px;
-        }
-        PillPushButton#start_button:hover {
-            background-color: #000000;
-            color: #FFDB29;
-        }
-        """
+        }}
+        PillPushButton#start_button:hover {{
+            background-color: {hover_bg};
+            color: {theme_bg};
+        }}
+        """.format(
+            theme_bg=theme_bg,
+            foreground=foreground,
+            hover_bg=hover_bg,
+        )
         dark_qss = light_qss  # 暂时使用相同样式
 
         setCustomStyleSheet(self.start_button, light_qss, dark_qss)
