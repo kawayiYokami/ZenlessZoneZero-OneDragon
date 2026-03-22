@@ -1,5 +1,6 @@
 import os
 
+import cv2
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QImage, QPainter, QPainterPath, QPixmap
 from PySide6.QtMultimedia import QMediaPlayer
@@ -90,6 +91,24 @@ class Banner(QWidget):
             self.banner_image = self._load_image(media_path)
             self._update_scaled_image()
 
+    def _extract_first_video_frame(self, video_path: str) -> QImage | None:
+        """直接从视频源文件提取第1帧，避免主题色受播放器当前帧影响。"""
+        capture = cv2.VideoCapture(video_path)
+        if not capture.isOpened():
+            return None
+
+        try:
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                return None
+
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, c = rgb_frame.shape
+            bytes_per_line = c * w
+            return QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
+        finally:
+            capture.release()
+
     def _is_video_file(self, file_path: str) -> bool:
         """判断文件是否为视频格式"""
         # 先检查扩展名
@@ -125,6 +144,7 @@ class Banner(QWidget):
         """初始化视频播放，使用硬件加速"""
         try:
             self._cleanup_video()
+            self.banner_image = self._extract_first_video_frame(video_path)
 
             # 创建媒体播放器（Qt 会自动尝试使用硬件加速）
             self.media_player = QMediaPlayer(self)
@@ -192,16 +212,6 @@ class Banner(QWidget):
         """视频尺寸改变（加载完成），调整视图并提取第一帧"""
         # 调整视频视图大小以适配新尺寸
         self._resize_video_view()
-
-        # 提取第一帧用于主题色
-        if not self.video_item or not self.media_player:
-            return
-
-        video_sink = self.media_player.videoSink()
-        if video_sink:
-            frame = video_sink.videoFrame()
-            if frame.isValid():
-                self.banner_image = frame.toImage()
 
     def _cleanup_video(self) -> None:
         """清理视频播放器资源"""
