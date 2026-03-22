@@ -98,7 +98,6 @@ try:
 
             # 布局样式调整
             self.hBoxLayout.setContentsMargins(0, 0, 0, 0)
-            self.areaLayout.setContentsMargins(0, 32, 0, 0)
             self.navigationInterface.setContentsMargins(0, 0, 0, 0)
 
             # 配置样式
@@ -114,25 +113,13 @@ try:
             from zzz_od.gui.view.home.home_interface import HomeInterface
             self.add_sub_interface(HomeInterface(self.ctx, parent=self))
 
-            # 战斗助手
-            from zzz_od.gui.view.battle_assistant.battle_assistant_interface import BattleAssistantInterface
-            self.add_sub_interface(BattleAssistantInterface(self.ctx, parent=self))
+            # 游戏助手
+            from zzz_od.gui.view.game_assistant.game_assistant_interface import GameAssistantInterface
+            self.add_sub_interface(GameAssistantInterface(self.ctx, parent=self))
 
             # 一条龙
             from zzz_od.gui.view.one_dragon.zzz_one_dragon_interface import ZOneDragonInterface
             self.add_sub_interface(ZOneDragonInterface(self.ctx, parent=self))
-
-            # 空洞
-            from zzz_od.gui.view.hollow_zero.hollow_zero_interface import HollowZeroInterface
-            self.add_sub_interface(HollowZeroInterface(self.ctx, parent=self))
-
-            # 锄大地
-            from zzz_od.gui.view.world_patrol.world_patrol_interface import WorldPatrolInterface
-            self.add_sub_interface(WorldPatrolInterface(self.ctx, parent=self))
-
-            # 游戏助手
-            from zzz_od.gui.view.game_assistant.game_assistant_interface import GameAssistantInterface
-            self.add_sub_interface(GameAssistantInterface(self.ctx, parent=self))
 
             # 画中画
             from one_dragon_qt.widgets.pip_button import PipButton
