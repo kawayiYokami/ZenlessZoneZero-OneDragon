@@ -8,12 +8,12 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 from qfluentwidgets import (
     FluentIcon,
-    FluentThemeColor,
     TransparentToolButton,
+    themeColor,
 )
 
 from one_dragon.utils.i18_utils import gt
@@ -74,9 +74,8 @@ class SelectableAppCard(DraggableListItem):
         """设置选中状态"""
         self._selected = selected
         if selected:
-            accent = FluentThemeColor.DEFAULT_BLUE.value
             self._card.iconLabel.setIcon(
-                FluentIcon.GAME.icon(color=QColor(accent))
+                FluentIcon.GAME.icon(color=themeColor())
             )
             self._set_opacity(1.0)
         else:
@@ -129,11 +128,14 @@ class SelectableAppList(DraggableList):
             self._add_card(app_id, app_name)
 
     def add_app(self, app_id: str, app_name: str) -> None:
-        """添加一个应用卡片"""
+        """添加一个应用卡片，如果没有选中项则自动选中"""
         for card in self._cards:
             if card.app_id == app_id:
                 return
         self._add_card(app_id, app_name)
+        if self._selected_app_id is None:
+            self.select_app(app_id)
+            self.app_selected.emit(app_id)
 
     def remove_app(self, app_id: str) -> None:
         """移除一个应用卡片"""
@@ -150,6 +152,7 @@ class SelectableAppList(DraggableList):
                     self._selected_app_id = None
                     if self._cards:
                         self.select_app(self._cards[0].app_id)
+                    self.app_selected.emit(self._selected_app_id or '')
                 break
 
     def select_app(self, app_id: str) -> None:
@@ -175,6 +178,7 @@ class SelectableAppList(DraggableList):
         self._cards.append(card)
         self.add_list_item(card)
         card.layout().setContentsMargins(0, 0, 0, 0)
+        card.set_selected(False)
 
     def _clear_cards(self) -> None:
         for card in self._cards:

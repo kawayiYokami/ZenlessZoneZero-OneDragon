@@ -121,9 +121,6 @@ class StandaloneRunInterface(SplitAppRunInterface):
 
     def _on_app_removed(self, app_id: str) -> None:
         self.ctx.standalone_app_config.app_list = self.app_list_widget.app_ids
-        selected = self.app_list_widget.selected_app_id
-        self.app_id = selected or ''
-        self.ctx.standalone_app_config.active_app_id = selected or ''
 
     def _on_app_order_changed(self, app_ids: list[str]) -> None:
         self.ctx.standalone_app_config.app_list = app_ids
@@ -143,11 +140,6 @@ class StandaloneRunInterface(SplitAppRunInterface):
                 self.app_list_widget.add_app(app_id, all_apps[app_id])
             self._update_setting_btn_visibility()
             self.ctx.standalone_app_config.app_list = self.app_list_widget.app_ids
-
-            if not self.app_list_widget.selected_app_id and selected_ids:
-                self.app_list_widget.select_app(selected_ids[0])
-                self.app_id = selected_ids[0]
-                self.ctx.standalone_app_config.active_app_id = selected_ids[0]
 
     def _on_app_setting_clicked(self, app_id: str) -> None:
         dialog_fn = self.get_setting_dialog_map().get(app_id)
