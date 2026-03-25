@@ -32,5 +32,5 @@ PivotItem[isSelected=false]:pressed{
 
 PivotItem[hasIcon=false]{
 padding-left: 0px;
-padding-right:0px,
+padding-right:0px;
 }
