@@ -451,6 +451,7 @@ class HomeInterface(BaseInterface):
         )
         self.ctx: ZContext = ctx
         self.main_window = parent
+        self._saved_area_margins = None
 
         # 监听背景刷新信号，确保主题色在背景变化时更新
         self._last_reload_banner_signal = False
@@ -648,6 +649,8 @@ class HomeInterface(BaseInterface):
 
         # 设置顶部边距为0，让海报覆盖标题栏；同时切换标题栏首页模式
         if self.main_window:
+            if self._saved_area_margins is None:
+                self._saved_area_margins = self.main_window.areaLayout.contentsMargins()
             self.main_window.areaLayout.setContentsMargins(0, 0, 0, 0)
             self._set_title_bar_home_mode(True)
 
@@ -691,8 +694,9 @@ class HomeInterface(BaseInterface):
 
     def on_interface_leave(self) -> None:
         """视觉切换前恢复 margin 和标题栏，避免新页面闪烁旧样式。"""
-        if self.main_window:
-            self.main_window.areaLayout.setContentsMargins(11, 32, 11, 0)
+        if self.main_window and self._saved_area_margins is not None:
+            self.main_window.areaLayout.setContentsMargins(self._saved_area_margins)
+            self._saved_area_margins = None
             self._set_title_bar_home_mode(False)
 
     def on_interface_hidden(self) -> None:
