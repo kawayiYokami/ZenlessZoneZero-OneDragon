@@ -67,15 +67,15 @@ def get_notice_theme_palette():
     if qconfig.theme == Theme.DARK:
         return {
             'tint': QColor(18, 20, 30, 198),
-            'title': '#f7f9ff',
-            'date': '#d8e0f0',
+            'title': '#ffffff',
+            'date': '#dddddd',
             'shadow': QColor(0, 0, 0, 170),
         }
     # 主页公告卡统一使用深色玻璃风，避免亮底在浅色主题下影响可读性
     return {
         'tint': QColor(22, 24, 35, 190),
-        'title': '#f2f6ff',
-        'date': '#d2daea',
+        'title': '#ffffff',
+        'date': '#dddddd',
         'shadow': QColor(0, 0, 0, 150),
     }
 
@@ -799,6 +799,7 @@ class NoticePostDelegate(QStyledItemDelegate):
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
         # 获取数据
+        palette = get_notice_theme_palette()
         title = index.data(Qt.ItemDataRole.DisplayRole)
         date = index.data(Qt.ItemDataRole.UserRole)
 
@@ -821,12 +822,12 @@ class NoticePostDelegate(QStyledItemDelegate):
 
         # 绘制标题（不使用省略号，让标题自然延伸）
         painter.setFont(self.title_font)
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(QColor(palette['title']))
         painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, title)
 
         # 绘制日期（后绘制，会覆盖延伸过来的标题文本）
         painter.setFont(self.date_font)
-        painter.setPen(QColor("#dddddd"))
+        painter.setPen(QColor(palette['date']))
         painter.drawText(date_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, date)
 
         # 悬停效果
