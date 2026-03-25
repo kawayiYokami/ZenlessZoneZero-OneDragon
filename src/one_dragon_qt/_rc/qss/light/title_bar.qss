@@ -74,16 +74,14 @@
 #TitleBar[homeMode="true"] > QLabel#titleLabel {
     color: rgba(236, 240, 245, 0.9);
     background: transparent;
-    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
-    font-weight: 500;
+    font: 700 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
     padding: 0 4px;
 }
 
 #TitleBar[homeMode="true"] > QPushButton {
     color: rgba(236, 240, 245, 0.9);
     background: transparent;
-    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
-    font-weight: 500;
+    font: 700 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
     padding: 0 4px;
     border: none;
 }
