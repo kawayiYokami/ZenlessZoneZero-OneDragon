@@ -615,16 +615,19 @@ class HomeInterface(BaseInterface):
             self._show_info_bar("有新启动器啦", "到[设置-资源下载]更新吧~", 5000)
 
     def _show_info_bar(self, title: str, content: str, duration: int = 20000):
-        """显示信息条"""
-        InfoBar.success(
+        """显示信息条（手动定位，避免标题栏遮挡）"""
+        bar = InfoBar.success(
             title=title,
             content=content,
             orient=Qt.Orientation.Horizontal,
             isClosable=True,
-            position=InfoBarPosition.TOP_RIGHT,
+            position=InfoBarPosition.NONE,
             duration=duration,
             parent=self,
-        ).setCustomBackgroundColor("white", "#202020")
+        )
+        bar.setCustomBackgroundColor("white", "#202020")
+        bar.move(self.width() - bar.width() - 24, 48)
+        bar.show()
 
     def _on_start_game(self):
         """启动一条龙按钮点击事件处理"""
