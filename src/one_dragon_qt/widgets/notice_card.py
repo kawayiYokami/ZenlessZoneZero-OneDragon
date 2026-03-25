@@ -568,6 +568,7 @@ class NoticeCard(SimpleCardWidget):
         for widget, post_type, name in zip(widgets, types, type_names, strict=False):
             widget.setSpacing(0)
             widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            widget.setItemDelegate(NoticePostDelegate(widget))
             self.add_posts_to_widget(widget, post_type)
             widget.itemClicked.connect(
                 lambda _, w=widget, t=post_type: self.open_post_link(w, t)
@@ -762,7 +763,6 @@ class NoticeCard(SimpleCardWidget):
             webbrowser.open(self.posts[type][widget.currentIndex().row()]["url"])
 
     def add_posts_to_widget(self, widget: ListWidget, type: str):
-        widget.setItemDelegate(NoticePostDelegate(widget))
         for post in self.posts[type][:3]:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.DisplayRole, post["title"])
