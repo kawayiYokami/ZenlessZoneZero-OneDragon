@@ -518,6 +518,7 @@ class NoticeCard(SimpleCardWidget):
         holder_layout.setSpacing(6)
         holder_layout.addWidget(self.pipsPager)
         self.pipsHolder.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.pipsHolder.installEventFilter(self)
         self.pipsHolder.raise_()
 
         # 悬停显示/自动隐藏 定时器
@@ -532,7 +533,6 @@ class NoticeCard(SimpleCardWidget):
 
         # 将左侧 Banner 添加到水平布局
         h_layout.addWidget(self.banner_wrapper)
-        self._update_pips_position()  # 初始定位
 
         # 启动自动滚动（延迟5秒开始）
         if len(self.banners) > 1:
@@ -587,9 +587,9 @@ class NoticeCard(SimpleCardWidget):
         self.mainLayout.addWidget(content_widget)
 
     def eventFilter(self, obj, e):
-        # 悬停控制 pips 显示/隐藏
         if obj is getattr(self, 'banner_wrapper', None):
             et = e.type()
+            # 悬停控制 pips 显示/隐藏
             if et in (QEvent.Type.Enter, QEvent.Type.HoverEnter):
                 if hasattr(self, 'pipsHolder'):
                     self.pipsHolder.show()
@@ -598,6 +598,10 @@ class NoticeCard(SimpleCardWidget):
             elif et in (QEvent.Type.Leave, QEvent.Type.HoverLeave):
                 if hasattr(self, '_pips_hide_timer'):
                     self._pips_hide_timer.start(5000)  # 5s 后隐藏
+        # pipsHolder 尺寸变化时自动重新定位（底部居中）
+        elif obj is getattr(self, 'pipsHolder', None):
+            if e.type() == QEvent.Type.Resize:
+                self._update_pips_position()
         return super().eventFilter(obj, e)
 
     def update_ui(self):
@@ -702,19 +706,12 @@ class NoticeCard(SimpleCardWidget):
 
     def _update_pips_position(self):
         """在 banner 内部重新定位 pips 位置 (底部居中)"""
-        if not hasattr(self, 'pipsHolder'):
-            return
-        # 尺寸自适应
-        self.pipsHolder.adjustSize()
         bw = self.banner_wrapper.width()
         bh = self.banner_wrapper.height()
         hw = self.pipsHolder.width()
         hh = self.pipsHolder.height()
-        # 底部偏移量（可根据视觉微调）
         bottom_margin = 12
-        x = (bw - hw) // 2
-        y = bh - hh - bottom_margin
-        self.pipsHolder.move(x, y)
+        self.pipsHolder.move((bw - hw) // 2, bh - hh - bottom_margin)
         self.pipsHolder.raise_()
 
     def set_auto_scroll_enabled(self, enabled: bool):
@@ -749,9 +746,6 @@ class NoticeCard(SimpleCardWidget):
         # 背景层充满圆角卡片
         if hasattr(self, '_acrylic') and self._acrylic:
             self._acrylic.setGeometry(self.rect())
-        # 更新 pips 位置
-        if hasattr(self, '_update_pips_position'):
-            self._update_pips_position()
         return SimpleCardWidget.resizeEvent(self, event)
 
     def open_banner_link(self):
