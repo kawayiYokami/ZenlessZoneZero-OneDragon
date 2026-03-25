@@ -544,7 +544,7 @@ class NoticeCard(SimpleCardWidget):
         right_area = QWidget()
         right_layout = QVBoxLayout(right_area)
         right_layout.setContentsMargins(8, 8, 8, 8)
-        right_layout.setSpacing(0)
+        right_layout.setSpacing(8)
 
         # 上方标题 - Pivot 标签页
         self.pivot = PhosPivot()
@@ -784,6 +784,14 @@ class NoticePostDelegate(QStyledItemDelegate):
     def setHoverRow(self, row: int):
         """设置悬停行号（兼容 qfluentwidgets ListWidget）"""
         self._hover_row = row
+
+    def setPressedRow(self, row: int):
+        """兼容 qfluentwidgets ListWidget"""
+        pass
+
+    def setSelectedRows(self, indexes):
+        """兼容 qfluentwidgets ListWidget"""
+        pass
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
         # 初始化绘制选项
