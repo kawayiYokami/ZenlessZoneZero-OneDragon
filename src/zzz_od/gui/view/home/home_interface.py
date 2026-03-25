@@ -429,10 +429,6 @@ class HomeInterface(BaseInterface):
         shadow.setColor(QColor(0, 0, 0, alpha))
         widget.setGraphicsEffect(shadow)
 
-    def _clear_shadow(self, widget: QWidget) -> None:
-        """移除控件阴影，避免离开首页后误伤其他页面。"""
-        widget.setGraphicsEffect(None)
-
     def _apply_button_group_shadows(self) -> None:
         """给首页右侧悬浮图标加硬阴影，增强在复杂背景上的辨识度。"""
         for button in self.button_group.buttons:

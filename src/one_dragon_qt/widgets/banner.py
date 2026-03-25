@@ -346,10 +346,6 @@ class Banner(QWidget):
             Qt.AspectRatioMode.KeepAspectRatioByExpanding
         )
 
-    def _update_overlay_color(self, theme_color: tuple[int, int, int]) -> None:
-        """固定阴影模式下保留旧接口，避免调用处报错。"""
-        _ = theme_color
-
     def paintEvent(self, event):
         """重载 paintEvent 以绘制缩放后的图片（视频模式下绘制首帧作为后备底图）"""
         img = self._video_fallback_image if self.is_video else self.scaled_image
