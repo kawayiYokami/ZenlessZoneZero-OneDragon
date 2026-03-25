@@ -330,6 +330,8 @@ class AcrylicBackground(QWidget):
 class NoticeCard(SimpleCardWidget):
     def __init__(self, notice_url):
         SimpleCardWidget.__init__(self)
+        self._acrylic = None
+        self.fetcher = None
         self.setBorderRadius(8)
         self.setFixedSize(589, 150)  # 左右布局：Banner 225x150 (3:2) + 新闻区 364x150
         self.mainLayout = QHBoxLayout(self)  # 改为水平布局
@@ -390,7 +392,7 @@ class NoticeCard(SimpleCardWidget):
 
     def fetch_data(self):
         # 如果已有fetcher在运行，先停止它
-        if hasattr(self, 'fetcher') and self.fetcher is not None:
+        if self.fetcher is not None:
             if self.fetcher.isRunning():
                 self.fetcher.quit()
                 self.fetcher.wait()
@@ -445,8 +447,7 @@ class NoticeCard(SimpleCardWidget):
         self.banner_urls.append(url)
 
         # 实时更新UI显示新加载的图片
-        if hasattr(self, 'flipView'):
-            self.flipView.addImages([pixmap])
+        self.flipView.addImages([pixmap])
 
     def _on_all_banners_loaded(self):
         """所有banner图片加载完成的回调"""
@@ -591,13 +592,10 @@ class NoticeCard(SimpleCardWidget):
             et = e.type()
             # 悬停控制 pips 显示/隐藏
             if et in (QEvent.Type.Enter, QEvent.Type.HoverEnter):
-                if hasattr(self, 'pipsHolder'):
-                    self.pipsHolder.show()
-                if hasattr(self, '_pips_hide_timer'):
-                    self._pips_hide_timer.stop()
+                self.pipsHolder.show()
+                self._pips_hide_timer.stop()
             elif et in (QEvent.Type.Leave, QEvent.Type.HoverLeave):
-                if hasattr(self, '_pips_hide_timer'):
-                    self._pips_hide_timer.start(5000)  # 5s 后隐藏
+                self._pips_hide_timer.start(5000)  # 5s 后隐藏
         # pipsHolder 尺寸变化时自动重新定位（底部居中）
         elif obj is getattr(self, 'pipsHolder', None):
             if e.type() == QEvent.Type.Resize:
@@ -610,13 +608,9 @@ class NoticeCard(SimpleCardWidget):
         self.flipView.addImages(self.banners)
 
         # 更新PipsPager
-        if hasattr(self, 'pipsPager'):
-            self.pipsPager.setPageNumber(len(self.banners) if self.banners else 1)
-            self.pipsPager.setVisibleNumber(min(8, len(self.banners) if self.banners else 1))
-            self.pipsPager.setCurrentIndex(0)
-            # 尝试重新定位 pips（可能尺寸变化）
-            if hasattr(self, '_update_pips_position'):
-                QTimer.singleShot(0, self._update_pips_position)
+        self.pipsPager.setPageNumber(len(self.banners) if self.banners else 1)
+        self.pipsPager.setVisibleNumber(min(8, len(self.banners) if self.banners else 1))
+        self.pipsPager.setCurrentIndex(0)
 
         # 启动自动滚动
         if len(self.banners) > 1 and self.auto_scroll_enabled:
@@ -640,18 +634,14 @@ class NoticeCard(SimpleCardWidget):
         self.setStyleSheet(self.styleSheet() + extra)
 
     def _on_theme_changed(self):
-        if hasattr(self, '_acrylic'):
+        if self._acrylic:
             self._acrylic.tint = get_notice_theme_palette()['tint']
             self._acrylic.update()
         self.apply_theme_colors()
-        # 同步 pips holder 主题
-        if hasattr(self, '_apply_pips_theme_style'):
-            self._apply_pips_theme_style()
+        self._apply_pips_theme_style()
 
     def _apply_pips_theme_style(self):
         """根据当前主题应用 pipsHolder 样式（浅色白底+阴影，深色黑半透明）"""
-        if not hasattr(self, 'pipsHolder'):
-            return
         is_dark = qconfig.theme == Theme.DARK
         if is_dark:
             bg = 'rgba(0,0,0,110)'
@@ -695,12 +685,11 @@ class NoticeCard(SimpleCardWidget):
 
     def _on_banner_index_changed(self, index):
         """Banner页面改变时同步PipsPager"""
-        if hasattr(self, 'pipsPager'):
-            self.pipsPager.setCurrentIndex(index)
+        self.pipsPager.setCurrentIndex(index)
 
     def _on_pips_index_changed(self, index):
         """PipsPager点击时切换Banner并暂停自动滚动"""
-        if hasattr(self, 'flipView') and index < len(self.banners):
+        if index < len(self.banners):
             self.flipView.setCurrentIndex(index)
             self._pause_auto_scroll()  # 用户手动操作时暂停自动滚动
 
@@ -744,7 +733,7 @@ class NoticeCard(SimpleCardWidget):
 
     def resizeEvent(self, event):
         # 背景层充满圆角卡片
-        if hasattr(self, '_acrylic') and self._acrylic:
+        if self._acrylic:
             self._acrylic.setGeometry(self.rect())
         return SimpleCardWidget.resizeEvent(self, event)
 
