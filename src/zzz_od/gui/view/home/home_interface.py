@@ -46,16 +46,16 @@ class ButtonGroup(QWidget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.setSpacing(24)
-        layout.setContentsMargins(8, 8, 8, 8)  # 增加内边距
+        layout.setContentsMargins(8, 8, 8, 8)
 
-        # 存储按钮列表，用于自动提示演示
+        # 右侧按钮列表
         self.buttons = []
 
         # 创建主页按钮
         home_button = IconButton(
             FluentIcon.HOME.icon(color=QColor("#fff")),
-            tip_title="一条龙官网",
-            tip_content="🏠一条龙软件说明书>>",
+            tip_title="官网",
+            tip_content="使用说明 · 功能介绍",
             isTooltip=True,
         )
         home_button.setIconSize(QSize(30, 30))
@@ -66,8 +66,8 @@ class ButtonGroup(QWidget):
         # 创建 GitHub 按钮
         github_button = IconButton(
             FluentIcon.GITHUB.icon(color=QColor("#fff")),
-            tip_title="GitHub仓库",
-            tip_content="⭐点击收藏关注项目动态",
+            tip_title="GitHub",
+            tip_content="源码 · 反馈 · Star⭐",
             isTooltip=True,
         )
         github_button.setIconSize(QSize(30, 30))
@@ -78,8 +78,8 @@ class ButtonGroup(QWidget):
         # 创建 文档 按钮
         doc_button = IconButton(
             FluentIcon.LIBRARY.icon(color=QColor("#fff")),
-            tip_title="自助排障文档",
-            tip_content="📕遇到问题? 查看更详细文档教程",
+            tip_title="帮助文档",
+            tip_content="遇到问题？点这里找答案",
             isTooltip=True,
         )
         doc_button.setIconSize(QSize(30, 30))
@@ -90,8 +90,8 @@ class ButtonGroup(QWidget):
         # 创建 频道 按钮
         chat_button = IconButton(
             FluentIcon.CHAT.icon(color=QColor("#fff")),
-            tip_title="官方 社群",
-            tip_content="🔥立刻点击加入火辣官方社区>>>>",
+            tip_title="官方频道",
+            tip_content="加入官方交流频道",
             isTooltip=True,
         )
         chat_button.setIconSize(QSize(30, 30))
@@ -99,110 +99,6 @@ class ButtonGroup(QWidget):
         layout.addWidget(chat_button)
         self.buttons.append(chat_button)
 
-        # 创建 官方店铺 按钮 (当然没有)
-        shop_button = IconButton(
-            FluentIcon.SHOPPING_CART.icon(color=QColor("#fff")),
-            tip_title="🏅官方店铺???",
-            tip_content="💵限时劲爆特惠仅需0元点击马上加入会员>>",
-            isTooltip=True,
-        )
-        shop_button.setIconSize(QSize(30, 30))
-        shop_button.clicked.connect(self.open_sales)
-        layout.addWidget(shop_button)
-        self.buttons.append(shop_button)
-
-        # 初始化自动提示定时器
-        self.tooltip_timer = QTimer(self)
-        self.tooltip_timer.timeout.connect(self._show_next_tooltip)
-        self.tooltip_demo_active = False
-
-        # 未完工区域, 暂时隐藏
-        # # 添加一个可伸缩的空白区域
-        # layout.addStretch()
-
-        # # 创建 同步 按钮
-        # sync_button = IconButton(
-        #     FluentIcon.SYNC.icon(color=QColor("#fff")), tip_title="未完工", tip_content="开发中", isTooltip=True
-        # )
-        # sync_button.setIconSize(QSize(32, 32))
-        # layout.addWidget(sync_button)
-
-    def start_tooltip_demo(self):
-        """启动自动提示演示"""
-        if self.tooltip_demo_active:
-            return
-
-        self.tooltip_demo_active = True
-        # 临时禁用所有按钮的鼠标悬停事件处理
-        self._disable_buttons_hover()
-
-        # 延迟2秒后同时显示所有提示（使用对象持有的单次定时器）
-        if not hasattr(self, "_show_timer"):
-            self._show_timer = QTimer(self)
-            self._show_timer.setSingleShot(True)
-            self._show_timer.timeout.connect(self._show_all_tooltips)
-        if not hasattr(self, "_hide_timer"):
-            self._hide_timer = QTimer(self)
-            self._hide_timer.setSingleShot(True)
-            self._hide_timer.timeout.connect(self._hide_all_tooltips)
-        self._show_timer.start(2000)
-
-    def _show_all_tooltips(self):
-        """同时显示所有按钮的提示"""
-        if not self.tooltip_demo_active:
-            return
-
-        # 同时显示所有按钮的提示（优先使用公开方法）
-        for btn in self.buttons:
-            show_fn = getattr(btn, "show_tooltip", None) or getattr(btn, "_show_tooltip", None)
-            if callable(show_fn):
-                show_fn()
-
-        # 3秒后自动隐藏所有提示（对象级计时器，便于 stop 时取消）
-        if hasattr(self, "_hide_timer"):
-            self._hide_timer.start(3000)
-
-    def _hide_all_tooltips(self):
-        """隐藏所有按钮的提示"""
-        for btn in self.buttons:
-            hide_fn = getattr(btn, "hide_tooltip", None) or getattr(btn, "_hide_tooltip", None)
-            if callable(hide_fn):
-                hide_fn()
-        self.tooltip_demo_active = False
-        # 重新启用所有按钮的鼠标悬停事件处理
-        self._enable_buttons_hover()
-
-    def stop_tooltip_demo(self):
-        """停止提示演示并立即隐藏所有提示"""
-        self.tooltip_demo_active = False
-        self.tooltip_timer.stop()
-        if hasattr(self, "_show_timer"):
-            self._show_timer.stop()
-        if hasattr(self, "_hide_timer"):
-            self._hide_timer.stop()
-        self._hide_all_tooltips()
-
-    def _disable_buttons_hover(self):
-        """临时禁用所有按钮的鼠标悬停事件处理"""
-        for btn in self.buttons:
-            if hasattr(btn, 'removeEventFilter'):
-                btn.removeEventFilter(btn)
-                btn._hover_disabled = True
-
-    def _enable_buttons_hover(self):
-        """重新启用所有按钮的鼠标悬停事件处理"""
-        for btn in self.buttons:
-            if hasattr(btn, '_hover_disabled') and btn._hover_disabled:
-                btn.installEventFilter(btn)
-                btn._hover_disabled = False
-
-    def _start_demo_timer(self):
-        """开始演示定时器 - 不再使用，保留以兼容"""
-        pass
-
-    def _show_next_tooltip(self):
-        """显示下一个按钮的提示 - 不再使用，保留以兼容"""
-        pass
 
     def open_home(self):
         """打开主页链接"""
@@ -220,9 +116,6 @@ class ButtonGroup(QWidget):
         """打开 腾讯文档 链接, 感谢历任薪王的付出 """
         QDesktopServices.openUrl(QUrl(self.ctx.project_config.doc_link))
 
-    def open_sales(self):
-        """打开 Q群 链接"""
-        QDesktopServices.openUrl(QUrl(self.ctx.project_config.qq_link))
 
 class BaseThread(QThread):
     """基础线程类，提供统一的 _is_running 管理"""
@@ -689,9 +582,6 @@ class HomeInterface(BaseInterface):
         # 初始化主题色，避免navbar颜色闪烁
         self._update_start_button_style_from_banner()
 
-        # 启动导航栏按钮自动提示演示
-        self.button_group.start_tooltip_demo()
-
     def on_interface_leave(self) -> None:
         """视觉切换前恢复 margin 和标题栏，避免新页面闪烁旧样式。"""
         if self.main_window and self._saved_area_margins is not None:
@@ -712,9 +602,6 @@ class HomeInterface(BaseInterface):
             self._static_background_downloader.stop()
         if self._dynamic_background_downloader.isRunning():
             self._dynamic_background_downloader.stop()
-
-        # 立即停止并隐藏所有提示
-        self.button_group.stop_tooltip_demo()
 
     def _need_to_update_code(self, with_new: bool):
         if not with_new:
