@@ -24,10 +24,6 @@ class GradientOverlay(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
-    def set_background_mode(self, is_dark: bool):
-        """兼容旧调用，固定黑色阴影时无需根据明暗切换。"""
-        _ = is_dark
-
     def paintEvent(self, event):
         """绘制顶部和右侧固定黑色渐变遮罩"""
         painter = QPainter(self)
