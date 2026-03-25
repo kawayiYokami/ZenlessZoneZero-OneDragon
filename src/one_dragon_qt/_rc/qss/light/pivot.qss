@@ -1,10 +1,12 @@
 PivotItem{
-    padding: 0px;
+    padding-top: 2px;
+    padding-bottom: 6px;
     color: #a1a1a1;
     background-color:transparent;
     border: none;
     outline: none;
     margin:0;
+    min-height: 32px;
     min-width: 20px;
 }
 
