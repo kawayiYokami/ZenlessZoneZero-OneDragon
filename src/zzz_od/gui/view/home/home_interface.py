@@ -1014,7 +1014,7 @@ class HomeInterface(BaseInterface):
         r, g, b = theme_color
         luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
         foreground = "#000000" if luminance >= 160 else "#FFFFFF"
-        theme_bg = "rgb({}, {}, {})".format(r, g, b)
+        theme_bg = f"rgb({r}, {g}, {b})"
         hover_bg = foreground
 
         self._black_icon = FluentIcon.PLAY_SOLID.icon(color=QColor(foreground))
@@ -1022,7 +1022,7 @@ class HomeInterface(BaseInterface):
         self.start_button.setIcon(self._black_icon)
 
         # 使用 setCustomStyleSheet 而不是 setStyleSheet，避免破坏按钮的内部布局
-        light_qss = """
+        light_qss = f"""
         PillPushButton#start_button {{
             background-color: {theme_bg};
             color: {foreground};
@@ -1034,11 +1034,7 @@ class HomeInterface(BaseInterface):
             background-color: {hover_bg};
             color: {theme_bg};
         }}
-        """.format(
-            theme_bg=theme_bg,
-            foreground=foreground,
-            hover_bg=hover_bg,
-        )
+        """
         dark_qss = light_qss  # 暂时使用相同样式
 
         setCustomStyleSheet(self.start_button, light_qss, dark_qss)

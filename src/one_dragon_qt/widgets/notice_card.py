@@ -7,18 +7,33 @@ import time
 import webbrowser
 
 import requests
-from PySide6.QtCore import QEvent, QModelIndex, QRect, QRectF, QSize, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPixmap, QRegion
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+)
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPixmap,
+    QRegion,
+)
 from PySide6.QtWidgets import (
-    QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
-    QLabel,
     QListWidgetItem,
     QSizePolicy,
     QStackedWidget,
-    QStyledItemDelegate,
     QStyle,
+    QStyledItemDelegate,
     QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
@@ -37,9 +52,7 @@ from one_dragon.utils import os_utils
 from one_dragon.utils.log_utils import log
 from one_dragon_qt.services.styles_manager import OdQtStyleSheet
 from one_dragon_qt.utils.image_utils import scale_pixmap_for_high_dpi
-from one_dragon_qt.widgets.pivot import CustomListItemDelegate, PhosPivot
-
-from .label import EllipsisLabel
+from one_dragon_qt.widgets.pivot import PhosPivot
 
 
 def get_notice_theme_palette():

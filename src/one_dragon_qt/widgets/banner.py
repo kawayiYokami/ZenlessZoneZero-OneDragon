@@ -2,7 +2,14 @@ import os
 
 import cv2
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QImage, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QImage,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPixmap,
+)
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
@@ -23,7 +30,6 @@ class GradientOverlay(QWidget):
 
     def paintEvent(self, event):
         """绘制顶部和右侧固定黑色渐变遮罩"""
-        from PySide6.QtGui import QLinearGradient, QColor
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         clip_path = QPainterPath()
@@ -48,7 +54,7 @@ class GradientOverlay(QWidget):
 class Banner(QWidget):
     """展示带有圆角的固定大小横幅小部件，支持图片和视频"""
 
-    def __init__(self, media_path: str, theme_color: tuple[int, int, int] = None, parent=None):
+    def __init__(self, media_path: str, parent=None):
         QWidget.__init__(self, parent)
         self.media_path = media_path
         self.is_video = False
@@ -66,9 +72,6 @@ class Banner(QWidget):
         self._overlay = GradientOverlay(self)
         self._overlay.setGeometry(self.rect())
         self._overlay.show()
-
-        # 当前使用固定黑色边缘阴影，theme_color 参数暂不参与计算
-        _ = theme_color
 
         self.set_media(media_path)
 
