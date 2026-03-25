@@ -25,7 +25,6 @@ from qfluentwidgets import (
 from one_dragon.base.config.custom_config import BackgroundTypeEnum
 from one_dragon.utils import app_utils, os_utils
 from one_dragon.utils.log_utils import log
-from one_dragon_qt.services.styles_manager import OdQtStyleSheet
 from one_dragon_qt.services.theme_manager import ThemeManager
 from one_dragon_qt.utils.color_utils import ColorUtils
 from one_dragon_qt.widgets.banner import Banner
@@ -528,10 +527,6 @@ class HomeInterface(BaseInterface):
 
         QTimer.singleShot(0, self._update_start_button_style_from_banner)
 
-        # 启动阶段有可能被全局样式再次覆盖，做一次延迟兜底
-        QTimer.singleShot(0, self._ensure_home_title_bar_style)
-        QTimer.singleShot(200, self._ensure_home_title_bar_style)
-
     def _apply_shadow(self, widget: QWidget, blur: int, offset_x: int, offset_y: int, alpha: int) -> None:
         """为首页关键控件添加阴影，不影响其他页面样式。"""
         shadow = QGraphicsDropShadowEffect(widget)
@@ -548,39 +543,6 @@ class HomeInterface(BaseInterface):
         """给首页右侧悬浮图标加硬阴影，增强在复杂背景上的辨识度。"""
         for button in self.button_group.buttons:
             self._apply_shadow(button, blur=5, offset_x=0, offset_y=0, alpha=255)
-
-    def _apply_title_bar_shadows(self) -> None:
-        """给首页标题栏的文字和按钮补硬阴影，提升海报背景上的可读性。"""
-        if not self.main_window or not hasattr(self.main_window, "titleBar"):
-            return
-
-        title_bar = self.main_window.titleBar
-        shadow_targets = [title_bar.titleLabel]
-        shadow_targets.extend(title_bar.findChildren(QWidget))
-
-        seen = set()
-        for widget in shadow_targets:
-            if widget is title_bar or widget in seen:
-                continue
-            seen.add(widget)
-            if widget.objectName() in {"titleLabel", "launcherVersionButton", "codeVersionButton", "questionButton"}:
-                self._apply_shadow(widget, blur=5, offset_x=1, offset_y=1, alpha=255)
-            elif widget.__class__.__name__ in {"MinimizeButton", "MaximizeButton", "CloseButton"}:
-                self._apply_shadow(widget, blur=5, offset_x=1, offset_y=1, alpha=255)
-
-    def _clear_title_bar_shadows(self) -> None:
-        """离开首页时清理标题栏阴影。"""
-        if not self.main_window or not hasattr(self.main_window, "titleBar"):
-            return
-
-        title_bar = self.main_window.titleBar
-        for widget in [title_bar.titleLabel, *title_bar.findChildren(QWidget)]:
-            if widget is title_bar:
-                continue
-            if widget.objectName() in {"titleLabel", "launcherVersionButton", "codeVersionButton", "questionButton"}:
-                self._clear_shadow(widget)
-            elif widget.__class__.__name__ in {"MinimizeButton", "MaximizeButton", "CloseButton"}:
-                self._clear_shadow(widget)
 
     def _init_check_runners(self):
         """初始化检查更新的线程"""
@@ -664,7 +626,7 @@ class HomeInterface(BaseInterface):
     def showEvent(self, event) -> None:
         """首次显示首页时立即应用标题栏样式，避免需要切页后才生效。"""
         QWidget.showEvent(self, event)
-        self._ensure_home_title_bar_style()
+        self._set_title_bar_home_mode(True)
 
     def _on_dynamic_background_download_start(self) -> None:
         """在后台下载新的视频前释放当前播放器占用"""
@@ -684,10 +646,10 @@ class HomeInterface(BaseInterface):
         if self._banner_widget:
             self._banner_widget.resume_media()
 
-        # 设置顶部边距为0，让海报覆盖标题栏
+        # 设置顶部边距为0，让海报覆盖标题栏；同时切换标题栏首页模式
         if self.main_window:
             self.main_window.areaLayout.setContentsMargins(0, 0, 0, 0)
-        self._ensure_home_title_bar_style()
+            self._set_title_bar_home_mode(True)
 
         # 检查是否满足自动检查的冷却时间
         current_time = time.time()
@@ -727,16 +689,17 @@ class HomeInterface(BaseInterface):
         # 启动导航栏按钮自动提示演示
         self.button_group.start_tooltip_demo()
 
+    def on_interface_leave(self) -> None:
+        """视觉切换前恢复 margin 和标题栏，避免新页面闪烁旧样式。"""
+        if self.main_window:
+            self.main_window.areaLayout.setContentsMargins(0, 32, 0, 0)
+            self._set_title_bar_home_mode(False)
+
     def on_interface_hidden(self) -> None:
-        """界面隐藏时的处理"""
+        """界面隐藏时的清理工作"""
         super().on_interface_hidden()
         if self._banner_widget:
             self._banner_widget.pause_media()
-
-        # 恢复顶部边距为32px，其他页面正常显示
-        if self.main_window:
-            self.main_window.areaLayout.setContentsMargins(0, 32, 0, 0)
-        self._restore_title_bar_style()
 
         # 停止所有下载器，避免后台占用资源
         if self._version_poster_downloader.isRunning():
@@ -875,86 +838,16 @@ class HomeInterface(BaseInterface):
         # 应用按钮样式
         self._apply_button_style(theme_color)
 
-    def _apply_home_title_bar_style(self) -> None:
-        """主页显示时：标题栏文字使用白色粗体。"""
+    def _set_title_bar_home_mode(self, enable: bool) -> None:
+        """切换标题栏首页模式。启用时额外检查当前页是否为首页，避免误伤其他页面。"""
         if not self.main_window or not hasattr(self.main_window, "titleBar"):
             return
-
-        title_bar = self.main_window.titleBar
-        title_bar.setStyleSheet(
-            """
-            #TitleBar {
-                background-color: transparent;
-            }
-
-            #TitleBar>QLabel#titleLabel {
-                color: rgba(236, 240, 245, 0.9);
-                background: transparent;
-                font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
-                font-weight: 700;
-                padding: 0 4px;
-            }
-
-            #TitleBar>QPushButton {
-                color: rgba(236, 240, 245, 0.9);
-                background: transparent;
-                font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
-                font-weight: 700;
-                padding: 0 4px;
-                border: none;
-            }
-
-            #TitleBar > QPushButton:hover {
-                background: rgba(255, 255, 255, 0.06);
-            }
-
-            #TitleBar > QPushButton:pressed {
-                background: rgba(255, 255, 255, 0.1);
-            }
-
-            MinimizeButton {
-                qproperty-normalColor: white;
-                qproperty-normalBackgroundColor: transparent;
-                qproperty-hoverColor: white;
-                qproperty-hoverBackgroundColor: rgba(255, 255, 255, 13);
-                qproperty-pressedColor: white;
-                qproperty-pressedBackgroundColor: rgba(255, 255, 255, 26);
-            }
-
-            MaximizeButton {
-                qproperty-normalColor: white;
-                qproperty-normalBackgroundColor: transparent;
-                qproperty-hoverColor: white;
-                qproperty-hoverBackgroundColor: rgba(255, 255, 255, 13);
-                qproperty-pressedColor: white;
-                qproperty-pressedBackgroundColor: rgba(255, 255, 255, 26);
-            }
-
-            CloseButton {
-                qproperty-normalColor: white;
-                qproperty-normalBackgroundColor: transparent;
-            }
-            """
-        )
-        self._apply_title_bar_shadows()
-        title_bar.update()
-
-    def _ensure_home_title_bar_style(self) -> None:
-        """仅当当前页是首页时应用标题栏样式，避免误伤其他页面。"""
-        if not self.main_window or not hasattr(self.main_window, "stackedWidget"):
-            return
-        current = self.main_window.stackedWidget.currentWidget()
-        if current is self:
-            self._apply_home_title_bar_style()
-
-    def _restore_title_bar_style(self) -> None:
-        """离开主页时恢复默认标题栏样式。"""
-        if not self.main_window or not hasattr(self.main_window, "titleBar"):
-            return
-
-        self._clear_title_bar_shadows()
-        OdQtStyleSheet.TITLE_BAR.apply(self.main_window.titleBar)
-        self.main_window.titleBar.update()
+        if enable:
+            if not hasattr(self.main_window, "stackedWidget"):
+                return
+            if self.main_window.stackedWidget.currentWidget() is not self:
+                return
+        self.main_window.titleBar.set_home_mode(enable)
 
     def _get_theme_color(self) -> tuple[int, int, int]:
         """获取主题色，优先使用缓存，否则从图片提取"""
