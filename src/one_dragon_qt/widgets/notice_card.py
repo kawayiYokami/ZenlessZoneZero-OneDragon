@@ -706,8 +706,8 @@ class NoticeCard(SimpleCardWidget):
             return
         # 尺寸自适应
         self.pipsHolder.adjustSize()
-        bw = 225  # banner_wrapper 的固定宽度
-        bh = 150  # banner_wrapper 的固定高度
+        bw = self.banner_wrapper.width()
+        bh = self.banner_wrapper.height()
         hw = self.pipsHolder.width()
         hh = self.pipsHolder.height()
         # 底部偏移量（可根据视觉微调）
