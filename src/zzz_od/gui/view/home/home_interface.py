@@ -692,7 +692,7 @@ class HomeInterface(BaseInterface):
     def on_interface_leave(self) -> None:
         """视觉切换前恢复 margin 和标题栏，避免新页面闪烁旧样式。"""
         if self.main_window:
-            self.main_window.areaLayout.setContentsMargins(0, 32, 0, 0)
+            self.main_window.areaLayout.setContentsMargins(11, 32, 11, 0)
             self._set_title_bar_home_mode(False)
 
     def on_interface_hidden(self) -> None:
