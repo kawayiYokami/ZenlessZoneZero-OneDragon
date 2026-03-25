@@ -67,6 +67,7 @@ class Banner(QWidget):
         self.scene = None
         self.video_item = None
         self._was_playing = False
+        self._video_fallback_image = None
 
         # 创建顶部渐变遮罩 widget
         self._overlay = GradientOverlay(self)
@@ -148,6 +149,8 @@ class Banner(QWidget):
         try:
             self._cleanup_video()
             self.banner_image = self._extract_first_video_frame(video_path)
+            # 预渲染首帧作为视频加载期间的后备底图
+            self._update_video_fallback_image()
 
             # 创建媒体播放器（Qt 会自动尝试使用硬件加速）
             self.media_player = QMediaPlayer(self)
@@ -330,40 +333,53 @@ class Banner(QWidget):
         )
         self.update()
 
+    def _update_video_fallback_image(self) -> None:
+        """更新视频后备首帧图（视频加载/恢复期间显示在 Widget 底层）。"""
+        if not self.banner_image or self.banner_image.isNull():
+            self._video_fallback_image = None
+            return
+        original_pixmap = QPixmap.fromImage(self.banner_image)
+        self._video_fallback_image = scale_pixmap_for_high_dpi(
+            original_pixmap,
+            self.size(),
+            self.devicePixelRatio(),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding
+        )
+
     def _update_overlay_color(self, theme_color: tuple[int, int, int]) -> None:
         """固定阴影模式下保留旧接口，避免调用处报错。"""
         _ = theme_color
 
     def paintEvent(self, event):
-        """重载 paintEvent 以绘制缩放后的图片"""
-        if self.is_video:
-            # 视频模式下无需额外绘制
+        """重载 paintEvent 以绘制缩放后的图片（视频模式下绘制首帧作为后备底图）"""
+        img = self._video_fallback_image if self.is_video else self.scaled_image
+        if not img:
             return
 
-        if self.scaled_image:
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-            # 直角裁切路径
-            path = QPainterPath()
-            path.addRect(self.rect())
-            painter.setClipPath(path)
+        # 直角裁切路径
+        path = QPainterPath()
+        path.addRect(self.rect())
+        painter.setClipPath(path)
 
-            # 计算绘制位置，使图片居中
-            pixel_ratio = self.scaled_image.devicePixelRatio()
-            logical_width = self.scaled_image.width() // pixel_ratio
-            logical_height = self.scaled_image.height() // pixel_ratio
-            x = (self.width() - logical_width) // 2
-            y = (self.height() - logical_height) // 2
+        # 计算绘制位置，使图片居中
+        pixel_ratio = img.devicePixelRatio()
+        logical_width = img.width() // pixel_ratio
+        logical_height = img.height() // pixel_ratio
+        x = int((self.width() - logical_width) // 2)
+        y = int((self.height() - logical_height) // 2)
 
-            # 绘制缩放后的图片
-            painter.drawPixmap(x, y, self.scaled_image)
+        # 绘制缩放后的图片
+        painter.drawPixmap(x, y, img)
 
     def resizeEvent(self, event):
         """重载 resizeEvent 以更新缩放后的图片或视频"""
         if self.is_video:
             self._resize_video_view()
+            self._update_video_fallback_image()
             # 确保视频视图始终在底层
             if self.graphics_view:
                 self.graphics_view.lower()
