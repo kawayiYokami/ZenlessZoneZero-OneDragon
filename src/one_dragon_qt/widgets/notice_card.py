@@ -9,7 +9,6 @@ import webbrowser
 import requests
 from PySide6.QtCore import (
     QEvent,
-    QModelIndex,
     QRect,
     QRectF,
     QSize,
@@ -34,7 +33,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStyle,
     QStyledItemDelegate,
-    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -133,7 +131,7 @@ class BannerImageLoader(QThread):
         cache_filename = self._get_cache_filename(url)
         return os.path.join(DataFetcher.CACHE_DIR, cache_filename)
 
-    def _load_from_cache(self, url: str) -> QImage:
+    def _load_from_cache(self, url: str) -> QImage | None:
         """从缓存加载图片"""
         cache_path = self._get_cache_path(url)
         if os.path.exists(cache_path):
@@ -202,8 +200,8 @@ class RoundedBannerView(HorizontalFlipView):
         region = QRegion(path.toFillPolygon().toPolygon())
         self.setMask(region)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
         self._update_left_rounded_mask()
 
 
@@ -290,10 +288,10 @@ class DataFetcher(QThread):
 class AcrylicBackground(QWidget):
     """“虚化”背景：半透明底色 + 轻噪声 + 细描边"""
 
-    def __init__(self, parent=None, radius: int = 4, tint: QColor = QColor(245, 245, 245, 130)):
+    def __init__(self, parent=None, radius: int = 4, tint: QColor | None = None):
         super().__init__(parent)
         self.radius = radius
-        self.tint = tint
+        self.tint = tint or QColor(245, 245, 245, 130)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         self._noise_tile = self._generate_noise_tile(64, 64)
@@ -567,7 +565,7 @@ class NoticeCard(SimpleCardWidget):
         types = ["announcements", "software_research", "game_guides"]
         type_names = ["公告要闻", "软件科研", "游戏攻略"]
 
-        for widget, post_type, name in zip(widgets, types, type_names):
+        for widget, post_type, name in zip(widgets, types, type_names, strict=False):
             widget.setSpacing(0)
             widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.add_posts_to_widget(widget, post_type)
@@ -587,10 +585,10 @@ class NoticeCard(SimpleCardWidget):
         # 将整个内容区域添加到主布局
         self.mainLayout.addWidget(content_widget)
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj, e):
         # 悬停控制 pips 显示/隐藏
         if obj is getattr(self, 'banner_wrapper', None):
-            et = event.type()
+            et = e.type()
             if et in (QEvent.Type.Enter, QEvent.Type.HoverEnter):
                 if hasattr(self, 'pipsHolder'):
                     self.pipsHolder.show()
@@ -599,7 +597,7 @@ class NoticeCard(SimpleCardWidget):
             elif et in (QEvent.Type.Leave, QEvent.Type.HoverLeave):
                 if hasattr(self, '_pips_hide_timer'):
                     self._pips_hide_timer.start(5000)  # 5s 后隐藏
-        return super().eventFilter(obj, event)
+        return super().eventFilter(obj, e)
 
     def update_ui(self):
         # 清空现有内容，避免重复添加
@@ -623,7 +621,7 @@ class NoticeCard(SimpleCardWidget):
         widgets = [self.announcementsWidget, self.softwareResearchWidget, self.gameGuidesWidget]
         types = ["announcements", "software_research", "game_guides"]
 
-        for widget, post_type in zip(widgets, types):
+        for widget, post_type in zip(widgets, types, strict=False):
             widget.clear()
             self.add_posts_to_widget(widget, post_type)
 
@@ -776,7 +774,7 @@ class NoticePostDelegate(QStyledItemDelegate):
     """公告列表项代理 - 直接绘制，避免创建 widget"""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        QStyledItemDelegate.__init__(self, parent)
         self.title_font = QFont("Microsoft YaHei", 10)
         self.date_font = QFont("Microsoft YaHei", 10)
         self._hover_row = -1
@@ -793,7 +791,7 @@ class NoticePostDelegate(QStyledItemDelegate):
         """兼容 qfluentwidgets ListWidget"""
         pass
 
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
+    def paint(self, painter: QPainter, option, index):
         # 初始化绘制选项
         painter.save()
 
@@ -837,5 +835,5 @@ class NoticePostDelegate(QStyledItemDelegate):
 
         painter.restore()
 
-    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex):
+    def sizeHint(self, option, index):
         return QSize(330, 26)
