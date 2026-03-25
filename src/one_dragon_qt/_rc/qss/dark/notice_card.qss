@@ -24,7 +24,7 @@ QListWidget {
     border: none;
 }
 
-QListWidgetItem {
+QListWidget::item {
     padding: 0px;
 }
 
