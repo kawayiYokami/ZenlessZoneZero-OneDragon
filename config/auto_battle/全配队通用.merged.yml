@@ -9462,10 +9462,10 @@
             "interrupt_states": "[叶瞬光-青溟剑势-白]{4,4} & [叶瞬光-明心境]{90,110} | [叶瞬光-明心境]{0,20}"
             "operations":
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-无视闪光"
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-动作不打断"
             - "op_name": "按键-特殊攻击-松开"
             - "op_name": "按键-普通攻击-松开"
@@ -9479,10 +9479,10 @@
           - "interrupt_states": "[叶瞬光-青溟剑势-白]{4,4} | [叶瞬光-明心境]{0,20}"
             "operations":
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-无视闪光"
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-动作不打断"
             - "op_name": "按键-特殊攻击"
               "post_delay": 0.1
@@ -9494,10 +9494,10 @@
           - "interrupt_states": "[叶瞬光-青溟剑势-白]{3,3} | [叶瞬光-明心境]{0,20}"
             "operations":
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-无视闪光"
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-动作不打断"
             - "op_name": "按键-普通攻击"
               "post_delay": 0.1
@@ -9506,10 +9506,10 @@
           - "interrupt_states": "[叶瞬光-青溟剑势-白]{1,1} | [叶瞬光-明心境]{0,20}"
             "operations":
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-无视闪光"
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-动作不打断"
             - "op_name": "按键-特殊攻击"
               "post_delay": 0.1
@@ -9521,10 +9521,10 @@
           - "interrupt_states": "[叶瞬光-青溟剑势-白]{0,0} | [叶瞬光-明心境]{0,20}"
             "operations":
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-无视闪光"
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-动作不打断"
             - "op_name": "按键-普通攻击"
               "post_delay": 0.1
@@ -9533,10 +9533,10 @@
           - "interrupt_states": "[叶瞬光-青溟剑势-白]{0,0} | [叶瞬光-明心境]{0,20}"
             "operations":
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-无视闪光"
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-动作不打断"
             - "op_name": "按键-普通攻击"
               "post_delay": 0.1
@@ -9545,10 +9545,10 @@
           - "interrupt_states": "[叶瞬光-明心境-标志]{0,0} & [叶瞬光-明心境]{0,0} & ![叶瞬光-能量]{0,0}"
             "operations":
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-无视闪光"
             - "op_name": "设置状态"
-              "seconds": 5
+              "seconds": 9
               "state": "自定义-动作不打断"
             - "op_name": "按键-特殊攻击-按下"
             - "op_name": "等待秒数"
@@ -18504,10 +18504,10 @@
           "interrupt_states": "[叶瞬光-青溟剑势-白]{4,4} & [叶瞬光-明心境]{90,110} | [叶瞬光-明心境]{0,20}"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-无视闪光"
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-动作不打断"
           - "op_name": "按键-特殊攻击-松开"
           - "op_name": "按键-普通攻击-松开"
@@ -18521,10 +18521,10 @@
         - "interrupt_states": "[叶瞬光-青溟剑势-白]{4,4} | [叶瞬光-明心境]{0,20}"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-无视闪光"
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-动作不打断"
           - "op_name": "按键-特殊攻击"
             "post_delay": 0.1
@@ -18536,10 +18536,10 @@
         - "interrupt_states": "[叶瞬光-青溟剑势-白]{3,3} | [叶瞬光-明心境]{0,20}"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-无视闪光"
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-动作不打断"
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
@@ -18548,10 +18548,10 @@
         - "interrupt_states": "[叶瞬光-青溟剑势-白]{1,1} | [叶瞬光-明心境]{0,20}"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-无视闪光"
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-动作不打断"
           - "op_name": "按键-特殊攻击"
             "post_delay": 0.1
@@ -18563,10 +18563,10 @@
         - "interrupt_states": "[叶瞬光-青溟剑势-白]{0,0} | [叶瞬光-明心境]{0,20}"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-无视闪光"
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-动作不打断"
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
@@ -18575,10 +18575,10 @@
         - "interrupt_states": "[叶瞬光-青溟剑势-白]{0,0} | [叶瞬光-明心境]{0,20}"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-无视闪光"
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-动作不打断"
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
@@ -18587,10 +18587,10 @@
         - "interrupt_states": "[叶瞬光-明心境-标志]{0,0} & [叶瞬光-明心境]{0,0} & ![叶瞬光-能量]{0,0}"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-无视闪光"
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 9
             "state": "自定义-动作不打断"
           - "op_name": "按键-特殊攻击-按下"
           - "op_name": "等待秒数"
