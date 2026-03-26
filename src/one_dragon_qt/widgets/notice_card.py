@@ -24,9 +24,9 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPixmap,
-    QRegion,
 )
 from PySide6.QtWidgets import (
+    QGraphicsEffect,
     QHBoxLayout,
     QListWidgetItem,
     QSizePolicy,
@@ -170,39 +170,49 @@ class BannerImageLoader(QThread):
                     os.remove(temp_path)
 
 
+class LeftRoundedClipEffect(QGraphicsEffect):
+    """QGraphicsEffect: 参照 PipWindow 的 clipPath 绘制方式裁剪左侧圆角。"""
+
+    def __init__(self, radius: float, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._radius = radius
+
+    def draw(self, painter: QPainter) -> None:
+        src = self.sourceBoundingRect()
+        pm = self.sourcePixmap(Qt.CoordinateSystem.LogicalCoordinates)
+        if pm.isNull():
+            return
+
+        r = min(float(self._radius), src.width() / 2, src.height() / 2)
+        d = 2 * r
+        x, y, w, h = src.x(), src.y(), src.width(), src.height()
+
+        path = QPainterPath()
+        path.moveTo(x + r, y)
+        path.lineTo(x + w, y)
+        path.lineTo(x + w, y + h)
+        path.lineTo(x + r, y + h)
+        path.arcTo(QRectF(x, y + h - d, d, d), 270, -90)
+        path.lineTo(x, y + r)
+        path.arcTo(QRectF(x, y, d, d), 180, -90)
+        path.closeSubpath()
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setClipPath(path)
+        painter.drawPixmap(int(x), int(y), pm)
+        painter.restore()
+
+
 class RoundedBannerView(HorizontalFlipView):
     """只保留左侧圆角的 Banner 视图"""
 
     def __init__(self, radius: int = 4, parent=None):
         super().__init__(parent)
         self._radius = radius
-        self._left_only = True
         self.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatioByExpanding)
-        self._update_left_rounded_mask()
-
-    def _update_left_rounded_mask(self):
-        """使用 mask 裁剪左侧圆角，避免在 paintEvent 中二次开 painter 触发 paintEngine 报错。"""
-        rect = self.rect()
-        if rect.isNull():
-            self.clearMask()
-            return
-
-        radius = max(0, min(self._radius, rect.width() // 2, rect.height() // 2))
-        path = QPainterPath()
-        path.moveTo(rect.left(), rect.bottom() - radius)
-        path.quadTo(rect.left(), rect.bottom(), rect.left() + radius, rect.bottom())
-        path.lineTo(rect.right(), rect.bottom())
-        path.lineTo(rect.right(), rect.top())
-        path.lineTo(rect.left() + radius, rect.top())
-        path.quadTo(rect.left(), rect.top(), rect.left(), rect.top() + radius)
-        path.closeSubpath()
-
-        region = QRegion(path.toFillPolygon().toPolygon())
-        self.setMask(region)
-
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        self._update_left_rounded_mask()
+        self.setGraphicsEffect(LeftRoundedClipEffect(radius, self))
 
 
 # 增加了缓存机制, 有效期为3天, 避免每次都请求数据
