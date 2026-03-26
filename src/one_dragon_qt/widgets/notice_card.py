@@ -595,7 +595,7 @@ class NoticeCard(SimpleCardWidget):
                 self.pipsHolder.show()
                 self._pips_hide_timer.stop()
             elif et in (QEvent.Type.Leave, QEvent.Type.HoverLeave):
-                self._pips_hide_timer.start(5000)  # 5s 后隐藏
+                self._pips_hide_timer.start(2000)  # 2s 后隐藏
         # pipsHolder 尺寸变化时自动重新定位（底部居中）
         elif obj is getattr(self, 'pipsHolder', None):
             if e.type() == QEvent.Type.Resize:
