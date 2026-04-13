@@ -8,9 +8,10 @@ from one_dragon.base.geometry.point import Point
 from one_dragon.base.operation.operation import Operation
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
+from one_dragon.base.operation.operation_notify import NotifyTiming, node_notify
 from one_dragon.base.operation.operation_round_result import OperationRoundResult
 from one_dragon.base.screen import screen_utils
-from one_dragon.utils import cv2_utils, str_utils, gpu_executor
+from one_dragon.utils import cv2_utils, gpu_executor, str_utils
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from one_dragon.yolo.detect_utils import DetectFrameResult
@@ -347,8 +348,14 @@ class LostVoidRunLevel(ZOperation):
         else:
             return self.round_fail(op_result.status)
 
-    @node_from(from_name='非战斗画面识别', status=LostVoidDetector.CLASS_INTERACT)
     @node_from(from_name='非战斗画面识别', status=LostVoidDetector.CLASS_ENTRY)
+    @node_notify(when=NotifyTiming.CURRENT_DONE, detail=True)
+    @operation_node(name='下层入口处理')
+    def on_entry(self) -> OperationRoundResult:
+        return self.round_success()
+
+    @node_from(from_name='非战斗画面识别', status=LostVoidDetector.CLASS_INTERACT)
+    @node_from(from_name='下层入口处理')
     @operation_node(name='尝试交互')
     def try_interact(self) -> OperationRoundResult:
         """
@@ -860,6 +867,19 @@ class LostVoidRunLevel(ZOperation):
     @node_from(from_name='非战斗画面识别', success=False, status=Operation.STATUS_TIMEOUT)
     @node_from(from_name='战斗中', success=False, status=Operation.STATUS_TIMEOUT)
     @node_from(from_name='处理寻路失败', status='准备最终退出')
+    @node_notify(when=NotifyTiming.CURRENT_DONE, detail=True)
+    @operation_node(name='保存错误信息')
+    def push_error(self) -> OperationRoundResult:
+        status = f'{self.previous_node.name}: {self.previous_node.status}'
+        # 打开菜单保存现场
+        result = self.round_by_find_and_click_area(screen_name='迷失之地-大世界', area_name='迷失之地-TAB')
+        time.sleep(1)
+        if result.is_success:
+            self.screenshot()
+            return self.round_fail(status)
+        return self.round_retry(f'{status}（打开tab页面失败）')
+
+    @node_from(from_name='保存错误信息', success=False)
     @operation_node(name='失败退出空洞')
     def fail_exit_lost_void(self) -> OperationRoundResult:
         self.ctx.auto_battle_context.stop_auto_battle()
@@ -867,6 +887,7 @@ class LostVoidRunLevel(ZOperation):
         return self.round_by_op_result(op.execute())
 
     @node_from(from_name='战斗中', status='迷失之地-战斗失败')
+    @node_notify(when=NotifyTiming.PREVIOUS_DONE, detail=True)
     @operation_node(name='处理战斗失败')
     def handle_battle_fail(self) -> OperationRoundResult:
         return self.round_by_find_and_click_area(screen_name='迷失之地-战斗失败', area_name='按钮-撤退',
