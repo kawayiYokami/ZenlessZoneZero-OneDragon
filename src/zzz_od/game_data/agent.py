@@ -506,3 +506,7 @@ class AgentEnum(Enum):
 
     CISSIA = Agent('cissia', '希希芙', RareTypeEnum.S, AgentTypeEnum.ATTACK, DmgTypeEnum.ELECTRIC, ['cissia'],
                    state_list=[])
+
+    PROMEIA = Agent('promeia', '普罗米亚', RareTypeEnum.S, AgentTypeEnum.ANOMALY, DmgTypeEnum.ICE, ['promeia'],
+                    state_list=[AgentStateDef('普罗米亚-霜刑', AgentStateCheckWay.COLOR_RANGE_CONNECT, 'promeia_ss',
+                                              hsv_color=(150,50,255), hsv_color_diff=(20, 40, 50), connect_cnt=2)])
