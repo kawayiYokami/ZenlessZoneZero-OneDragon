@@ -509,4 +509,4 @@ class AgentEnum(Enum):
 
     PROMEIA = Agent('promeia', '普罗米亚', RareTypeEnum.S, AgentTypeEnum.ANOMALY, DmgTypeEnum.ICE, ['promeia'],
                     state_list=[AgentStateDef('普罗米亚-霜刑', AgentStateCheckWay.COLOR_RANGE_CONNECT, 'promeia_ss',
-                                              hsv_color=(150,50,255), hsv_color_diff=(20, 40, 50), connect_cnt=2)])
+                                              hsv_color=(0,255,255), hsv_color_diff=(90, 255, 50), connect_cnt=2)])
