@@ -1,5 +1,6 @@
 - screen_id: 3d_map
   screen_name: 3D地图
+  app_id: world_patrol
   pc_alt: false
   area_list:
   - area_name: 按钮-快捷导航
@@ -824,6 +825,7 @@
     goto_list: []
 - screen_id: city_fund
   screen_name: 丽都城募
+  app_id: city_fund
   pc_alt: false
   area_list:
   - area_name: 成长任务
@@ -912,6 +914,7 @@
     goto_list: []
 - screen_id: coffee_shop
   screen_name: 咖啡店
+  app_id: coffee
   pc_alt: false
   area_list:
   - area_name: 点单
@@ -1284,6 +1287,7 @@
     goto_list: []
 - screen_id: commission_assistant
   screen_name: 委托助手
+  app_id: commission_assistant
   pc_alt: false
   area_list:
   - area_name: 对话框标题
@@ -2355,6 +2359,7 @@
     goto_list: []
 - screen_id: drive_disc_dismantle
   screen_name: 仓库-驱动仓库-驱动盘拆解
+  app_id: drive_disc_dismantle
   pc_alt: false
   area_list:
   - area_name: 标题-驱动盘拆解
@@ -2485,6 +2490,7 @@
     goto_list: []
 - screen_id: email
   screen_name: 邮件
+  app_id: email
   pc_alt: false
   area_list:
   - area_name: 全部领取
@@ -3128,6 +3134,7 @@
     goto_list: []
 - screen_id: fishing
   screen_name: 钓鱼
+  app_id: commission_assistant
   pc_alt: false
   area_list:
   - area_name: 指令文本区域
@@ -3402,6 +3409,7 @@
     goto_list: []
 - screen_id: hollow_zero_battle
   screen_name: 零号空洞-战斗
+  app_id: withered_domain
   pc_alt: false
   area_list:
   - area_name: 鸣徽-确定
@@ -3504,6 +3512,7 @@
     goto_list: []
 - screen_id: hollow_zero_entry
   screen_name: 零号空洞-入口
+  app_id: withered_domain
   pc_alt: false
   area_list:
   - area_name: 街区
@@ -3634,6 +3643,7 @@
     goto_list: []
 - screen_id: hollow_zero_event
   screen_name: 零号空洞-事件
+  app_id: withered_domain
   pc_alt: false
   area_list:
   - area_name: 事件文本
@@ -4002,6 +4012,7 @@
     goto_list: []
 - screen_id: hollow_zero_merchant
   screen_name: 零号空洞-商店
+  app_id: withered_domain
   pc_alt: false
   area_list:
   - area_name: 右上角-返回
@@ -4160,6 +4171,7 @@
     goto_list: []
 - screen_id: intel_board
   screen_name: 情报板
+  app_id: intel_board
   pc_alt: false
   area_list:
   - area_name: 点数兑换
@@ -4262,6 +4274,7 @@
     goto_list: []
 - screen_id: inter_knot
   screen_name: 绳网
+  app_id: world_patrol
   pc_alt: false
   area_list:
   - area_name: 按钮-GO
@@ -4322,6 +4335,7 @@
     goto_list: []
 - screen_id: life_on_line
   screen_name: 真拿命验收
+  app_id: life_on_line
   pc_alt: false
   area_list:
   - area_name: 第二章间章
@@ -4382,6 +4396,7 @@
     goto_list: []
 - screen_id: lostvoid_indexpanel
   screen_name: 迷失之地-藏品面板
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 返回按钮
@@ -4470,6 +4485,7 @@
     goto_list: []
 - screen_id: lostvoid_investigativeStrategy
   screen_name: 迷失之地-调查战略选择
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 战略等级
@@ -4488,6 +4504,7 @@
     goto_list: []
 - screen_id: lost_void_bangboo_store
   screen_name: 迷失之地-邦布商店
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 文本-详情
@@ -4666,6 +4683,7 @@
     goto_list: []
 - screen_id: lost_void_battle_fail
   screen_name: 迷失之地-战斗失败
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 按钮-撤退
@@ -4712,6 +4730,7 @@
     goto_list: []
 - screen_id: lost_void_battle_result
   screen_name: 迷失之地-挑战结果
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 标题-挑战结果
@@ -4786,6 +4805,7 @@
     goto_list: []
 - screen_id: lost_void_choose_common
   screen_name: 迷失之地-通用选择
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 文本-详情
@@ -4937,6 +4957,7 @@
     goto_list: []
 - screen_id: lost_void_entry
   screen_name: 迷失之地-入口
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 按钮-更新弹窗-关闭
@@ -5109,6 +5130,7 @@
     goto_list: []
 - screen_id: lost_void_entry_task_force
   screen_name: 迷失之地-特遣调查
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 按钮-街区
@@ -5199,6 +5221,7 @@
     goto_list: []
 - screen_id: lost_void_gear
   screen_name: 迷失之地-武备选择
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 按钮-携带
@@ -5287,6 +5310,7 @@
     goto_list: []
 - screen_id: lost_void_lottery
   screen_name: 迷失之地-抽奖机
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 按钮-返回
@@ -5361,6 +5385,7 @@
     goto_list: []
 - screen_id: lost_void_normal_world
   screen_name: 迷失之地-大世界
+  app_id: lost_void
   pc_alt: true
   area_list:
   - area_name: 区域-文本提示
@@ -5535,6 +5560,7 @@
     goto_list: []
 - screen_id: lost_void_purge
   screen_name: 迷失之地-战线肃清
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 标题-战线肃清
@@ -5652,6 +5678,7 @@
     goto_list: []
 - screen_id: lost_void_route_change
   screen_name: 迷失之地-路径迭换
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 按钮-返回
@@ -5730,6 +5757,7 @@
     goto_list: []
 - screen_id: matrix_action
   screen_name: 迷失之地-矩阵行动
+  app_id: lost_void
   pc_alt: false
   area_list:
   - area_name: 预备编队
@@ -6140,6 +6168,7 @@
     goto_list: []
 - screen_id: news_stand
   screen_name: 报刊亭
+  app_id: scratch_card
   pc_alt: false
   area_list:
   - area_name: 刮刮卡
@@ -7024,6 +7053,7 @@
     goto_list: []
 - screen_id: random_play
   screen_name: 影像店营业
+  app_id: random_play
   pc_alt: false
   area_list:
   - area_name: 昨日账本
@@ -7494,6 +7524,7 @@
     goto_list: []
 - screen_id: ridu_weekly
   screen_name: 丽都周纪
+  app_id: ridu_weekly
   pc_alt: false
   area_list:
   - area_name: 丽都周纪
@@ -7638,6 +7669,7 @@
     goto_list: []
 - screen_id: shiyu_defense
   screen_name: 式舆防卫战
+  app_id: shiyu_defense
   pc_alt: false
   area_list:
   - area_name: 节点区域
@@ -8048,6 +8080,7 @@
     goto_list: []
 - screen_id: shiyu_defense_new
   screen_name: 新式舆防卫战
+  app_id: shiyu_defense
   pc_alt: false
   area_list:
   - area_name: 节点区域
@@ -8332,6 +8365,7 @@
     goto_list: []
 - screen_id: storage_drive_disc
   screen_name: 仓库-驱动仓库
+  app_id: drive_disc_dismantle
   pc_alt: false
   area_list:
   - area_name: 标题-驱动仓库
@@ -8380,6 +8414,7 @@
     - 大世界-普通
 - screen_id: storage_wengine
   screen_name: 仓库-音擎仓库
+  app_id: drive_disc_dismantle
   pc_alt: false
   area_list:
   - area_name: 标题-音擎仓库
@@ -8442,6 +8477,7 @@
     - 仓库-驱动仓库
 - screen_id: suibian_temple_adventure
   screen_name: 随便观-游历
+  app_id: suibian_temple
   pc_alt: false
   area_list:
   - area_name: 按钮-游历小队
@@ -8586,6 +8622,7 @@
     goto_list: []
 - screen_id: suibian_temple_boobox
   screen_name: 随便观-邦巢
+  app_id: suibian_temple
   pc_alt: false
   area_list:
   - area_name: 按钮-跳过
@@ -8730,6 +8767,7 @@
     goto_list: []
 - screen_id: suibian_temple_craft
   screen_name: 随便观-制造坊
+  app_id: suibian_temple
   pc_alt: false
   area_list:
   - area_name: 标题-制造坊
@@ -8931,6 +8969,7 @@
     goto_list: []
 - screen_id: suibian_temple_entry
   screen_name: 随便观-入口
+  app_id: suibian_temple
   pc_alt: false
   area_list:
   - area_name: 按钮-邻里街坊
@@ -9047,6 +9086,7 @@
     goto_list: []
 - screen_id: suibian_temple_pawnshop
   screen_name: 随便观-德丰大押
+  app_id: suibian_temple
   pc_alt: false
   area_list:
   - area_name: 按钮-返回
@@ -9178,6 +9218,7 @@
     goto_list: []
 - screen_id: suibian_temple_sales_stall
   screen_name: 随便观-售卖铺
+  app_id: suibian_temple
   pc_alt: false
   area_list:
   - area_name: 标题-售卖铺
@@ -9281,6 +9322,7 @@
     goto_list: []
 - screen_id: suibian_temple_yumchaxian
   screen_name: 随便观-饮茶仙
+  app_id: suibian_temple
   pc_alt: false
   area_list:
   - area_name: 按钮-定期采办
@@ -9481,6 +9523,7 @@
     goto_list: []
 - screen_id: trigrams_collection
   screen_name: 卦象集录
+  app_id: trigrams_collection
   pc_alt: false
   area_list:
   - area_name: 区域-获取卦象
