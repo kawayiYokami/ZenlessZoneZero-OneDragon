@@ -54,6 +54,7 @@ class EnterGame(ZOperation):
 
     def handle_init(self):
         # 本OP会被复用 多次登录时重置这个记录
+        self.already_login = False
         self.after_first_enter_click = False
         self.after_second_enter_click = False
         self.resource_download_start_time = None
@@ -64,6 +65,7 @@ class EnterGame(ZOperation):
     @node_from(from_name='B服新-选择登录过的账号')
     @node_from(from_name='国际服-换服')
     @node_from(from_name='点击进入游戏', status=STATUS_GAME_DATA_UPDATED)
+    @node_from(from_name='点击进入游戏', status='切换账号确定')
     @node_from(from_name='画面识别', status='B服新-同意隐私政策')
     @operation_node(name='画面识别', node_max_retry_times=60, is_start_node=True)
     def check_screen(self) -> OperationRoundResult:
@@ -115,35 +117,18 @@ class EnterGame(ZOperation):
         if result.is_success:
             return self.round_success(result.status)
 
-        # 判断是否要切换账号
-        if self.force_login and not self.already_login:
-            result = self.round_by_find_area(screen, '打开游戏', '点击进入游戏')
-            if result.is_success:
-                self.after_first_enter_click = False
-                self.after_second_enter_click = False
-                self.resource_download_start_time = None
-                self.round_by_click_area('打开游戏', '切换账号')
-                return self.round_wait(result.status, wait=1)
+        result = self.round_by_find_area(screen, '打开游戏', '点击进入游戏')
+        if result.is_success:
+            self.resource_download_start_time = None
+            if self.already_login:
+                return self.round_success('点击进入游戏', wait=1)
 
-            result = self.round_by_find_and_click_area(screen, '打开游戏', '切换账号确定')
-            if result.is_success:
-                self.after_first_enter_click = False
-                self.after_second_enter_click = False
-                self.resource_download_start_time = None
-                return self.round_wait(result.status, wait=5)
-        else:
-            result = self.round_by_find_area(screen, '打开游戏', '点击进入游戏')
-            if result.is_success:
-                self.resource_download_start_time = None
-                if self.already_login:
-                    return self.round_success('点击进入游戏', wait=1)
-
+            click_result = self.round_by_click_area('打开游戏', '点击进入游戏')
+            if click_result.is_success:
                 self.after_first_enter_click = True
                 self.after_second_enter_click = False
-                click_result = self.round_by_click_area('打开游戏', '点击进入游戏')
-                if click_result.is_success:
-                    return self.round_success('点击进入游戏', wait=5)
-                return click_result
+                return self.round_success('点击进入游戏', wait=5)
+            return click_result
 
         result = self.round_by_find_and_click_area(screen, '打开游戏', '国服-账号密码')
         if result.is_success:
@@ -633,6 +618,22 @@ class EnterGame(ZOperation):
         if data_updated_result is not None:
             return data_updated_result
 
+        if self.force_login and not self.already_login and self.after_first_enter_click:
+            result = self.round_by_find_and_click_area(self.last_screenshot, '打开游戏', '切换账号确定')
+            if result.is_success:
+                self.after_first_enter_click = False
+                self.after_second_enter_click = False
+                self.resource_download_start_time = None
+                return self.round_success(result.status, wait=5)
+
+            result = self.round_by_find_and_click_area(self.last_screenshot, '打开游戏', '切换账号')
+            if result.is_success:
+                self.after_second_enter_click = False
+                self.resource_download_start_time = None
+                return self.round_wait(result.status, wait=1)
+
+            return self.round_retry('等待切换账号', wait=1)
+
         match_word, _ = self.check_enter_click_status_text(
             self.last_screenshot,
             include_enter_click=True,
@@ -643,12 +644,12 @@ class EnterGame(ZOperation):
 
             self.resource_download_start_time = None
             if match_word == '点击进入游戏':
-                if self.after_first_enter_click:
-                    self.after_second_enter_click = True
-                else:
-                    self.after_first_enter_click = True
                 click_result = self.round_by_click_area('打开游戏', '点击进入游戏')
                 if click_result.is_success:
+                    if self.after_first_enter_click:
+                        self.after_second_enter_click = True
+                    else:
+                        self.after_first_enter_click = True
                     return self.round_wait(status=match_word, wait=1)
                 return click_result
 
