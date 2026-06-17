@@ -55,6 +55,8 @@
               mission_name_display: "冰属性"
             - mission_name: "电流测试"
               mission_name_display: "电属性"
+            - mission_name: "风切测试"
+              mission_name_display: "风属性"
             - mission_name: "共鸣测试"
               mission_name_display: "以太"
         - mission_type_name: "自定义模板"
