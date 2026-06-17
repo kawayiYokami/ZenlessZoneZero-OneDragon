@@ -513,7 +513,7 @@ class AgentEnum(Enum):
                                               hsv_color=(0,255,255), hsv_color_diff=(90, 255, 50), connect_cnt=2)])
 
     VELINA = Agent('velina', '维琳娜', RareTypeEnum.S, AgentTypeEnum.ANOMALY, DmgTypeEnum.WIND, ['velina'],
-                    state_list=[AgentStateDef('维琳娜-风华', AgentStateCheckWay.COLOR_RANGE_CONNECT, 'velina',
+                    state_list=[AgentStateDef('维琳娜-风华', AgentStateCheckWay.FOREGROUND_COLOR_RANGE_LENGTH, 'velina',
                                         hsv_color=(0, 255, 255), hsv_color_diff=(90, 220, 200),
                                         max_length=135)
                       ])
