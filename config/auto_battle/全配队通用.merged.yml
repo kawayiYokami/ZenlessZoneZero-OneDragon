@@ -11485,7 +11485,7 @@
             "seconds": 0.5
           - "op_name": "设置状态"
             "state": "自定义-合轴时间"
-          "states": "[诺姆-预热, 80, 100]"
+          "states": "[诺姆-预热]{80, 100}"
         - "operations":
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
@@ -21765,7 +21765,7 @@
           "seconds": 0.5
         - "op_name": "设置状态"
           "state": "自定义-合轴时间"
-        "states": "[诺姆-预热, 80, 100]"
+        "states": "[诺姆-预热]{80, 100}"
       - "operations":
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
