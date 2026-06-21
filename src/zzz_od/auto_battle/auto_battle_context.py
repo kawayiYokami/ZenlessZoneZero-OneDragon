@@ -1007,6 +1007,7 @@ class AutoBattleContext:
         self._release_keys()
         self.switch_next(release=True)
         self.switch_prev(release=True)
+        self.switch_backup(release=True)
         self.lock(release=True)
         self.ultimate(release=True)
         self.chain_cancel(release=True)
