@@ -1,20 +1,24 @@
-import time
 import re
+import time
+from typing import Any
 
 import cv2
 from cv2.typing import MatLike
-from typing import Any
 
 from one_dragon.base.geometry.point import Point
 from one_dragon.base.geometry.rectangle import Rect
-from one_dragon.base.matcher.match_result import MatchResult, MatchResultList
+from one_dragon.base.matcher.match_result import MatchResultList
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.base.operation.operation_round_result import OperationRoundResult
-from one_dragon.utils import cv2_utils, cal_utils
+from one_dragon.utils import cv2_utils
 from one_dragon.utils.log_utils import log
-from zzz_od.application.hollow_zero.lost_void.context.lost_void_artifact import LostVoidArtifact
-from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_artifact_pos import LostVoidArtifactPos
+from zzz_od.application.hollow_zero.lost_void.context.lost_void_artifact import (
+    LostVoidArtifact,
+)
+from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_artifact_pos import (
+    LostVoidArtifactPos,
+)
 from zzz_od.context.zzz_context import ZContext
 from zzz_od.operation.zzz_operation import ZOperation
 
@@ -34,7 +38,7 @@ class LostVoidChooseGear(ZOperation):
         self.ctx.controller.mouse_move(area.center + Point(0, 100))
         time.sleep(0.1)
 
-        screen_name = self.check_and_update_current_screen(self.last_screenshot)
+        screen_name = self.check_and_update_current_screen(self.screenshot())
         if screen_name != '迷失之地-武备选择':
             # 进入本指令之前 有可能识别错画面
             return self.round_retry(status=f'当前画面 {screen_name}', wait=1)
@@ -84,10 +88,11 @@ class LostVoidChooseGear(ZOperation):
         :return: (武备轮廓, 是否有等级)
         """
 
-        # 经常截错图，等1秒
+        # 经常截错图，等待后重新截图再识别
         time.sleep(1)
-        gear_context = self.ctx.cv_service.run_pipeline('迷失之地-武备列表检测', self.last_screenshot)
-        level_context = self.ctx.cv_service.run_pipeline('迷失之地-武备等级检测', self.last_screenshot)
+        screen = self.screenshot()
+        gear_context = self.ctx.cv_service.run_pipeline('迷失之地-武备列表检测', screen)
+        level_context = self.ctx.cv_service.run_pipeline('迷失之地-武备等级检测', screen)
 
         if not gear_context.is_success or not gear_context.contours:
             return [], gear_context
@@ -122,7 +127,7 @@ class LostVoidChooseGear(ZOperation):
         for i, (gear_contour, (gear_x1, gear_y1, gear_x2, gear_y2)) in enumerate(gear_rects):
             has_level = False
 
-            for j, (level_contour, (level_x1, level_y1, level_x2, level_y2)) in enumerate(remaining_levels):
+            for j, (_level_contour, (level_x1, level_y1, level_x2, level_y2)) in enumerate(remaining_levels):
                 is_overlapping = not (gear_x2 < level_x1 or level_x2 < gear_x1 or
                                       gear_y2 < level_y1 or level_y2 < gear_y1)
 
