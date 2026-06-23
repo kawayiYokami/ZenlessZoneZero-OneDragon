@@ -11,8 +11,12 @@ from one_dragon.base.operation.operation_round_result import OperationRoundResul
 from one_dragon.utils import cal_utils
 from one_dragon.utils.log_utils import log
 from one_dragon.yolo.detect_utils import DetectFrameResult, DetectObjectResult
-from zzz_od.application.hollow_zero.lost_void.context.lost_void_detector import LostVoidDetector
-from zzz_od.application.hollow_zero.lost_void.lost_void_challenge_config import LostVoidRegionType
+from zzz_od.application.hollow_zero.lost_void.context.lost_void_detector import (
+    LostVoidDetector,
+)
+from zzz_od.application.hollow_zero.lost_void.lost_void_challenge_config import (
+    LostVoidRegionType,
+)
 from zzz_od.auto_battle import auto_battle_utils
 from zzz_od.context.zzz_context import ZContext
 from zzz_od.operation.zzz_operation import ZOperation
@@ -150,6 +154,7 @@ class LostVoidMoveByDet(ZOperation):
         self.last_actual_turn_distance: int = 0  # 上一次实际的转向距离
         self.estimated_turn_ratio: float = 0.2  # 估算的转向比例
         self.turn_calibration_count: int = 1  # 转向校准次数
+        self.turn_settle_frames: int = 0  # 过冲后的稳定帧数
 
         self._last_attack_btn_check_time: float = 0  # 上一次检查普攻按钮的时间
 
@@ -163,6 +168,7 @@ class LostVoidMoveByDet(ZOperation):
         self.last_actual_turn_distance = 0
         self.estimated_turn_ratio = 0.2
         self.turn_calibration_count = 1
+        self.turn_settle_frames = 0
 
     def handle_not_in_world(self, screen: MatLike) -> OperationRoundResult:
         """
@@ -271,8 +277,7 @@ class LostVoidMoveByDet(ZOperation):
         :return: 是否进行了转动
         """
         if is_moving:
-            # 如果在移动中，每次都重置校准，并使用非常小的转向限制
-            self.turn_calibration_count = 1
+            # 移动中不做在线校准，只做保守跟随
             min_turn = 5
             max_turn = 15
         else:
@@ -284,23 +289,26 @@ class LostVoidMoveByDet(ZOperation):
         screen_center_y = self.ctx.controller.standard_height / 2
         diff_x = target.x - screen_center_x
         diff_y = target.y - screen_center_y
+        x_dead_zone = 50
+        x_settle_zone = 120
 
         turn_distance_x = 0
         if 'x' in calibration_axis:
-            # --- X轴转向计算 (逻辑完全不变) ---
-            if abs(diff_x) > 50:
-                # 根据上次转向的实际效果，动态校准转向比例
-                if self.last_target_x is not None and self.last_actual_turn_distance != 0:
-                    last_diff_x = self.last_target_x - screen_center_x
-                    actual_pixel_moved = diff_x - last_diff_x
+            if abs(diff_x) > x_dead_zone:
+                should_update_x_status = True
 
-                    # 当目标穿越中心点(过冲)时，强力抑制，比例减半并重置校准过程
+                if not is_moving and self.last_target_x is not None and self.last_actual_turn_distance != 0:
+                    last_diff_x = self.last_target_x - screen_center_x
+                    actual_pixel_moved = last_diff_x - diff_x
+
+                    # 当目标穿越中心点(过冲)时，强力抑制，并给一帧稳定时间避免来回横跳
                     if last_diff_x * diff_x < 0:
-                        self.estimated_turn_ratio *= 0.5
-                        self.turn_calibration_count = 1
+                        self.estimated_turn_ratio = max(0.02, self.estimated_turn_ratio * 0.5)
+                        self.turn_settle_frames = 1
                     # 正常校准：使用移动平均法平滑更新比例
-                    elif abs(actual_pixel_moved) > 1:
+                    elif abs(actual_pixel_moved) > 5:
                         current_ratio = abs(self.last_actual_turn_distance / actual_pixel_moved)
+                        current_ratio = min(max(current_ratio, 0.02), 1.0)
                         if self.turn_calibration_count == 1:  # 首次校准，直接采用侦察值
                             self.estimated_turn_ratio = current_ratio
                         else:  # 后续校准，使用移动平均法平滑更新
@@ -308,18 +316,28 @@ class LostVoidMoveByDet(ZOperation):
                             self.estimated_turn_ratio = (self.estimated_turn_ratio * (n - 1) + current_ratio) / n
                         self.turn_calibration_count += 1
 
-                # 计算转向指令，首次使用固定值进行侦察，后续使用自适应指令
-                if self.turn_calibration_count == 1:
+                if not is_moving and self.turn_settle_frames > 0 and abs(diff_x) < x_settle_zone:
+                    self.turn_settle_frames -= 1
+                    should_update_x_status = False
+                elif self.turn_calibration_count == 1:
                     turn_distance_x = 5 if diff_x > 0 else -5
-                    self.turn_calibration_count += 1
+                    if not is_moving:
+                        self.turn_calibration_count += 1
                 else:
                     turn_distance_x = int(diff_x * self.estimated_turn_ratio)
 
-                # 限制指令幅度，防止过小或过大
+                # 靠近中心时降低最小转向，避免静止状态下的反复横跳
                 if 0 < abs(turn_distance_x) < min_turn:
-                    turn_distance_x = min_turn if turn_distance_x > 0 else -min_turn
+                    if not is_moving and abs(diff_x) < x_settle_zone:
+                        turn_distance_x = 0
+                    else:
+                        turn_distance_x = min_turn if turn_distance_x > 0 else -min_turn
                 elif abs(turn_distance_x) > max_turn:
                     turn_distance_x = max_turn if turn_distance_x > 0 else -max_turn
+
+                if not is_moving and should_update_x_status and turn_distance_x != 0:
+                    self.last_target_x = target.x
+                    self.last_actual_turn_distance = turn_distance_x
 
         turn_distance_y = 0
         if 'y' in calibration_axis:
@@ -352,11 +370,8 @@ class LostVoidMoveByDet(ZOperation):
 
         self.total_turn_times += 1
 
-        # 只更新X轴的校准状态
-        self.last_target_x = target.x
-        self.last_actual_turn_distance = turn_distance_x
-
         return True
+
     def get_move_target(self, frame_result: DetectFrameResult) -> MoveTargetWrapper | None:
         """
         获取移动目标
