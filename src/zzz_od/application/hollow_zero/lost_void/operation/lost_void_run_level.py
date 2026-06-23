@@ -11,7 +11,7 @@ from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.base.operation.operation_notify import NotifyTiming, node_notify
 from one_dragon.base.operation.operation_round_result import OperationRoundResult
 from one_dragon.base.screen import screen_utils
-from one_dragon.utils import cv2_utils, gpu_executor, log_utils, str_utils
+from one_dragon.utils import cv2_utils, gpu_executor, str_utils
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from one_dragon.yolo.detect_utils import DetectFrameResult
@@ -52,6 +52,7 @@ from zzz_od.application.hollow_zero.lost_void.operation.update_priority_operatio
     UpdatePriorityOperation,
 )
 from zzz_od.context.zzz_context import ZContext
+from zzz_od.game_data.agent import AgentTypeEnum
 from zzz_od.operation.challenge_mission.exit_in_battle import ExitInBattle
 from zzz_od.operation.challenge_mission.restart_in_battle import RestartInBattle
 from zzz_od.operation.zzz_operation import ZOperation
@@ -284,7 +285,7 @@ class LostVoidRunLevel(ZOperation):
                 # 如果桌子旁没有感叹号交互 可以直接走到后方的感叹号
                 self.ctx.controller.move_w(press=True, press_time=0.7, release=True)
                 self.ctx.controller.move_d(press=True, press_time=1.4, release=True)
-                log_utils.log('挚交会谈开局向右移动')
+                log.info('挚交会谈开局向右移动')
 
         # 在大世界 开始检测
         frame_result: DetectFrameResult = self.ctx.lost_void.detect_to_go(
@@ -311,6 +312,8 @@ class LostVoidRunLevel(ZOperation):
                 elif op_result.status == LostVoidMoveByDet.STATUS_INTERACT:
                     self.interact_target = LostVoidInteractTarget(name='未知', icon='感叹号', is_exclamation=True)
                     return self.round_success('未在大世界')
+                elif op_result.status == LostVoidMoveByDet.STATUS_NEED_DETECT:
+                    return self.round_success(op_result.status)
                 else:
                     self.interact_target = LostVoidInteractTarget(name='感叹号', icon='感叹号', is_exclamation=True)
                     return self.round_success(LostVoidDetector.CLASS_INTERACT, wait=1)
@@ -388,10 +391,104 @@ class LostVoidRunLevel(ZOperation):
         op_result = op.execute()
         if op_result.success:
             self.ctx.lost_void.priority_updated = True
-            # 更新成功后，返回非战斗画面识别节点，重新进行判断
-            return self.round_success(status='非战斗区域')
+            return self.round_success(status='需要追加代理人类型优先级')
         else:
             return self.round_fail(op_result.status)
+
+    @node_from(from_name='更新优先级', status='需要追加代理人类型优先级')
+    @operation_node(name='追加代理人类型优先级')
+    def append_agent_type_priority(self) -> OperationRoundResult:
+        """
+        基于战斗上下文中已识别的当前队伍，补充强攻/异常类型优先级。
+        """
+        agent_context = self.ctx.auto_battle_context.agent_context
+        log.info('追加代理人类型优先级前，强制刷新一次战斗上下文队伍信息')
+        agent_context.team_info.request_check_all_agents()
+        self.screenshot()
+        agent_context._last_check_agent_time = 0
+        agent_context.check_agent_related(self.last_screenshot, self.last_screenshot_time)
+        team_info = agent_context.team_info
+
+        if team_info is None or team_info.agent_list is None or len(team_info.agent_list) == 0:
+            log.info('战斗上下文强制刷新后仍暂无队伍信息，跳过代理人类型优先级追加')
+            return self.round_success(status='非战斗区域')
+
+        current_priority_list = self.ctx.lost_void.dynamic_priority_list.copy()
+        current_abandon_list = self.ctx.lost_void.dynamic_abandon_list.copy()
+        appended_priority_list: list[str] = []
+        appended_abandon_list: list[str] = []
+        target_agent_type_list = [
+            agent_type
+            for agent_type in AgentTypeEnum
+            if agent_type != AgentTypeEnum.UNKNOWN
+        ]
+        present_agent_type_set: set[AgentTypeEnum] = set()
+        recognized_agent_text_list: list[str] = []
+
+        protected_abandon_category_set: set[str] = set()
+        protected_rule_list = self.ctx.lost_void.challenge_config.artifact_priority_in_battle.copy()
+        protected_rule_list.extend(self.ctx.lost_void.challenge_config.artifact_priority_2)
+        for rule in protected_rule_list:
+            if not self.ctx.lost_void._is_specific_priority_rule(rule):
+                continue
+            category = self.ctx.lost_void._extract_priority_rule_category(rule)
+            if category is None:
+                continue
+            protected_abandon_category_set.add(category)
+
+        for agent_info in team_info.agent_list:
+            agent = agent_info.agent
+            if agent is None:
+                continue
+
+            recognized_agent_text_list.append(f'{agent.agent_name}({agent.agent_type.value})')
+            if agent.agent_type not in target_agent_type_list:
+                continue
+            present_agent_type_set.add(agent.agent_type)
+
+            priority_text = agent.agent_type.value
+            if priority_text in current_priority_list:
+                continue
+
+            current_priority_list.append(priority_text)
+            appended_priority_list.append(priority_text)
+
+        for agent_type in target_agent_type_list:
+            category_text = agent_type.value
+            if agent_type in present_agent_type_set:
+                if category_text in current_abandon_list:
+                    current_abandon_list.remove(category_text)
+                continue
+            if category_text in protected_abandon_category_set:
+                continue
+            if category_text in current_abandon_list:
+                continue
+            current_abandon_list.append(category_text)
+            appended_abandon_list.append(category_text)
+
+        self.ctx.lost_void.dynamic_priority_list = current_priority_list
+        self.ctx.lost_void.dynamic_abandon_list = current_abandon_list
+        recognized_agent_text = ', '.join(recognized_agent_text_list) if len(recognized_agent_text_list) > 0 else '无'
+        priority_text = ', '.join(self.ctx.lost_void.dynamic_priority_list) if len(self.ctx.lost_void.dynamic_priority_list) > 0 else '空'
+        abandon_text = ', '.join(self.ctx.lost_void.dynamic_abandon_list) if len(self.ctx.lost_void.dynamic_abandon_list) > 0 else '空'
+        if len(appended_priority_list) > 0:
+            log.info(
+                f'战斗上下文代理人: {recognized_agent_text} '
+                f'追加代理人类型优先级: {", ".join(appended_priority_list)} '
+                f'追加动态放弃组: {", ".join(appended_abandon_list) if len(appended_abandon_list) > 0 else "无"} '
+                f'当前动态优先级: {priority_text} '
+                f'当前动态放弃组: {abandon_text}'
+            )
+        else:
+            log.info(
+                f'战斗上下文代理人: {recognized_agent_text} '
+                f'未追加新的代理人类型优先级 '
+                f'追加动态放弃组: {", ".join(appended_abandon_list) if len(appended_abandon_list) > 0 else "无"} '
+                f'当前动态优先级: {priority_text} '
+                f'当前动态放弃组: {abandon_text}'
+            )
+
+        return self.round_success(status='非战斗区域')
 
     @node_from(from_name='非战斗画面识别', status=LostVoidDetector.CLASS_ENTRY)
     @node_notify(when=NotifyTiming.CURRENT_DONE, detail=True)
