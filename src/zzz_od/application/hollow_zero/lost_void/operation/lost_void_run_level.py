@@ -11,26 +11,46 @@ from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.base.operation.operation_notify import NotifyTiming, node_notify
 from one_dragon.base.operation.operation_round_result import OperationRoundResult
 from one_dragon.base.screen import screen_utils
-from one_dragon.utils import cv2_utils, gpu_executor, str_utils, log_utils
+from one_dragon.utils import cv2_utils, gpu_executor, log_utils, str_utils
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from one_dragon.yolo.detect_utils import DetectFrameResult
 from zzz_od.application.hollow_zero.lost_void import lost_void_const
-from zzz_od.application.hollow_zero.lost_void.context.lost_void_detector import LostVoidDetector
-from zzz_od.application.hollow_zero.lost_void.lost_void_challenge_config import LostVoidRegionType
-from zzz_od.application.hollow_zero.lost_void.lost_void_run_record import LostVoidRunRecord
-from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_bangboo_store import LostVoidBangbooStore
-from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_choose_common import LostVoidChooseCommon
-from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_choose_gear import LostVoidChooseGear
+from zzz_od.application.hollow_zero.lost_void.context.lost_void_detector import (
+    LostVoidDetector,
+)
+from zzz_od.application.hollow_zero.lost_void.lost_void_challenge_config import (
+    LostVoidRegionType,
+)
+from zzz_od.application.hollow_zero.lost_void.lost_void_run_record import (
+    LostVoidRunRecord,
+)
+from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_bangboo_store import (
+    LostVoidBangbooStore,
+)
+from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_choose_common import (
+    LostVoidChooseCommon,
+)
+from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_choose_gear import (
+    LostVoidChooseGear,
+)
 from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_interact_target_const import (
     LostVoidInteractNPC,
     LostVoidInteractTarget,
     match_interact_target,
 )
-from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_lottery import LostVoidLottery
-from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_route_change import LostVoidRouteChange
-from zzz_od.application.hollow_zero.lost_void.operation.lost_void_move_by_det import LostVoidMoveByDet
-from zzz_od.application.hollow_zero.lost_void.operation.update_priority_operation import UpdatePriorityOperation
+from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_lottery import (
+    LostVoidLottery,
+)
+from zzz_od.application.hollow_zero.lost_void.operation.interact.lost_void_route_change import (
+    LostVoidRouteChange,
+)
+from zzz_od.application.hollow_zero.lost_void.operation.lost_void_move_by_det import (
+    LostVoidMoveByDet,
+)
+from zzz_od.application.hollow_zero.lost_void.operation.update_priority_operation import (
+    UpdatePriorityOperation,
+)
 from zzz_od.context.zzz_context import ZContext
 from zzz_od.operation.challenge_mission.exit_in_battle import ExitInBattle
 from zzz_od.operation.challenge_mission.restart_in_battle import RestartInBattle
@@ -110,6 +130,7 @@ class LostVoidRunLevel(ZOperation):
 
         self.room_inited_times: int = 0  # 挚交会谈需要初始化两次
         self.had_been_list: list[str] = []  # 已经访问过的类型 1.5更新后 交互后交互类型的图标不会消失 需要自己过滤
+        self.interacted_target_key_list: list[str] = []  # 本层已经交互过的具体对象
 
     @node_from(from_name='非战斗画面识别', status='未在大世界')  # 有小概率交互入口后 没处理好结束本次RunLevel 重新从等待加载 开始
     @node_from(from_name='非战斗画面识别', status='按钮-挑战-确认')  # 挑战类型的对话框确认后 第一次点击可能无效 跳回来这里点击到最后生效为止
@@ -395,13 +416,17 @@ class LostVoidRunLevel(ZOperation):
             area = self.ctx.screen_loader.get_area('迷失之地-大世界', '区域-交互文本')
             ocr_result_map = self.ctx.ocr.crop_and_run_ocr(self.last_screenshot, area.rect)
             current_interact_target = None
-            for ocr_result in ocr_result_map.keys():
+            for ocr_result in ocr_result_map:
                 target = match_interact_target(self.ctx, ocr_result)
                 if target is not None:
                     current_interact_target = target
                     break
 
             if current_interact_target is not None:
+                target_key = self.get_interact_target_key(current_interact_target)
+                if target_key in self.interacted_target_key_list:
+                    log.info('当前层已交互过 %s，本次不再交互，返回上游继续处理', target_key)
+                    return self.round_fail('重复交互对象')
                 self.interact_target = current_interact_target
 
             self.ctx.controller.interact(press=True, press_time=0.2, release=True)
@@ -559,7 +584,7 @@ class LostVoidRunLevel(ZOperation):
             '这位似曾相识的研究员为我们准备了一些「礼物」。', '但当正要选择的时候，她却拦住了我们。',  # 助理研究员
         ]
 
-        for ocr_result in ocr_result_map.keys():
+        for ocr_result in ocr_result_map:
             for special_talk in special_talk_list:
                 # 穷举比较麻烦 有超过10个字符的 就认为这里有对话吧
                 if len(ocr_result) <= 10 and not str_utils.find_by_lcs(gt(special_talk, 'game'), ocr_result):
@@ -627,6 +652,9 @@ class LostVoidRunLevel(ZOperation):
         """
         if self.interact_target is not None:
             log.info('交互后处理 上次交互对象为 %s %s', self.interact_target.icon, self.interact_target.name)
+            target_key = self.get_interact_target_key(self.interact_target)
+            if target_key not in self.interacted_target_key_list:
+                self.interacted_target_key_list.append(target_key)
 
         if self.ctx.lost_void.in_normal_world(self.last_screenshot):
             if not (self.boss_pre_battle
@@ -652,6 +680,12 @@ class LostVoidRunLevel(ZOperation):
             )
 
         return self.round_retry('等待画面返回', wait=1)
+
+    def get_interact_target_key(self, target: LostVoidInteractTarget) -> str:
+        """
+        获取交互对象在本层内的唯一标识
+        """
+        return f'{target.icon}:{target.name}'
 
     def move_after_interact(self) -> None:
         """
