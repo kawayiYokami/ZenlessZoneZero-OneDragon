@@ -774,6 +774,9 @@ class LostVoidContext:
                 list_name = '第一优先级' if list_idx == 0 else f'第二优先级{list_idx}'
                 for priority_rule in priority_list:
                     rule_category = self._extract_priority_rule_category(priority_rule)
+                    # dynamic_abandon_list 由 AgentTypeEnum.value 同源填充，rule_category 与
+                    # artifact_category 均走同一套干净取值链路，无别名或分隔符差异，因此直接
+                    # 使用 in 精确匹配即可，无需复用 _is_category_match 的归一化与子串逻辑。
                     if (
                         rule_category is not None
                         and rule_category in self.dynamic_abandon_list
