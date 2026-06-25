@@ -242,6 +242,8 @@ class LostVoidChooseGear(ZOperation):
             raw_name = match.group(2).strip()
             if len(raw_name) == 0:
                 return None, False
+            # OCR 常见识别错误修复
+            raw_category = raw_category.replace('昇常', '异常')
             category = raw_category.split('：', 1)[0].split(':', 1)[0].strip()
             if len(category) == 0:
                 category = raw_category
