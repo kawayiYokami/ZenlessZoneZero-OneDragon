@@ -413,6 +413,13 @@ class GitService:
         if local_manifest == remote_manifest:
             return True, ''
 
+        # 兼容旧打包产物的 CRLF；先走 raw bytes 快路径，仅不一致时再归一化。
+        if b'\r' in local_manifest or b'\r' in remote_manifest:
+            normalized_local_manifest = local_manifest.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+            normalized_remote_manifest = remote_manifest.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+            if normalized_local_manifest == normalized_remote_manifest:
+                return True, ''
+
         msg = gt('目标版本的运行环境与当前不兼容')
         log.warning(f'模块清单已变更，阻止代码更新。目标: {str(target_oid)[:7]}')
         return False, msg

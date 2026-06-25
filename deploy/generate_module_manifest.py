@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 生成 PyInstaller 模块清单的脚本
 扫描源码目录中的所有导入，生成 module_manifest.py 用于 PyInstaller 依赖分析
@@ -156,7 +155,7 @@ def write_seed_script(seed_file: Path, mods: list[str], repo_root: Path) -> None
     """
     if not mods:
         print("[warn] No external dependencies found")
-        seed_file.write_text("# AUTO-GENERATED — DO NOT EDIT\npass\n", encoding="utf-8")
+        seed_file.write_text("# AUTO-GENERATED — DO NOT EDIT\npass\n", encoding="utf-8", newline="\n")
         return
 
     # 生成导入语句
@@ -166,7 +165,7 @@ def write_seed_script(seed_file: Path, mods: list[str], repo_root: Path) -> None
     for mod in mods:
         content += f"    {mod}\n"
 
-    seed_file.write_text(content, encoding="utf-8")
+    seed_file.write_text(content, encoding="utf-8", newline="\n")
     print(f"Writing -> {seed_file.relative_to(repo_root)} ({len(mods)} imports)")
 
 
