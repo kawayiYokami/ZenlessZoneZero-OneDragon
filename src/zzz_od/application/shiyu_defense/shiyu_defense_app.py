@@ -174,7 +174,7 @@ class ShiyuDefenseApp(ZApplication):
     def check_weakness(self) -> OperationRoundResult:
         if self.current_node_idx in MULTI_ROOM_NODES:
             # 等待多间模式画面加载
-            result = self.round_by_find_area(self.last_screenshot, '式舆防卫战-三间选择', '前往第一间')
+            result = self.round_by_find_area(self.last_screenshot, '式舆防卫战-三间选择', '本期最佳总分')
             if not result.is_success:
                 return self.round_retry('等待多间模式画面', wait=1)
 
