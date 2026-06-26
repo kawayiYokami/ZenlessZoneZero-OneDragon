@@ -20,7 +20,7 @@
       "seconds": 0.1
     "states": "[闪避识别-黄光, 0, 2]"
   "interval": 0.3
-  "priority": 99
+  "priority": 98
   "triggers":
   - "格挡-破碎"
 - "handlers":
@@ -190,7 +190,7 @@
           "state": "自定义-红光闪避"
         "states": ""
   "interval": 0.3
-  "priority": 99
+  "priority": 97
   "triggers":
   - "闪避识别-黄光"
   - "闪避识别-红光"
@@ -916,19 +916,24 @@
   - "连携技-准备"
 - "handlers":
   - "debug_name": "快速支援可用"
+    "interrupt_states": "![按键可用-快速支援]"
     "states": "![自定义-快速支援换人, 0, 0.5] & ![自定义-不使用快速支援, -10, 0] & ![自定义-无视闪光,-15,0]"
     "sub_handlers":
     - "operations":
-      - "op_name": "按键-快速支援"
       - "add": -1
         "op_name": "设置状态"
         "state": "自定义-非失衡连携"
       - "op_name": "设置状态"
         "state": "自定义-失衡时间"
+      - "op_name": "设置状态"
+        "state": "自定义-快速支援换人"
+      - "op_name": "按键-快速支援"
       - "op_name": "清除状态"
         "state_list":
         - "自定义-合轴时间"
         - "自定义-动作不打断"
+      - "op_name": "等待秒数"
+        "seconds": 0.1
       "states": "[自定义-非失衡连携, 0, 99]{1, 2}"
     - "operations":
       - "op_name": "设置状态"
@@ -940,6 +945,8 @@
         "state_list":
         - "自定义-合轴时间"
         - "自定义-动作不打断"
+      - "op_name": "等待秒数"
+        "seconds": 0.1
       "states": "[前台-耀嘉音] & ![耀嘉音-终结技可用]"
     - "debug_name": "正常快速支援"
       "operations":
@@ -953,30 +960,37 @@
         "state_list":
         - "自定义-合轴时间"
         - "自定义-动作不打断"
+      - &id004
+        "op_name": "等待秒数"
+        "seconds": 0.1
       "states": "((![后台-耀嘉音] | [前台-耀嘉音]) & ![耀嘉音-终结技可用])"
     - "debug_name": "嘉音套快没了"
       "operations":
       - *id001
       - *id002
       - *id003
+      - *id004
       "states": "[耀嘉音-能量]{0, 120} & ![自定义-快速支援换人, 0, 10] & ![自定义-动作不打断] & ![自定义-失衡时间,\
         \ 0, 15]"
     - "operations":
       - *id001
       - *id002
       - *id003
+      - *id004
       "states": "[前台-支援]"
     - "operations":
       - *id001
       - *id002
       - *id003
+      - *id004
       "states": "[前台-防护]"
     - "operations":
       - *id001
       - *id002
       - *id003
+      - *id004
       "states": "[前台-波可娜]"
-  "interval": 1
+  "interval": 0.1
   "priority": 97
   "triggers":
   - "按键可用-快速支援"
@@ -2163,7 +2177,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -2296,7 +2310,7 @@
         - "debug_name": "切人后等待"
           "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
           "sub_handlers":
-          - "states": "[按键可用-快速支援, 0, 0.5]"
+          - "states": "[自定义-快速支援换人, 0, 0.5]"
             "sub_handlers":
             - "operations":
               - "op_name": "设置状态"
@@ -2524,7 +2538,7 @@
         - "debug_name": "切人后等待"
           "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
           "sub_handlers":
-          - "states": "[按键可用-快速支援, 0, 0.3]"
+          - "states": "[自定义-快速支援换人, 0, 0.3]"
             "sub_handlers":
             - "operations":
               - "op_name": "设置状态"
@@ -2764,7 +2778,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.5
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -2887,7 +2901,7 @@
             - "op_name": "等待秒数"
               "seconds": 1.3
             - "op_name": "按键-普通攻击-松开"
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -3011,7 +3025,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -3165,7 +3179,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.5
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -3329,7 +3343,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -3671,7 +3685,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -3788,7 +3802,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -3891,7 +3905,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -4005,7 +4019,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -4129,7 +4143,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -4485,7 +4499,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -4629,7 +4643,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.5
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -4728,41 +4742,10 @@
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
             "repeat": 10
-          - "add": 70
-            "op_name": "设置状态"
-            "state": "自定义-异常-火"
           - "op_name": "设置状态"
             "state": "自定义-柏妮思-灼烧"
-          - "op_name": "等待秒数"
-            "seconds": 0.5
-          - "op_name": "按键-特殊攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.1
-          - "add": 300
-            "op_name": "设置状态"
-            "state": "自定义-异常-火"
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.1
           - "op_name": "设置状态"
-            "state": "自定义-柏妮思-灼烧"
-          - "op_name": "等待秒数"
-            "seconds": 0.6
+            "state": "自定义-柏妮思-可以直接长按"
           "states": "[自定义-黄光切人, 0, 1]"
         - "debug_name": "红光闪避"
           "operations":
@@ -4786,12 +4769,30 @@
             "seconds": 2
             "state": "自定义-动作不打断"
           - "op_name": "等待秒数"
-            "seconds": 2
+            "seconds": 1
           - "op_name": "设置状态"
             "state": "自定义-柏妮思-灼烧"
-          - "add": 150
-            "op_name": "设置状态"
-            "state": "自定义-异常-火"
+          - "op_name": "设置状态"
+            "state": "自定义-柏妮思-可以直接长按"
+          "states": "[自定义-连携换人, 0, 0.5]"
+        - "debug_name": "切人后等待"
+          "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
+          "sub_handlers":
+          - "debug_name": "快速支援等待"
+            "operations":
+            - "op_name": "等待秒数"
+              "seconds": 0.5
+            - "op_name": "设置状态"
+              "state": "自定义-柏妮思-可以直接长按"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
+          - "debug_name": "短暂等待"
+            "operations":
+            - "op_name": "等待秒数"
+              "seconds": 0.3
+            "states": ""
+        - "debug_name": "直接长按到用完为止吧"
+          "interrupt_states": "![柏妮思-特殊技可用]"
+          "operations":
           - "op_name": "按键-特殊攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -4820,46 +4821,10 @@
             "state": "自定义-柏妮思-灼烧"
           - "op_name": "等待秒数"
             "seconds": 0.6
-          "states": "[自定义-连携换人, 0, 0.5]"
-        - "debug_name": "切人后等待"
-          "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
-          "sub_handlers":
-          - "debug_name": "快速支援等待"
-            "operations":
-            - "op_name": "按键-特殊攻击-松开"
-            - "op_name": "等待秒数"
-              "seconds": 0.1
-            - "add": 300
-              "op_name": "设置状态"
-              "state": "自定义-异常-火"
-            - "op_name": "按键-特殊攻击-按下"
-            - "op_name": "等待秒数"
-              "seconds": 0.3
-            - "op_name": "按键-特殊攻击-按下"
-            - "op_name": "等待秒数"
-              "seconds": 0.3
-            - "op_name": "按键-特殊攻击-按下"
-            - "op_name": "等待秒数"
-              "seconds": 0.3
-            - "op_name": "按键-特殊攻击-按下"
-            - "op_name": "等待秒数"
-              "seconds": 0.3
-            - "op_name": "按键-特殊攻击-按下"
-            - "op_name": "等待秒数"
-              "seconds": 0.3
-            - "op_name": "按键-特殊攻击-松开"
-            - "op_name": "等待秒数"
-              "seconds": 0.1
-            - "op_name": "设置状态"
-              "state": "自定义-柏妮思-灼烧"
-            - "op_name": "等待秒数"
-              "seconds": 0.6
-            "states": "[按键可用-快速支援, 0, 0.5]"
-          - "debug_name": "短暂等待"
-            "operations":
-            - "op_name": "等待秒数"
-              "seconds": 0.3
-            "states": ""
+          - "op_name": "设置状态"
+            "state_list":
+            - "自定义-合轴时间"
+          "states": "[柏妮思-特殊技可用] & [自定义-柏妮思-可以直接长按, 0 , 2]"
         - "debug_name": "终结技"
           "operations":
           - "op_name": "设置状态"
@@ -4886,72 +4851,106 @@
           "states": "[柏妮思-终结技可用]"
         - "debug_name": "满了"
           "operations":
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.1
+          - "op_name": "按键-普通攻击"
+            "post_delay": 0.1
+            "repeat": 5
+          - "op_name": "设置状态"
+            "state": "自定义-动作不打断"
           - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
           - "op_name": "设置状态"
-            "state": "自定义-动作不打断"
-          - "add": 100
-            "op_name": "设置状态"
-            "state": "自定义-异常-火"
-          - "op_name": "等待秒数"
-            "seconds": 0.6
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 1
-          - "op_name": "清除状态"
-            "state": "自定义-动作不打断"
-          - "op_name": "设置状态"
             "state": "自定义-柏妮思-灼烧"
-          "states": "[柏妮思-燃点]{100, 100}"
-        - "debug_name": "正常打站场"
-          "operations":
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.1
           - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
-          - "op_name": "设置状态"
-            "state": "自定义-动作不打断"
-          - "add": 100
-            "op_name": "设置状态"
-            "state": "自定义-异常-火"
+          - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
-            "seconds": 0.6
+            "seconds": 0.2
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.2
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.2
           - "op_name": "按键-普通攻击-松开"
+          - "op_name": "设置状态"
+            "state_list":
+            - "自定义-合轴时间"
           - "op_name": "等待秒数"
             "seconds": 1
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
-          - "op_name": "设置状态"
-            "state": "自定义-柏妮思-灼烧"
-          "states": "[柏妮思-燃点]{80, 100} & [柏妮思-特殊技可用]"
+          "states": "[柏妮思-燃点]{100, 120}"
         - "debug_name": "低燃点单喷接双喷"
           "operations":
-          - "op_name": "按键-闪避"
-            "post_delay": 0.02
-            "repeat": 4
-          - "op_name": "按键-特殊攻击"
-            "post_delay": 0.1
-            "repeat": 4
-          - "add": 200
+          - "op_name": "按键-特殊攻击-松开"
+          - "op_name": "等待秒数"
+            "seconds": 0.1
+          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.3
+          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.3
+          - "op_name": "按键-特殊攻击-松开"
+          - "op_name": "等待秒数"
+            "seconds": 0.1
+          - "add": 450
             "op_name": "设置状态"
             "state": "自定义-异常-火"
-          - "op_name": "按键-特殊攻击"
-            "post_delay": 0.1
-            "repeat": 4
-          - "op_name": "按键-移动-前-按下"
-          - "op_name": "按键-闪避"
-            "post_delay": 0.02
-            "repeat": 4
-          - "op_name": "按键-移动-前-松开"
+          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.3
+          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.3
+          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.3
+          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.3
+          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.3
+          - "op_name": "按键-特殊攻击-松开"
           - "op_name": "设置状态"
             "state": "自定义-柏妮思-灼烧"
           "states": "[柏妮思-特殊技可用]"
+        - "debug_name": "能转就转"
+          "operations":
+          - "op_name": "按键-普通攻击"
+            "post_delay": 0.1
+            "repeat": 5
+          - "op_name": "设置状态"
+            "state": "自定义-动作不打断"
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.2
+          - "op_name": "设置状态"
+            "state": "自定义-柏妮思-灼烧"
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.2
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.2
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.2
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.2
+          - "op_name": "按键-普通攻击-松开"
+          - "op_name": "设置状态"
+            "state_list":
+            - "自定义-合轴时间"
+          - "op_name": "等待秒数"
+            "seconds": 1
+          - "op_name": "清除状态"
+            "state": "自定义-动作不打断"
+          "states": "[柏妮思-燃点]{50, 120}"
         - "debug_name": "没电了走吧"
           "operations":
           - "op_name": "设置状态"
@@ -5019,7 +5018,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -5183,7 +5182,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.5
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -5349,7 +5348,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -5520,7 +5519,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -5633,7 +5632,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -5738,7 +5737,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -5849,7 +5848,7 @@
               "state": "自定义-安东-爆发状态"
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "清除状态"
               "state": "自定义-安东-爆发状态"
@@ -5982,7 +5981,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -6148,7 +6147,7 @@
               "state": "自定义-伊芙琳-缠绕禁制"
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -6300,7 +6299,7 @@
             - "add": 64
               "op_name": "设置状态"
               "state": "自定义-零号安比-白雷"
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -6804,7 +6803,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -6939,7 +6938,7 @@
         - "debug_name": "切人后等待"
           "states": "([按键-切换角色-下一个, 0, 0.2]|[按键-切换角色-上一个, 0, 0.2])"
           "sub_handlers":
-          - "states": "[按键可用-快速支援, 0, 0.2]"
+          - "states": "[自定义-快速支援换人, 0, 0.2]"
             "sub_handlers":
             - "operations":
               - "op_name": "设置状态"
@@ -7174,7 +7173,7 @@
             - "op_name": "等待秒数"
               "seconds": 3.0
             - "op_name": "按键-普通攻击-松开"
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -7330,7 +7329,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -7721,7 +7720,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.8
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -7821,7 +7820,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.5
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -7929,7 +7928,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.1
-            "states": "[按键可用-快速支援, 0, 0.1]"
+            "states": "[自定义-快速支援换人, 0, 0.1]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.1
@@ -8077,7 +8076,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -8229,7 +8228,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -8336,7 +8335,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.5
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -8621,7 +8620,7 @@
               - "自定义-伊德海莉-蓄力中"
             - "op_name": "等待秒数"
               "seconds": 0.3
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "清除状态"
               "state_list":
@@ -8784,7 +8783,7 @@
         - "debug_name": "切人后等待"
           "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
           "sub_handlers":
-          - "states": "[按键可用-快速支援, 0, 0.5]"
+          - "states": "[自定义-快速支援换人, 0, 0.5]"
             "sub_handlers":
             - "operations":
               - "op_name": "设置状态"
@@ -9321,7 +9320,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.5
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -9856,7 +9855,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -9972,7 +9971,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -10546,7 +10545,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -10960,7 +10959,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -11132,7 +11131,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 1.0
-            "states": "[按键可用-快速支援, 0, 0.5]"
+            "states": "[自定义-快速支援换人, 0, 0.5]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -11356,10 +11355,10 @@
             "seconds": 4.0
           "states": "[维琳娜-终结技可用]"
         - "debug_name": "强化特殊技，持续6秒"
-          "interrupt_states": "![维琳娜-特殊技可用] | [按键可用-快速支援]"
+          "interrupt_states": "[按键可用-快速支援]"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 3
+            "seconds": 5
             "state": "自定义-动作不打断"
           - "op_name": "按键-特殊攻击"
             "post_delay": 0.1
@@ -11367,18 +11366,42 @@
           - "op_name": "按键-特殊攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.5
-          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.5
-          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.5
-          - "op_name": "按键-特殊攻击-按下"
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.5
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.5
+          - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.5
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
           "states": "[维琳娜-特殊技可用]"
+        - "debug_name": "龙卷风"
+          "interrupt_states": "[按键可用-快速支援]"
+          "operations":
+          - "op_name": "设置状态"
+            "seconds": 3
+            "state": "自定义-动作不打断"
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 1
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 1
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 1
+          - "op_name": "清除状态"
+            "state": "自定义-动作不打断"
+          "states": "[维琳娜-风华]{100,135}"
         - "debug_name": "普通攻击"
           "operations":
           - "op_name": "按键-普通攻击"
@@ -11447,7 +11470,7 @@
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.8
-            "states": "[按键可用-快速支援, 0, 0.3]"
+            "states": "[自定义-快速支援换人, 0, 0.3]"
           - "operations":
             - "op_name": "等待秒数"
               "seconds": 0.3
@@ -12442,7 +12465,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -12575,7 +12598,7 @@
       - "debug_name": "切人后等待"
         "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
         "sub_handlers":
-        - "states": "[按键可用-快速支援, 0, 0.5]"
+        - "states": "[自定义-快速支援换人, 0, 0.5]"
           "sub_handlers":
           - "operations":
             - "op_name": "设置状态"
@@ -12803,7 +12826,7 @@
       - "debug_name": "切人后等待"
         "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
         "sub_handlers":
-        - "states": "[按键可用-快速支援, 0, 0.3]"
+        - "states": "[自定义-快速支援换人, 0, 0.3]"
           "sub_handlers":
           - "operations":
             - "op_name": "设置状态"
@@ -13043,7 +13066,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.5
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -13166,7 +13189,7 @@
           - "op_name": "等待秒数"
             "seconds": 1.3
           - "op_name": "按键-普通攻击-松开"
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -13290,7 +13313,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -13444,7 +13467,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.5
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -13608,7 +13631,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -13950,7 +13973,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -14067,7 +14090,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -14170,7 +14193,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -14284,7 +14307,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -14408,7 +14431,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -14764,7 +14787,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -14908,7 +14931,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.5
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -15007,41 +15030,10 @@
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
           "repeat": 10
-        - "add": 70
-          "op_name": "设置状态"
-          "state": "自定义-异常-火"
         - "op_name": "设置状态"
           "state": "自定义-柏妮思-灼烧"
-        - "op_name": "等待秒数"
-          "seconds": 0.5
-        - "op_name": "按键-特殊攻击-松开"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
-        - "add": 300
-          "op_name": "设置状态"
-          "state": "自定义-异常-火"
-        - "op_name": "按键-特殊攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.3
-        - "op_name": "按键-特殊攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.3
-        - "op_name": "按键-特殊攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.3
-        - "op_name": "按键-特殊攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.3
-        - "op_name": "按键-特殊攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.3
-        - "op_name": "按键-特殊攻击-松开"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
         - "op_name": "设置状态"
-          "state": "自定义-柏妮思-灼烧"
-        - "op_name": "等待秒数"
-          "seconds": 0.6
+          "state": "自定义-柏妮思-可以直接长按"
         "states": "[自定义-黄光切人, 0, 1]"
       - "debug_name": "红光闪避"
         "operations":
@@ -15065,12 +15057,30 @@
           "seconds": 2
           "state": "自定义-动作不打断"
         - "op_name": "等待秒数"
-          "seconds": 2
+          "seconds": 1
         - "op_name": "设置状态"
           "state": "自定义-柏妮思-灼烧"
-        - "add": 150
-          "op_name": "设置状态"
-          "state": "自定义-异常-火"
+        - "op_name": "设置状态"
+          "state": "自定义-柏妮思-可以直接长按"
+        "states": "[自定义-连携换人, 0, 0.5]"
+      - "debug_name": "切人后等待"
+        "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
+        "sub_handlers":
+        - "debug_name": "快速支援等待"
+          "operations":
+          - "op_name": "等待秒数"
+            "seconds": 0.5
+          - "op_name": "设置状态"
+            "state": "自定义-柏妮思-可以直接长按"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
+        - "debug_name": "短暂等待"
+          "operations":
+          - "op_name": "等待秒数"
+            "seconds": 0.3
+          "states": ""
+      - "debug_name": "直接长按到用完为止吧"
+        "interrupt_states": "![柏妮思-特殊技可用]"
+        "operations":
         - "op_name": "按键-特殊攻击-松开"
         - "op_name": "等待秒数"
           "seconds": 0.1
@@ -15099,46 +15109,10 @@
           "state": "自定义-柏妮思-灼烧"
         - "op_name": "等待秒数"
           "seconds": 0.6
-        "states": "[自定义-连携换人, 0, 0.5]"
-      - "debug_name": "切人后等待"
-        "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
-        "sub_handlers":
-        - "debug_name": "快速支援等待"
-          "operations":
-          - "op_name": "按键-特殊攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.1
-          - "add": 300
-            "op_name": "设置状态"
-            "state": "自定义-异常-火"
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          - "op_name": "按键-特殊攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.1
-          - "op_name": "设置状态"
-            "state": "自定义-柏妮思-灼烧"
-          - "op_name": "等待秒数"
-            "seconds": 0.6
-          "states": "[按键可用-快速支援, 0, 0.5]"
-        - "debug_name": "短暂等待"
-          "operations":
-          - "op_name": "等待秒数"
-            "seconds": 0.3
-          "states": ""
+        - "op_name": "设置状态"
+          "state_list":
+          - "自定义-合轴时间"
+        "states": "[柏妮思-特殊技可用] & [自定义-柏妮思-可以直接长按, 0 , 2]"
       - "debug_name": "终结技"
         "operations":
         - "op_name": "设置状态"
@@ -15165,72 +15139,106 @@
         "states": "[柏妮思-终结技可用]"
       - "debug_name": "满了"
         "operations":
-        - "op_name": "按键-普通攻击-松开"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "op_name": "按键-普通攻击"
+          "post_delay": 0.1
+          "repeat": 5
+        - "op_name": "设置状态"
+          "state": "自定义-动作不打断"
         - "op_name": "按键-普通攻击-按下"
         - "op_name": "等待秒数"
           "seconds": 0.2
         - "op_name": "设置状态"
-          "state": "自定义-动作不打断"
-        - "add": 100
-          "op_name": "设置状态"
-          "state": "自定义-异常-火"
-        - "op_name": "等待秒数"
-          "seconds": 0.6
-        - "op_name": "按键-普通攻击-松开"
-        - "op_name": "等待秒数"
-          "seconds": 1
-        - "op_name": "清除状态"
-          "state": "自定义-动作不打断"
-        - "op_name": "设置状态"
           "state": "自定义-柏妮思-灼烧"
-        "states": "[柏妮思-燃点]{100, 100}"
-      - "debug_name": "正常打站场"
-        "operations":
-        - "op_name": "按键-普通攻击-松开"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
         - "op_name": "按键-普通攻击-按下"
         - "op_name": "等待秒数"
           "seconds": 0.2
-        - "op_name": "设置状态"
-          "state": "自定义-动作不打断"
-        - "add": 100
-          "op_name": "设置状态"
-          "state": "自定义-异常-火"
+        - "op_name": "按键-普通攻击-按下"
         - "op_name": "等待秒数"
-          "seconds": 0.6
+          "seconds": 0.2
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.2
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.2
         - "op_name": "按键-普通攻击-松开"
+        - "op_name": "设置状态"
+          "state_list":
+          - "自定义-合轴时间"
         - "op_name": "等待秒数"
           "seconds": 1
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
-        - "op_name": "设置状态"
-          "state": "自定义-柏妮思-灼烧"
-        "states": "[柏妮思-燃点]{80, 100} & [柏妮思-特殊技可用]"
+        "states": "[柏妮思-燃点]{100, 120}"
       - "debug_name": "低燃点单喷接双喷"
         "operations":
-        - "op_name": "按键-闪避"
-          "post_delay": 0.02
-          "repeat": 4
-        - "op_name": "按键-特殊攻击"
-          "post_delay": 0.1
-          "repeat": 4
-        - "add": 200
+        - "op_name": "按键-特殊攻击-松开"
+        - "op_name": "等待秒数"
+          "seconds": 0.1
+        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.3
+        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.3
+        - "op_name": "按键-特殊攻击-松开"
+        - "op_name": "等待秒数"
+          "seconds": 0.1
+        - "add": 450
           "op_name": "设置状态"
           "state": "自定义-异常-火"
-        - "op_name": "按键-特殊攻击"
-          "post_delay": 0.1
-          "repeat": 4
-        - "op_name": "按键-移动-前-按下"
-        - "op_name": "按键-闪避"
-          "post_delay": 0.02
-          "repeat": 4
-        - "op_name": "按键-移动-前-松开"
+        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.3
+        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.3
+        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.3
+        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.3
+        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.3
+        - "op_name": "按键-特殊攻击-松开"
         - "op_name": "设置状态"
           "state": "自定义-柏妮思-灼烧"
         "states": "[柏妮思-特殊技可用]"
+      - "debug_name": "能转就转"
+        "operations":
+        - "op_name": "按键-普通攻击"
+          "post_delay": 0.1
+          "repeat": 5
+        - "op_name": "设置状态"
+          "state": "自定义-动作不打断"
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.2
+        - "op_name": "设置状态"
+          "state": "自定义-柏妮思-灼烧"
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.2
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.2
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.2
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.2
+        - "op_name": "按键-普通攻击-松开"
+        - "op_name": "设置状态"
+          "state_list":
+          - "自定义-合轴时间"
+        - "op_name": "等待秒数"
+          "seconds": 1
+        - "op_name": "清除状态"
+          "state": "自定义-动作不打断"
+        "states": "[柏妮思-燃点]{50, 120}"
       - "debug_name": "没电了走吧"
         "operations":
         - "op_name": "设置状态"
@@ -15298,7 +15306,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -15462,7 +15470,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.5
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -15628,7 +15636,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -15799,7 +15807,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -15912,7 +15920,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -16017,7 +16025,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -16128,7 +16136,7 @@
             "state": "自定义-安东-爆发状态"
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "清除状态"
             "state": "自定义-安东-爆发状态"
@@ -16261,7 +16269,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -16427,7 +16435,7 @@
             "state": "自定义-伊芙琳-缠绕禁制"
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -16579,7 +16587,7 @@
           - "add": 64
             "op_name": "设置状态"
             "state": "自定义-零号安比-白雷"
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -17083,7 +17091,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -17218,7 +17226,7 @@
       - "debug_name": "切人后等待"
         "states": "([按键-切换角色-下一个, 0, 0.2]|[按键-切换角色-上一个, 0, 0.2])"
         "sub_handlers":
-        - "states": "[按键可用-快速支援, 0, 0.2]"
+        - "states": "[自定义-快速支援换人, 0, 0.2]"
           "sub_handlers":
           - "operations":
             - "op_name": "设置状态"
@@ -17453,7 +17461,7 @@
           - "op_name": "等待秒数"
             "seconds": 3.0
           - "op_name": "按键-普通攻击-松开"
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -17609,7 +17617,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -18000,7 +18008,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.8
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -18100,7 +18108,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.5
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -18208,7 +18216,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.1
-          "states": "[按键可用-快速支援, 0, 0.1]"
+          "states": "[自定义-快速支援换人, 0, 0.1]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.1
@@ -18356,7 +18364,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -18508,7 +18516,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -18615,7 +18623,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.5
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -18900,7 +18908,7 @@
             - "自定义-伊德海莉-蓄力中"
           - "op_name": "等待秒数"
             "seconds": 0.3
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "清除状态"
             "state_list":
@@ -19063,7 +19071,7 @@
       - "debug_name": "切人后等待"
         "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
         "sub_handlers":
-        - "states": "[按键可用-快速支援, 0, 0.5]"
+        - "states": "[自定义-快速支援换人, 0, 0.5]"
           "sub_handlers":
           - "operations":
             - "op_name": "设置状态"
@@ -19600,7 +19608,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.5
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -20135,7 +20143,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -20251,7 +20259,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -20825,7 +20833,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -21239,7 +21247,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -21411,7 +21419,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 1.0
-          "states": "[按键可用-快速支援, 0, 0.5]"
+          "states": "[自定义-快速支援换人, 0, 0.5]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
@@ -21635,10 +21643,10 @@
           "seconds": 4.0
         "states": "[维琳娜-终结技可用]"
       - "debug_name": "强化特殊技，持续6秒"
-        "interrupt_states": "![维琳娜-特殊技可用] | [按键可用-快速支援]"
+        "interrupt_states": "[按键可用-快速支援]"
         "operations":
         - "op_name": "设置状态"
-          "seconds": 3
+          "seconds": 5
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击"
           "post_delay": 0.1
@@ -21646,18 +21654,42 @@
         - "op_name": "按键-特殊攻击-按下"
         - "op_name": "等待秒数"
           "seconds": 0.5
-        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "按键-普通攻击-按下"
         - "op_name": "等待秒数"
           "seconds": 0.5
-        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "按键-普通攻击-按下"
         - "op_name": "等待秒数"
           "seconds": 0.5
-        - "op_name": "按键-特殊攻击-按下"
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.5
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.5
+        - "op_name": "按键-普通攻击-按下"
         - "op_name": "等待秒数"
           "seconds": 0.5
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
         "states": "[维琳娜-特殊技可用]"
+      - "debug_name": "龙卷风"
+        "interrupt_states": "[按键可用-快速支援]"
+        "operations":
+        - "op_name": "设置状态"
+          "seconds": 3
+          "state": "自定义-动作不打断"
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 1
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 1
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 1
+        - "op_name": "清除状态"
+          "state": "自定义-动作不打断"
+        "states": "[维琳娜-风华]{100,135}"
       - "debug_name": "普通攻击"
         "operations":
         - "op_name": "按键-普通攻击"
@@ -21726,7 +21758,7 @@
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.8
-          "states": "[按键可用-快速支援, 0, 0.3]"
+          "states": "[自定义-快速支援换人, 0, 0.3]"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3

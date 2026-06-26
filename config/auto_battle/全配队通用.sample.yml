@@ -48,7 +48,7 @@ abnormal_status_interval: 0 # 目标异常状态检测，代表不检测
 scenes:
   # 新增得格挡破碎检测
   - triggers: ["格挡-破碎"]
-    priority: 99
+    priority: 98
     interval: 0.3
     handlers:
       # 破碎了就别支援突击了
@@ -62,7 +62,7 @@ scenes:
 
   # 这部分是用来识别闪光闪避的，这里不需要更改，哪怕角色更新也不需要动
   - triggers: ["闪避识别-黄光", "闪避识别-红光", "闪避识别-声音"]
-    priority: 99
+    priority: 97
     interval: 0.3
     handlers:
       - states: "![自定义-无视闪光, -15, 0]"
@@ -103,7 +103,7 @@ scenes:
 
   - triggers: ["按键可用-快速支援"]
     priority: 97
-    interval: 1
+    interval: 0.1
     handlers:
       # 详情可以打开状态模板
       - state_template: "快速支援模板-全角色"
