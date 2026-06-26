@@ -10406,36 +10406,17 @@
           - "op_name": "等待秒数"
             "seconds": 4.0
           "states": "[维琳娜-终结技可用]"
-        - "debug_name": "强化特殊技，持续6秒"
-          "interrupt_states": "[按键可用-快速支援]"
+        - "debug_name": "强化特殊技"
           "operations":
           - "op_name": "设置状态"
-            "seconds": 5
+            "seconds": 1
             "state": "自定义-动作不打断"
           - "op_name": "按键-特殊攻击"
             "post_delay": 0.1
             "repeat": 10
-          - "op_name": "按键-特殊攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.5
-          - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.5
-          - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.5
-          - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.5
-          - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.5
-          - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.5
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
-          "states": "[维琳娜-特殊技可用]"
+          "states": "[维琳娜-特殊技可用] & [维琳娜-风华]{0,85}"
         - "debug_name": "龙卷风"
           "interrupt_states": "[按键可用-快速支援]"
           "operations":
@@ -10453,7 +10434,7 @@
             "seconds": 1
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
-          "states": "[维琳娜-风华]{100,135}"
+          "states": "[维琳娜-风华]{85,135}"
         - "debug_name": "普通攻击"
           "operations":
           - "op_name": "按键-普通攻击"
