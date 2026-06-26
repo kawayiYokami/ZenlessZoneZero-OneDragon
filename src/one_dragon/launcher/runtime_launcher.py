@@ -1,6 +1,7 @@
 import ctypes
 import importlib
 import sys
+from pathlib import Path
 
 from one_dragon.launcher.exe_launcher import ExeLauncher
 
@@ -54,15 +55,29 @@ class RuntimeLauncher(ExeLauncher):
 
         if success:
             log.info(gt('代码仓库同步完成') if first_run else gt('代码更新检查完成'))
-            # 清除同步过程中加载的模块，避免主程序使用旧版本
-            for name in set(sys.modules) - pre_modules:
-                del sys.modules[name]
+            # 清除同步过程中加载的源码模块，避免主程序使用旧版本
+            self._clear_src_modules(pre_modules)
             importlib.invalidate_caches()
         elif first_run:
             log.info(f"{gt('代码仓库同步失败')}: {msg}")
             sys.exit(1)
         else:
             log.info(f"{gt('代码更新失败')}: {msg}")
+
+    @staticmethod
+    def _clear_src_modules(pre_modules: set[str]) -> None:
+        """清除同步期间加载的源码模块，不清除运行时和第三方模块。"""
+        src_dir = (Path(sys.executable).parent / 'src').resolve()
+        if not src_dir.is_dir():
+            return
+
+        for name in set(sys.modules) - pre_modules:
+            module = sys.modules.get(name)
+            module_file = getattr(module, '__file__', None)
+            if module_file is None or not Path(module_file).resolve().is_relative_to(src_dir):
+                continue
+
+            del sys.modules[name]
 
     @staticmethod
     def _hide_console() -> None:
