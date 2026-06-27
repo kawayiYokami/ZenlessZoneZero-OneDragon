@@ -340,7 +340,7 @@ class ShiyuDefenseApp(ZApplication):
     @node_notify(when=NotifyTiming.PREVIOUS_DONE, detail=True)
     @operation_node(name='下一节点')
     def to_next_node(self) -> OperationRoundResult:
-        # 点击直到下一步出现 出现后 再等一会等属性出现
+        # 点击直到下一步出现
         result = self.round_by_find_area(self.last_screenshot, '式舆防卫战', '下一步')
         if result.is_success:
             self.current_node_idx += 1
@@ -355,7 +355,15 @@ class ShiyuDefenseApp(ZApplication):
             if result.is_success:
                 return self.round_wait(result.status, wait=1)
 
-        return self.round_retry(result.status, wait=1)
+            # 没有下一防线，说明前四关打完了，退出后进第五关
+            self.round_by_find_and_click_area(self.last_screenshot, '式舆防卫战', '战斗结束-退出',
+                                              success_wait=10)
+
+            result2 = self.round_by_find_and_click_area(self.last_screenshot, '式舆防卫战', '节点-05')
+            if result2.is_success:
+                self.current_node_idx = 5
+                return self.round_success(wait=1)
+            return self.round_retry(result2.status, wait=3)
 
     @node_from(from_name='下一节点', success=False)
     @node_from(from_name='下一节点', status='战斗结束-退出')
