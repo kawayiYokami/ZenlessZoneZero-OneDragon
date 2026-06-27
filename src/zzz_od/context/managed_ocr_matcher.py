@@ -29,6 +29,7 @@ class ManagedOnnxOcrMatcher(OnnxOcrMatcher):
         self._last_used_at: float | None = None
         self._proxy_url: str | None = None
         self._ghproxy_url: str | None = None
+        self._shutdown: bool = False
         self._shutdown_event: threading.Event = threading.Event()
         self._release_thread: threading.Thread | None = None
 
@@ -68,6 +69,10 @@ class ManagedOnnxOcrMatcher(OnnxOcrMatcher):
     ) -> bool:
         """懒加载 OCR 模型，并启动空闲释放监控。"""
         with self._lifecycle_lock:
+            if self._shutdown:
+                log.warning('OCR 已关闭，跳过模型初始化')
+                return False
+
             actual_proxy_url = proxy_url if proxy_url is not None else self._proxy_url
             actual_ghproxy_url = ghproxy_url if ghproxy_url is not None else self._ghproxy_url
             success = super().init_model(
@@ -92,6 +97,10 @@ class ManagedOnnxOcrMatcher(OnnxOcrMatcher):
     ) -> str:
         """单行 OCR，期间禁止释放模型。"""
         with self._lifecycle_lock:
+            if self._shutdown:
+                log.warning('OCR 已关闭，跳过单行识别')
+                return ''
+
             try:
                 return super().run_ocr_single_line(image, threshold, strict_one_line)
             finally:
@@ -105,6 +114,10 @@ class ManagedOnnxOcrMatcher(OnnxOcrMatcher):
     ) -> dict[str, MatchResultList]:
         """整图 OCR，期间禁止释放模型。"""
         with self._lifecycle_lock:
+            if self._shutdown:
+                log.warning('OCR 已关闭，跳过整图识别')
+                return {}
+
             try:
                 return super().run_ocr(image, threshold, merge_line_distance)
             finally:
@@ -122,6 +135,10 @@ class ManagedOnnxOcrMatcher(OnnxOcrMatcher):
             return []
 
         with self._lifecycle_lock:
+            if self._shutdown:
+                log.warning('OCR 已关闭，跳过识别')
+                return []
+
             try:
                 if self._model is None and not self.init_model():
                     return []
@@ -147,8 +164,11 @@ class ManagedOnnxOcrMatcher(OnnxOcrMatcher):
 
     def shutdown(self) -> None:
         """停止空闲释放线程并释放模型。"""
-        self._shutdown_event.set()
-        release_thread = self._release_thread
+        with self._lifecycle_lock:
+            self._shutdown = True
+            self._shutdown_event.set()
+            release_thread = self._release_thread
+
         if release_thread is not None and release_thread.is_alive():
             if threading.current_thread() is not release_thread:
                 release_thread.join(timeout=2)
@@ -173,6 +193,9 @@ class ManagedOnnxOcrMatcher(OnnxOcrMatcher):
 
     def _ensure_release_monitor_started_locked(self) -> None:
         """确保空闲释放线程已启动。"""
+        if self._shutdown:
+            return
+
         if self._release_thread is not None and self._release_thread.is_alive():
             return
 
