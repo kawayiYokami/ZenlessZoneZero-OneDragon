@@ -1,3 +1,11 @@
+---
+name: agent-definition
+description: 角色模板配置指南 - 在一条龙中新增可自动战斗角色所需的三部分配置
+version: 1.0.0
+author: OneDragon-Anything
+tags: [zzz, agent, config, template, automation]
+---
+
 # 角色模板配置指南
 
 在一条龙中新增一个可自动战斗的角色，需要完成以下三部分配置。
@@ -23,16 +31,14 @@ AGENT_ID = Agent(
 
 ### 特殊能量条状态（state_list）
 
-如果角色有独立于能量值的特殊资源条（如燃点、威风、电压、士气等），需要配置 `state_list`：
-
 ```python
 state_list=[AgentStateDef(
-    '中文名-状态名',                              # 状态显示名
-    AgentStateCheckWay.FOREGROUND_COLOR_RANGE_LENGTH,  # 检测方式
-    template_id='agent_id',                      # 与资源模板目录的基础名一致
-    hsv_color=(H, S, V),                        # 能量条主色 HSV
-    hsv_color_diff=(dH, dS, dV),                # 色彩容差
-    max_length=120                              # 能量条最大像素长度
+    '中文名-状态名',
+    AgentStateCheckWay.FOREGROUND_COLOR_RANGE_LENGTH,
+    template_id='agent_id',
+    hsv_color=(H, S, V),
+    hsv_color_diff=(dH, dS, dV),
+    max_length=120
 )]
 ```
 
@@ -44,32 +50,22 @@ state_list=[AgentStateDef(
 | `FOREGROUND_GRAY_RANGE_LENGTH` | 白色/灰色前景条，用灰度匹配 |
 | `BACKGROUND_GRAY_RANGE_LENGTH` | 空心/背景条检测 |
 
-#### 能量条颜色提取方法
-
-1. 游戏内截图，截取能量条满时的画面
-2. 用取色工具读取能量条区域的 HSV 值
-3. `hsv_color` 取能量条主色的 HSV 中心值
-4. `hsv_color_diff` 根据颜色宽容度调整，饱和色通常给 `(90, 220, 200)` 左右
-5. `max_length` 取能量条满条时的像素长度
-
 ---
 
 ## 二、头像模板（assets）
 
 ### 战斗头像
 
-战斗中使用小头像来识别当前站场角色。
-
 路径：`assets/template/battle/`
 
-目录命名规则：`avatar_{布局}_{agent_id}`
+目录命名：`avatar_{布局}_{agent_id}`
 
 | 目录 | 说明 |
 |---|---|
 | `avatar_1_{agent_id}/` | 单人/主位头像 |
 | `avatar_2_{agent_id}/` | 副位头像 |
-| `avatar_chain_{agent_id}/` | 连携技触发时的头像 |
-| `avatar_quick_{agent_id}/` | 快速支援时的头像 |
+| `avatar_chain_{agent_id}/` | 连携技头像 |
+| `avatar_quick_{agent_id}/` | 快速支援头像 |
 
 每个目录包含：`mask.png`（遮罩）、`raw.png`（原图参考）
 
@@ -77,8 +73,8 @@ state_list=[AgentStateDef(
 
 | 路径 | 说明 |
 |---|---|
-| `assets/template/hollow/avatar_{agent_id}/` | 空洞界面角色头像 |
-| `assets/template/predefined_team/avatar_{agent_id}/` | 预设队伍界面角色头像 |
+| `assets/template/hollow/avatar_{agent_id}/` | 空洞界面头像 |
+| `assets/template/predefined_team/avatar_{agent_id}/` | 预设队伍头像 |
 
 ---
 
@@ -88,11 +84,7 @@ state_list=[AgentStateDef(
 
 ### 目录命名
 
-`{agent_id}_3_1/`
-
-- `agent_id`：与 agent.py 中的 `template_id` 一致
-- `3`：总人数（3 人队）
-- `1`：位置编号（1 = 左侧第一位）
+`{agent_id}_3_1/`（agent_id + 总人数 + 位置编号）
 
 ### config.yml 结构
 
@@ -106,11 +98,6 @@ point_list:
 - {x1}, {y1}
 - {x2}, {y2}
 ```
-
-### 点位提取
-
-- `point_list` 两个点定义能量条的检测矩形区域
-- 通常在游戏截图里取能量条的起点和终点坐标
 
 ---
 
