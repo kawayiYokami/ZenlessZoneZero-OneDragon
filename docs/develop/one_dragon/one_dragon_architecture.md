@@ -121,6 +121,15 @@ OCR服务，负责职责包括：
 2. 如果当前已有运行，拒绝新的运行的请求
 3. 如果当前空闲，则创建新的异步运行任务，并保存记录
 
+### GUI 滚动区域
+
+页面级 QWidget 滚动区域默认使用 `one_dragon_qt.widgets.fast_scroll_area.FastScrollArea`。
+
+- `FastScrollArea` 统一封装项目滚动区域，便于集中切换底层滚动实现
+- 普通垂直页面、左右分栏列表、开发工具面板、横向表格滚动容器都应优先使用它
+- 不直接使用 `SingleDirectionScrollArea`，避免其平滑滚动在复杂卡片列表中放大重绘成本
+- 特殊控件自身继承 `QScrollArea` 时，例如图片缩放查看器，可保留专用实现
+
 ### 迭代更新数据库 (待改造)
 
 1. 检查并创建 `schema_version` 表，仅有 `version` 字段，用于记录当前已经执行的版本。
