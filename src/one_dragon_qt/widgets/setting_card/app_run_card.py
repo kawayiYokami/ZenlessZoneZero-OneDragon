@@ -32,14 +32,14 @@ class AppRunCard(DraggableListItem):
 
     def __init__(
         self,
-        app: ApplicationGroupConfigItem,
+        app: ApplicationGroupConfigItem | None = None,
         index: int = 0,
         run_record: AppRunRecord | None = None,
         switch_on: bool = False,
         parent: QWidget | None = None,
         enable_opacity_effect: bool = True
     ):
-        self.app: ApplicationGroupConfigItem = app
+        self.app: ApplicationGroupConfigItem | None = app
         self.run_record: AppRunRecord | None = run_record
 
         self.setting_btn = TransparentToolButton(FluentIcon.SETTING, None)
@@ -72,7 +72,7 @@ class AppRunCard(DraggableListItem):
         content_widget = MultiPushSettingCard(
             btn_list=[self.setting_btn, self.more_btn, self.run_btn, self.switch_btn],
             icon=FluentIcon.GAME,
-            title=self.app.app_name,
+            title=gt(app.app_name) if app is not None else '',
             parent=parent,
         )
 
@@ -85,12 +85,20 @@ class AppRunCard(DraggableListItem):
             parent=parent,
             enable_opacity_effect=enable_opacity_effect
         )
+        self.set_app(app, run_record)
+        self.set_switch_on(switch_on)
 
     def update_display(self) -> None:
         """
         更新显示的状态
         :return:
         """
+        if self.app is None:
+            self.content_widget.setTitle('')
+            self.content_widget.setContent('')
+            self.content_widget.iconLabel.setIcon(FluentIcon.GAME)
+            return
+
         self.content_widget.setTitle(gt(self.app.app_name))
         if self.run_record is None:
             self.content_widget.setContent('')
@@ -113,6 +121,8 @@ class AppRunCard(DraggableListItem):
         置顶运行顺序（用于拖拽不能处理滚动的场景）
         :return:
         """
+        if self.app is None:
+            return
         self.move_top.emit(self.app.app_id)
 
     def _show_more_menu(self) -> None:
@@ -127,6 +137,8 @@ class AppRunCard(DraggableListItem):
         运行应用
         :return:
         """
+        if self.app is None:
+            return
         self.run.emit(self.app.app_id)
 
     def _on_switch_changed(self, value: bool) -> None:
@@ -134,19 +146,22 @@ class AppRunCard(DraggableListItem):
         切换开关状态
         :return:
         """
+        if self.app is None:
+            return
         self.switched.emit(self.app.app_id, value)
 
     def set_app(
         self,
-        app: ApplicationGroupConfigItem,
+        app: ApplicationGroupConfigItem | None,
         run_record: AppRunRecord | None = None,
-    ):
+    ) -> None:
         """
         更新对应的app
         :param app:
         :return:
         """
         self.app = app
+        self.data = app
         self.run_record = run_record
         self.update_display()
 
@@ -160,7 +175,9 @@ class AppRunCard(DraggableListItem):
         self.switch_btn.setDisabled(arg__1)
 
     def set_switch_on(self, on: bool) -> None:
+        self.switch_btn.blockSignals(True)
         self.switch_btn.setChecked(on)
+        self.switch_btn.blockSignals(False)
 
     def set_notify_visible(self, visible: bool) -> None:
         """
@@ -172,10 +189,14 @@ class AppRunCard(DraggableListItem):
         """
         点击设置按钮
         """
+        if self.app is None:
+            return
         self.setting_clicked.emit(self.app.app_id)
 
     def _on_notify_clicked(self) -> None:
         """
         点击通知设置按钮
         """
+        if self.app is None:
+            return
         self.notify_clicked.emit(self.app.app_id)
