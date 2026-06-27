@@ -178,6 +178,21 @@ class ShiyuDefenseApp(ZApplication):
             if not result.is_success:
                 return self.round_retry('等待多间模式画面', wait=1)
 
+            # 检查是否有房间已打过（得分不为 0/空）
+            need_reset = False
+            for room_name in ROOM_NAMES:
+                area = self.ctx.screen_loader.get_area('式舆防卫战-三间选择', room_name)
+                ocr_result = self.ctx.ocr.crop_and_run_ocr(self.last_screenshot, area.rect)
+                all_text = ' '.join(ocr_result.keys()).strip()
+                if all_text != '0' and all_text != '':
+                    need_reset = True
+                    break
+
+            if need_reset:
+                self.round_by_click_area('式舆防卫战-三间选择', '重置全部', success_wait=0.3)
+                self.round_by_click_area('式舆防卫战-三间选择', '确认', success_wait=1)
+                return self.round_retry('已重置', wait=1)
+
             # 多间模式
             self.room_teams = shiyu_defense_team_utils.calc_teams_for_multi_room(
                 self.ctx, self.last_screenshot, '式舆防卫战-三间选择', len(ROOM_NAMES)
