@@ -44,12 +44,11 @@ class HouHouBakeryApp(ZApplication):
     def move_and_interact(self) -> OperationRoundResult:
         """传送之后与吼吼先生交互, 打开领奖界面。传送点已足够近, 无需前移。"""
         # self.ctx.controller.move_w(press=True, press_time=1, release=True)
-        # time.sleep(1)
 
+        time.sleep(1) # 防止交互无效 issue #2405 #2395 #2328
         self.ctx.controller.interact(press=True, press_time=0.2, release=True)
-        time.sleep(3)
 
-        return self.round_success()
+        return self.round_success(wait=3)
 
     @node_from(from_name='移动交互')
     @node_notify(when=NotifyTiming.CURRENT_DONE)
@@ -70,7 +69,7 @@ class HouHouBakeryApp(ZApplication):
         # 2.当日已在其他项目(刮刮卡/卦象集录等)签到-点击盲盒后提示「今日已经完成过一次相同类型的奖励领取」-节点退出
         # 残留弹窗交由后续「返回大世界」统一处理。
         # 必须置于「确定/确认」分支之前: 否则弹窗自带的「确认」会被该分支误点,
-        #   关闭弹窗后退回集卡机 -> 再点盲盒 -> 又弹窗, 反复循环直至节点重试耗尽而失败(issue #2395)。
+        #   关闭弹窗后退回集卡机 -> 再点盲盒 -> 又弹窗, 反复循环直至节点重试耗尽而失败。
         result = self.round_by_ocr(self.last_screenshot, '同类型奖励')
         if result.is_success:
             status = '领取成功' if self.claimed else '今日已领取'
@@ -112,7 +111,7 @@ class HouHouBakeryApp(ZApplication):
 def __debug() -> None:
     """本地调试入口: 初始化上下文并直接运行一次吼吼饼铺签到。"""
     ctx = ZContext()
-    ctx.init_by_config()
+    ctx.init()
     app = HouHouBakeryApp(ctx)
     app.execute()
 
