@@ -532,14 +532,15 @@ class LostVoidMoveByDet(ZOperation):
         )
 
         if all_visible_targets_static:
-            increase_count = 0.1 if len(visible_target_list) == 1 else 1
+            increase_count = 0.2 if len(visible_target_list) == 1 else 1
             self.same_target_times += increase_count
         else:
             self.same_target_times = 0
 
         self.last_visible_target_list = visible_target_list
+        stuck_threshold = 5 if len(visible_target_list) == 1 else 20
 
-        if self.same_target_times >= 10:
+        if self.same_target_times >= stuck_threshold:
             self.ctx.controller.stop_moving_forward()
             self.stuck_times += 1
             self._reset_stuck_status()
