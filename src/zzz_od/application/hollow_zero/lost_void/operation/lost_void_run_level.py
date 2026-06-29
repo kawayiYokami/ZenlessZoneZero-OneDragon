@@ -754,6 +754,8 @@ class LostVoidRunLevel(ZOperation):
                 self.interacted_target_key_list.append(target_key)
 
         if self.ctx.lost_void.in_normal_world(self.last_screenshot):
+            if self.interact_target is not None and self.interact_target.name == LostVoidInteractNPC.AO_FEI_LI_YA.value:
+                self.ctx.lost_void.had_interacted_ophelia_on_current_level = True
             if not (self.boss_pre_battle
                     and self.interact_target is not None
                     and not self.interact_target.after_battle):

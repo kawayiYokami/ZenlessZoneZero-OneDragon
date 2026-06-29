@@ -448,6 +448,13 @@ class LostVoidMoveByDet(ZOperation):
             if i.merge_parent is None
         ]
 
+        if self.ctx.lost_void.had_interacted_ophelia_on_current_level:
+            entry_list = [
+                item
+                for item in entry_list
+                if LostVoidRegionType.ELITE.value.value not in item.target_name_list
+            ]
+
         if self.last_target_result is not None:  # 优先保持与上次一致的目标
             result = self.get_same_as_last_target(entry_list)
             if result is not None:
@@ -456,9 +463,9 @@ class LostVoidMoveByDet(ZOperation):
         not_mixed_entry_list = [item for item in entry_list if not item.is_mixed]
         mixed_entry_list = [item for item in entry_list if item.is_mixed]
         if len(not_mixed_entry_list) > 0:
-            return self.ctx.lost_void.get_entry_by_priority(not_mixed_entry_list)
+            return self.ctx.lost_void.get_entry_by_priority(not_mixed_entry_list, self.ignore_entry_list)
         elif len(mixed_entry_list) > 0:
-            return self.ctx.lost_void.get_entry_by_priority(mixed_entry_list)
+            return self.ctx.lost_void.get_entry_by_priority(mixed_entry_list, self.ignore_entry_list)
         else:
             return None
 
