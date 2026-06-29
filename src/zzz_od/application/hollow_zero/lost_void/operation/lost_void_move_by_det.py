@@ -448,6 +448,13 @@ class LostVoidMoveByDet(ZOperation):
             if i.merge_parent is None
         ]
 
+        if self.ctx.lost_void.had_interacted_ophelia_on_current_level:
+            entry_list = [
+                item
+                for item in entry_list
+                if LostVoidRegionType.ELITE.value.value not in item.target_name_list
+            ]
+
         if self.last_target_result is not None:  # 优先保持与上次一致的目标
             result = self.get_same_as_last_target(entry_list)
             if result is not None:
@@ -456,9 +463,9 @@ class LostVoidMoveByDet(ZOperation):
         not_mixed_entry_list = [item for item in entry_list if not item.is_mixed]
         mixed_entry_list = [item for item in entry_list if item.is_mixed]
         if len(not_mixed_entry_list) > 0:
-            return self.ctx.lost_void.get_entry_by_priority(not_mixed_entry_list)
+            return self.ctx.lost_void.get_entry_by_priority(not_mixed_entry_list, self.ignore_entry_list)
         elif len(mixed_entry_list) > 0:
-            return self.ctx.lost_void.get_entry_by_priority(mixed_entry_list)
+            return self.ctx.lost_void.get_entry_by_priority(mixed_entry_list, self.ignore_entry_list)
         else:
             return None
 
@@ -487,14 +494,14 @@ class LostVoidMoveByDet(ZOperation):
             return False, f'目标数量变化 last={len(last_target_list)} current={len(new_target_list)}'
 
         used_idx_set: set[int] = set()
+        class_changed: bool = False
         for new_target in new_target_list:
             matched_idx: int | None = None
             matched_distance: float | None = None
+            matched_last_target: MoveTargetWrapper | None = None
 
             for idx, last_target in enumerate(last_target_list):
                 if idx in used_idx_set:
-                    continue
-                if last_target.leftest_target_name != new_target.leftest_target_name:
                     continue
 
                 dis = cal_utils.distance_between(last_target.entire_rect.center, new_target.entire_rect.center)
@@ -504,6 +511,7 @@ class LostVoidMoveByDet(ZOperation):
                 if matched_distance is None or dis < matched_distance:
                     matched_idx = idx
                     matched_distance = dis
+                    matched_last_target = last_target
 
             if matched_idx is None:
                 return False, (
@@ -511,9 +519,15 @@ class LostVoidMoveByDet(ZOperation):
                     f'center={new_target.entire_rect.center}'
                 )
 
+            if matched_last_target is not None and matched_last_target.leftest_target_name != new_target.leftest_target_name:
+                class_changed = True
+
             used_idx_set.add(matched_idx)
 
-        return True, '全部可见目标位移都在阈值内'
+        if class_changed:
+            return True, '全部可见目标位移都在阈值内，且存在类别抖动'
+        else:
+            return True, '全部可见目标位移都在阈值内'
 
     def check_stuck(self, frame_result: DetectFrameResult, new_target: MoveTargetWrapper) -> OperationRoundResult | None:
         """
@@ -532,14 +546,15 @@ class LostVoidMoveByDet(ZOperation):
         )
 
         if all_visible_targets_static:
-            increase_count = 0.1 if len(visible_target_list) == 1 else 1
+            increase_count = 0.2 if len(visible_target_list) == 1 else 1
             self.same_target_times += increase_count
         else:
             self.same_target_times = 0
 
         self.last_visible_target_list = visible_target_list
+        stuck_threshold = 5 if len(visible_target_list) == 1 else 20
 
-        if self.same_target_times >= 10:
+        if self.same_target_times >= stuck_threshold:
             self.ctx.controller.stop_moving_forward()
             self.stuck_times += 1
             self._reset_stuck_status()
@@ -565,9 +580,10 @@ class LostVoidMoveByDet(ZOperation):
             self.ctx.controller.normal_attack(press=True, press_time=0.2, release=True)
             time.sleep(1)
 
-        backward_press_time = min(self.stuck_times - 1 * 0.5, 2)
-        side_press_time = min(self.stuck_times * 0.5, 2)
-        forward_press_time = min(max(self.stuck_times - 1, 0) * 0.5, 2)
+        escape_phase = (self.stuck_times - 1) % 8
+        backward_press_time = min(escape_phase * 0.5, 2)
+        side_press_time = min((escape_phase + 1) * 0.2, 2)
+        forward_press_time = min(escape_phase * 0.2, 2)
 
         self.ctx.controller.move_s(press=True, press_time=backward_press_time, release=True)
         if self.prefer_left_escape:
