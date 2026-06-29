@@ -573,9 +573,10 @@ class LostVoidMoveByDet(ZOperation):
             self.ctx.controller.normal_attack(press=True, press_time=0.2, release=True)
             time.sleep(1)
 
-        backward_press_time = min(max(self.stuck_times - 1, 0) * 0.5, 2)
-        side_press_time = min(self.stuck_times * 0.2, 2)
-        forward_press_time = min(max(self.stuck_times - 1, 0) * 0.2, 2)
+        escape_phase = (self.stuck_times - 1) % 8
+        backward_press_time = min(escape_phase * 0.5, 2)
+        side_press_time = min((escape_phase + 1) * 0.2, 2)
+        forward_press_time = min(escape_phase * 0.2, 2)
 
         self.ctx.controller.move_s(press=True, press_time=backward_press_time, release=True)
         if self.prefer_left_escape:
