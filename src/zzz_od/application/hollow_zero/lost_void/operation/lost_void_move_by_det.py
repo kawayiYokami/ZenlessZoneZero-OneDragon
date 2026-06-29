@@ -487,14 +487,14 @@ class LostVoidMoveByDet(ZOperation):
             return False, f'目标数量变化 last={len(last_target_list)} current={len(new_target_list)}'
 
         used_idx_set: set[int] = set()
+        class_changed: bool = False
         for new_target in new_target_list:
             matched_idx: int | None = None
             matched_distance: float | None = None
+            matched_last_target: MoveTargetWrapper | None = None
 
             for idx, last_target in enumerate(last_target_list):
                 if idx in used_idx_set:
-                    continue
-                if last_target.leftest_target_name != new_target.leftest_target_name:
                     continue
 
                 dis = cal_utils.distance_between(last_target.entire_rect.center, new_target.entire_rect.center)
@@ -504,6 +504,7 @@ class LostVoidMoveByDet(ZOperation):
                 if matched_distance is None or dis < matched_distance:
                     matched_idx = idx
                     matched_distance = dis
+                    matched_last_target = last_target
 
             if matched_idx is None:
                 return False, (
@@ -511,9 +512,15 @@ class LostVoidMoveByDet(ZOperation):
                     f'center={new_target.entire_rect.center}'
                 )
 
+            if matched_last_target is not None and matched_last_target.leftest_target_name != new_target.leftest_target_name:
+                class_changed = True
+
             used_idx_set.add(matched_idx)
 
-        return True, '全部可见目标位移都在阈值内'
+        if class_changed:
+            return True, '全部可见目标位移都在阈值内，且存在类别抖动'
+        else:
+            return True, '全部可见目标位移都在阈值内'
 
     def check_stuck(self, frame_result: DetectFrameResult, new_target: MoveTargetWrapper) -> OperationRoundResult | None:
         """
