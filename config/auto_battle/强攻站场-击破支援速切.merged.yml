@@ -5355,13 +5355,21 @@
         - "op_name": "设置状态"
           "seconds_add": -2
           "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
         - "op_name": "按键-终结技"
           "post_delay": 0.1
           "repeat": 5
         - "op_name": "等待秒数"
-          "seconds": 3
+          "seconds": 2
         "states": "[仪玄-术法值全满]{1,1} & [仪玄-术法值]{119, 120}"
       - "debug_name": "喧嚣终结技"
         "operations":
@@ -5371,11 +5379,21 @@
         - "op_name": "设置状态"
           "seconds_add": -4
           "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
         - "op_name": "按键-终结技"
           "post_delay": 0.1
-          "repeat": 30
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
         - "op_name": "等待秒数"
           "seconds": 4.2
         "states": "![仪玄-术法值全满]{1,1} & ![仪玄-术法值]{119, 120}"
@@ -5444,13 +5462,21 @@
         - "op_name": "设置状态"
           "seconds_add": -2
           "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
         - "op_name": "按键-终结技"
           "post_delay": 0.1
           "repeat": 5
         - "op_name": "等待秒数"
-          "seconds": 3
+          "seconds": 2
         "states": "[仪玄-终结技可用] & [仪玄-术法值全满]{1,1} & [仪玄-术法值]{119, 120}"
       - "debug_name": "喧嚣终结技"
         "operations":
@@ -5460,11 +5486,21 @@
         - "op_name": "设置状态"
           "seconds_add": -4
           "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
         - "op_name": "按键-终结技"
           "post_delay": 0.1
-          "repeat": 30
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
         - "op_name": "等待秒数"
           "seconds": 4.2
         "states": "[仪玄-终结技可用] & ![仪玄-术法值全满]{1,1} & ![仪玄-术法值]{119, 120}"
@@ -5518,6 +5554,59 @@
       - "op_name": "等待秒数"
         "seconds": 1
       "states": "[自定义-仪玄-太极,0,1]"
+    - "debug_name": "仪玄很疑惑为什么没有击破队友并且释放了大招"
+      "states": "![后台-1-击破] & ![后台-2-击破]"
+      "sub_handlers":
+      - "debug_name": "法术终结技"
+        "operations":
+        - "op_name": "设置状态"
+          "seconds": 3.5
+          "state": "自定义-动作不打断"
+        - "op_name": "设置状态"
+          "seconds_add": -2
+          "state": "自定义-失衡时间"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "op_name": "等待秒数"
+          "seconds": 2
+        "states": "[仪玄-终结技可用] & [仪玄-术法值全满]{1,1} & [仪玄-术法值]{119, 120}"
+      - "debug_name": "喧嚣终结技"
+        "operations":
+        - "op_name": "设置状态"
+          "seconds": 7.2
+          "state": "自定义-动作不打断"
+        - "op_name": "设置状态"
+          "seconds_add": -4
+          "state": "自定义-失衡时间"
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "op_name": "等待秒数"
+          "seconds": 4.2
+        "states": "[仪玄-终结技可用] & ![仪玄-术法值全满]{1,1} & ![仪玄-术法值]{119, 120}"
     - "operations":
       - "op_name": "设置状态"
         "seconds": 4
@@ -5575,49 +5664,22 @@
       - "op_name": "设置状态"
         "seconds_add": -2
         "state": "自定义-失衡时间"
-      - "op_name": "等待秒数"
-        "seconds": 0.1
+      - "op_name": "按键-终结技"
+        "post_delay": 0.1
+        "repeat": 5
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
+      - "op_name": "按键-终结技"
+        "post_delay": 0.1
+        "repeat": 5
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
       - "op_name": "按键-终结技"
         "post_delay": 0.1
         "repeat": 5
       - "op_name": "等待秒数"
-        "seconds": 3
+        "seconds": 2
       "states": "[仪玄-终结技可用] & [仪玄-术法值全满] & [仪玄-术法值]{120, 120} & [仪玄-能量]{90, 120}"
-    - "debug_name": "仪玄很疑惑为什么没有击破队友并且释放了大招"
-      "states": "![后台-1-击破] & ![后台-2-击破]"
-      "sub_handlers":
-      - "debug_name": "法术终结技"
-        "operations":
-        - "op_name": "设置状态"
-          "seconds": 3.5
-          "state": "自定义-动作不打断"
-        - "op_name": "设置状态"
-          "seconds_add": -2
-          "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
-        - "op_name": "按键-终结技"
-          "post_delay": 0.1
-          "repeat": 5
-        - "op_name": "等待秒数"
-          "seconds": 3
-        "states": "[仪玄-终结技可用] & [仪玄-术法值全满]{1,1} & [仪玄-术法值]{119, 120}"
-      - "debug_name": "喧嚣终结技"
-        "operations":
-        - "op_name": "设置状态"
-          "seconds": 7.2
-          "state": "自定义-动作不打断"
-        - "op_name": "设置状态"
-          "seconds_add": -4
-          "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
-        - "op_name": "按键-终结技"
-          "post_delay": 0.1
-          "repeat": 30
-        - "op_name": "等待秒数"
-          "seconds": 4.2
-        "states": "[仪玄-终结技可用] & ![仪玄-术法值全满]{1,1} & ![仪玄-术法值]{119, 120}"
     - "debug_name": "喧嚣终结技"
       "operations":
       - "op_name": "设置状态"
@@ -5626,11 +5688,21 @@
       - "op_name": "设置状态"
         "seconds_add": -4
         "state": "自定义-失衡时间"
-      - "op_name": "等待秒数"
-        "seconds": 0.1
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
       - "op_name": "按键-终结技"
         "post_delay": 0.1
-        "repeat": 30
+        "repeat": 10
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
+      - "op_name": "按键-终结技"
+        "post_delay": 0.1
+        "repeat": 10
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
+      - "op_name": "按键-终结技"
+        "post_delay": 0.1
+        "repeat": 10
       - "op_name": "等待秒数"
         "seconds": 4.2
       "states": "[仪玄-终结技可用] & [仪玄-玄墨值]{1, 1}"
@@ -14942,13 +15014,21 @@
         - "op_name": "设置状态"
           "seconds_add": -2
           "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
         - "op_name": "按键-终结技"
           "post_delay": 0.1
           "repeat": 5
         - "op_name": "等待秒数"
-          "seconds": 3
+          "seconds": 2
         "states": "[仪玄-术法值全满]{1,1} & [仪玄-术法值]{119, 120}"
       - "debug_name": "喧嚣终结技"
         "operations":
@@ -14958,11 +15038,21 @@
         - "op_name": "设置状态"
           "seconds_add": -4
           "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
         - "op_name": "按键-终结技"
           "post_delay": 0.1
-          "repeat": 30
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
         - "op_name": "等待秒数"
           "seconds": 4.2
         "states": "![仪玄-术法值全满]{1,1} & ![仪玄-术法值]{119, 120}"
@@ -15031,13 +15121,21 @@
         - "op_name": "设置状态"
           "seconds_add": -2
           "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
         - "op_name": "按键-终结技"
           "post_delay": 0.1
           "repeat": 5
         - "op_name": "等待秒数"
-          "seconds": 3
+          "seconds": 2
         "states": "[仪玄-终结技可用] & [仪玄-术法值全满]{1,1} & [仪玄-术法值]{119, 120}"
       - "debug_name": "喧嚣终结技"
         "operations":
@@ -15047,11 +15145,21 @@
         - "op_name": "设置状态"
           "seconds_add": -4
           "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
         - "op_name": "按键-终结技"
           "post_delay": 0.1
-          "repeat": 30
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
         - "op_name": "等待秒数"
           "seconds": 4.2
         "states": "[仪玄-终结技可用] & ![仪玄-术法值全满]{1,1} & ![仪玄-术法值]{119, 120}"
@@ -15105,6 +15213,59 @@
       - "op_name": "等待秒数"
         "seconds": 1
       "states": "[自定义-仪玄-太极,0,1]"
+    - "debug_name": "仪玄很疑惑为什么没有击破队友并且释放了大招"
+      "states": "![后台-1-击破] & ![后台-2-击破]"
+      "sub_handlers":
+      - "debug_name": "法术终结技"
+        "operations":
+        - "op_name": "设置状态"
+          "seconds": 3.5
+          "state": "自定义-动作不打断"
+        - "op_name": "设置状态"
+          "seconds_add": -2
+          "state": "自定义-失衡时间"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 5
+        - "op_name": "等待秒数"
+          "seconds": 2
+        "states": "[仪玄-终结技可用] & [仪玄-术法值全满]{1,1} & [仪玄-术法值]{119, 120}"
+      - "debug_name": "喧嚣终结技"
+        "operations":
+        - "op_name": "设置状态"
+          "seconds": 7.2
+          "state": "自定义-动作不打断"
+        - "op_name": "设置状态"
+          "seconds_add": -4
+          "state": "自定义-失衡时间"
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "agent_name": "仪玄"
+          "op_name": "按键-切换角色"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 10
+        - "op_name": "等待秒数"
+          "seconds": 4.2
+        "states": "[仪玄-终结技可用] & ![仪玄-术法值全满]{1,1} & ![仪玄-术法值]{119, 120}"
     - "operations":
       - "op_name": "设置状态"
         "seconds": 4
@@ -15162,49 +15323,22 @@
       - "op_name": "设置状态"
         "seconds_add": -2
         "state": "自定义-失衡时间"
-      - "op_name": "等待秒数"
-        "seconds": 0.1
+      - "op_name": "按键-终结技"
+        "post_delay": 0.1
+        "repeat": 5
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
+      - "op_name": "按键-终结技"
+        "post_delay": 0.1
+        "repeat": 5
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
       - "op_name": "按键-终结技"
         "post_delay": 0.1
         "repeat": 5
       - "op_name": "等待秒数"
-        "seconds": 3
+        "seconds": 2
       "states": "[仪玄-终结技可用] & [仪玄-术法值全满] & [仪玄-术法值]{120, 120} & [仪玄-能量]{90, 120}"
-    - "debug_name": "仪玄很疑惑为什么没有击破队友并且释放了大招"
-      "states": "![后台-1-击破] & ![后台-2-击破]"
-      "sub_handlers":
-      - "debug_name": "法术终结技"
-        "operations":
-        - "op_name": "设置状态"
-          "seconds": 3.5
-          "state": "自定义-动作不打断"
-        - "op_name": "设置状态"
-          "seconds_add": -2
-          "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
-        - "op_name": "按键-终结技"
-          "post_delay": 0.1
-          "repeat": 5
-        - "op_name": "等待秒数"
-          "seconds": 3
-        "states": "[仪玄-终结技可用] & [仪玄-术法值全满]{1,1} & [仪玄-术法值]{119, 120}"
-      - "debug_name": "喧嚣终结技"
-        "operations":
-        - "op_name": "设置状态"
-          "seconds": 7.2
-          "state": "自定义-动作不打断"
-        - "op_name": "设置状态"
-          "seconds_add": -4
-          "state": "自定义-失衡时间"
-        - "op_name": "等待秒数"
-          "seconds": 0.1
-        - "op_name": "按键-终结技"
-          "post_delay": 0.1
-          "repeat": 30
-        - "op_name": "等待秒数"
-          "seconds": 4.2
-        "states": "[仪玄-终结技可用] & ![仪玄-术法值全满]{1,1} & ![仪玄-术法值]{119, 120}"
     - "debug_name": "喧嚣终结技"
       "operations":
       - "op_name": "设置状态"
@@ -15213,11 +15347,21 @@
       - "op_name": "设置状态"
         "seconds_add": -4
         "state": "自定义-失衡时间"
-      - "op_name": "等待秒数"
-        "seconds": 0.1
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
       - "op_name": "按键-终结技"
         "post_delay": 0.1
-        "repeat": 30
+        "repeat": 10
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
+      - "op_name": "按键-终结技"
+        "post_delay": 0.1
+        "repeat": 10
+      - "agent_name": "仪玄"
+        "op_name": "按键-切换角色"
+      - "op_name": "按键-终结技"
+        "post_delay": 0.1
+        "repeat": 10
       - "op_name": "等待秒数"
         "seconds": 4.2
       "states": "[仪玄-终结技可用] & [仪玄-玄墨值]{1, 1}"
