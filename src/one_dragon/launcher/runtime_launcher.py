@@ -25,6 +25,8 @@ class RuntimeLauncher(ExeLauncher):
         from one_dragon.envs.project_config import ProjectConfig
         from one_dragon.utils.i18_utils import gt
         from one_dragon.utils.log_utils import log
+        from one_dragon.version import __version__
+        log.info(f"OneDragon 集成启动器 {__version__}")
 
         env_config = EnvConfig()
         git_service = GitService(ProjectConfig(), env_config)

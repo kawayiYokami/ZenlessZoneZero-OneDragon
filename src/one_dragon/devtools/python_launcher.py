@@ -294,9 +294,11 @@ def fetch_latest_code(ctx: OneDragonEnvContext) -> None:
     else:
         print_message(f"{gt('代码更新失败')}: {msg}", "ERROR")
 
-def run_python(app_path, no_windows: bool = True, args: list | None = None, piped: bool = False):
+def run_python(app_path, no_windows: bool = True, args: list[str] | None = None, piped: bool = False) -> None:
     # 主函数
     try:
+        from one_dragon.version import __version__
+        print_message(f"OneDragon 启动器 {__version__}", "INFO")
         cwd = verify_working_directory()
         from one_dragon.base.operation.one_dragon_env_context import OneDragonEnvContext
         ctx = OneDragonEnvContext()
