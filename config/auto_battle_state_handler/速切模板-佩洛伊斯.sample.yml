@@ -25,6 +25,9 @@ handlers:
           - operation_template: "通用-支援攻击"
           - op_name: "设置状态"
             state: "自定义-快速释放天光"
+          - op_name: "设置状态"
+            state: "自定义-不使用快速支援"
+            seconds: 0.5
 
       # 红光闪光 → 特殊技/闪A
       - states: "[自定义-红光闪避, 0, 1]"
@@ -40,6 +43,9 @@ handlers:
               - operation_template: "通用-闪A"
               - op_name: "设置状态"
                 state: "自定义-快速释放天光"
+              - op_name: "设置状态"
+                state: "自定义-不使用快速支援"
+                seconds: 0.5
 
       # 连携换人
       - states: "[自定义-连携换人, 0, 0.5]"
@@ -48,6 +54,9 @@ handlers:
           - operation_template: "佩洛伊斯-连携攻击"
           - op_name: "设置状态"
             state: "自定义-快速释放天光"
+          - op_name: "设置状态"
+            state: "自定义-不使用快速支援"
+            seconds: 0.5
 
       # 切人后等待
       - states: "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
@@ -60,6 +69,9 @@ handlers:
                 seconds: 0.3
               - op_name: "设置状态"
                 state: "自定义-快速释放天光"
+              - op_name: "设置状态"
+                state: "自定义-不使用快速支援"
+                seconds: 0.5
           - states: ""
             debug_name: "佩洛伊斯-等切人动画"
             operations:
@@ -89,8 +101,6 @@ handlers:
             debug_name: "佩洛伊斯-终结技-上"
             operations:
               - operation_template: "佩洛伊斯-终结技-上"
-              - op_name: "设置状态"
-                state: "自定义-快速释放天光"
           - states: ""
             debug_name: "佩洛伊斯-终结技-下上buff"
             operations:

@@ -35,3 +35,6 @@ operations:
     seconds: 0.1
   - op_name: "设置状态"
     state: "自定义-快速释放天光"
+  - op_name: "设置状态"
+    state: "自定义-不使用快速支援"
+    seconds: 0.5

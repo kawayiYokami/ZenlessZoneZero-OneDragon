@@ -9279,6 +9279,9 @@
             "seconds": 2.0
           - "op_name": "设置状态"
             "state": "自定义-快速释放天光"
+          - "op_name": "设置状态"
+            "seconds": 0.5
+            "state": "自定义-不使用快速支援"
           "states": "[自定义-佩洛伊斯-buff, 0, 200]"
         - "debug_name": "佩洛伊斯-终结技-下上buff"
           "operations":
@@ -9318,6 +9321,9 @@
           - "op_name": "设置状态"
             "state": "自定义-快速释放天光"
           - "op_name": "设置状态"
+            "seconds": 0.5
+            "state": "自定义-不使用快速支援"
+          - "op_name": "设置状态"
             "state": "自定义-佩洛伊斯-buff"
           "states": ""
       - "debug_name": "佩洛伊斯-黄光招架"
@@ -9332,6 +9338,9 @@
           "seconds": 0.5
         - "op_name": "设置状态"
           "state": "自定义-快速释放天光"
+        - "op_name": "设置状态"
+          "seconds": 0.5
+          "state": "自定义-不使用快速支援"
         "states": "[自定义-黄光切人, 0, 1]"
       - "debug_name": "佩洛伊斯-红光处理"
         "states": "[自定义-红光闪避, 0, 1]"
@@ -9349,6 +9358,9 @@
             "repeat": 15
           - "op_name": "设置状态"
             "state": "自定义-快速释放天光"
+          - "op_name": "设置状态"
+            "seconds": 0.5
+            "state": "自定义-不使用快速支援"
           "states": "[佩洛伊斯-特殊技可用]"
         - "debug_name": "佩洛伊斯-红光闪A"
           "operations":
@@ -9364,6 +9376,9 @@
             "repeat": 10
           - "op_name": "设置状态"
             "state": "自定义-快速释放天光"
+          - "op_name": "设置状态"
+            "seconds": 0.5
+            "state": "自定义-不使用快速支援"
           "states": ""
       - "debug_name": "佩洛伊斯-连携攻击"
         "operations":
@@ -9380,6 +9395,9 @@
           "state": "自定义-动作不打断"
         - "op_name": "设置状态"
           "state": "自定义-快速释放天光"
+        - "op_name": "设置状态"
+          "seconds": 0.5
+          "state": "自定义-不使用快速支援"
         "states": "[自定义-连携换人, 0, 0.5]"
       - "debug_name": "佩洛伊斯-切人等待"
         "states": "([按键-切换角色-下一个, 0, 0.3]|[按键-切换角色-上一个, 0, 0.3])"
@@ -9390,6 +9408,9 @@
             "seconds": 0.3
           - "op_name": "设置状态"
             "state": "自定义-快速释放天光"
+          - "op_name": "设置状态"
+            "seconds": 0.5
+            "state": "自定义-不使用快速支援"
           "states": "[自定义-快速支援换人, 0, 0.5]"
         - "debug_name": "佩洛伊斯-等切人动画"
           "operations":
@@ -9483,7 +9504,8 @@
           - "op_name": "设置状态"
             "state": "自定义-快速释放天光"
           - "op_name": "设置状态"
-            "state": "自定义-快速释放天光"
+            "seconds": 0.5
+            "state": "自定义-不使用快速支援"
           "states": "[自定义-佩洛伊斯-buff, 0, 200]"
         - "debug_name": "佩洛伊斯-终结技-下上buff"
           "operations":
@@ -9523,6 +9545,9 @@
           - "op_name": "设置状态"
             "state": "自定义-快速释放天光"
           - "op_name": "设置状态"
+            "seconds": 0.5
+            "state": "自定义-不使用快速支援"
+          - "op_name": "设置状态"
             "state": "自定义-佩洛伊斯-buff"
           "states": ""
       - "debug_name": "佩洛伊斯-失衡强化特殊"
@@ -9538,6 +9563,9 @@
           "repeat": 15
         - "op_name": "设置状态"
           "state": "自定义-快速释放天光"
+        - "op_name": "设置状态"
+          "seconds": 0.5
+          "state": "自定义-不使用快速支援"
         "states": "[自定义-失衡时间, 0, 10] & [佩洛伊斯-特殊技可用]"
       - "debug_name": "佩洛伊斯-默认普攻"
         "operations":
