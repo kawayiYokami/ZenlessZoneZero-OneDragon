@@ -599,7 +599,7 @@ class LostVoidRunLevel(ZOperation):
                 if interact_type is not None:
                     self.had_been_list.append(interact_type)
 
-                return self.round_wait(op_result.status, wait=1)
+                return self.round_wait(op_result.status, wait=2)
             else:
                 return self.round_fail(op_result.status)
 
