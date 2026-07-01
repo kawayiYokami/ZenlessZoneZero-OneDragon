@@ -242,11 +242,15 @@ handlers:
                 debug_name: "维琳娜切入"
                 interrupt_states: "[按键可用-快速支援]"  # 不可用时打断
                 operations:
+                  - op_name: "按键-切换角色"
+                    agent_name: "维琳娜"
                   - operation_template: "维琳娜-长按普攻"
 
               - states: "[维琳娜-特殊技可用] & [维琳娜-风华]{0,85}"
                 debug_name: "强化特殊技"
                 operations:
+                  - op_name: "按键-切换角色"
+                    agent_name: "维琳娜"
                   - operation_template: "维琳娜-强化特殊技"
 
               # 星见雅 能量和落霜判断
