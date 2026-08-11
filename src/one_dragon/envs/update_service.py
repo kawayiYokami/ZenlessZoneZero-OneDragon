@@ -37,6 +37,8 @@ class UpdateService:
         self.project_config: ProjectConfig = project_config
         self.env_config: EnvConfig = env_config
         self.git_service: GitService = git_service
+        # 版本信息缓存：检查线程查询后填入，UI 构造下载项只读缓存，避免主线程网络请求
+        self._launcher_version_cache: dict[str, tuple[str, str, str]] = {}
 
     @staticmethod
     def get_launcher_exe_name(launcher_type: LauncherType) -> str:
@@ -53,8 +55,14 @@ class UpdateService:
         """获取启动器类型对应的压缩包后缀。"""
         return RUNTIME_LAUNCHER_ZIP_SUFFIX if launcher_type == 'runtime' else LAUNCHER_ZIP_SUFFIX
 
-    def get_launcher_version_info(self, launcher_type: LauncherType) -> tuple[str, str, str]:
-        """获取当前启动器版本、最新稳定版和最新测试版。"""
+    def fetch_launcher_version_info(self, launcher_type: LauncherType) -> tuple[str, str, str]:
+        """查询当前启动器版本、最新稳定版和最新测试版并写入缓存。
+
+        含网络请求，只能在后台线程调用；已缓存时直接返回缓存。
+        """
+        cached = self._launcher_version_cache.get(launcher_type)
+        if cached is not None:
+            return cached
         exe_path = Path(os_utils.get_work_dir()) / self.get_launcher_exe_name(launcher_type)
         current_version = app_utils.get_exe_version(str(exe_path)) if exe_path.exists() else ''
         try:
@@ -62,13 +70,23 @@ class UpdateService:
         except Exception:
             log.error('获取最新启动器版本失败', exc_info=True)
             latest_stable, latest_beta = '', ''
-        return current_version, latest_stable, latest_beta
+        result = (current_version, latest_stable, latest_beta)
+        self._launcher_version_cache[launcher_type] = result
+        return result
+
+    def get_launcher_version_info(self, launcher_type: LauncherType) -> tuple[str, str, str]:
+        """读取缓存的启动器版本信息；无缓存时返回空版本，不发起网络请求。
+
+        主线程安全：UI 构造下载项只读缓存，网络查询由后台线程的
+        fetch_launcher_version_info 完成。
+        """
+        return self._launcher_version_cache.get(launcher_type, ('', '', ''))
 
     def is_launcher_update_available(self) -> bool:
-        """检查当前启动器通道是否存在可用更新。"""
+        """检查当前启动器通道是否存在可用更新（后台线程调用，含网络请求）。"""
         launcher_type = self.detect_running_launcher_type() or 'launcher'
         current_version, latest_stable, latest_beta = (
-            self.get_launcher_version_info(launcher_type)
+            self.fetch_launcher_version_info(launcher_type)
         )
         target_latest = self.get_launcher_target_version(
             current_version,
