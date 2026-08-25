@@ -615,7 +615,15 @@ class AutoBattleContext:
                 flash_detected = flash_future.result()
                 audio_detected = audio_future.result()
                 if flash_detected or audio_detected:
-                    debug_utils.save_debug_image(screen, prefix='dodge')
+                    # 查 state record 判断具体闪光类型
+                    sr = self.ctx.auto_battle_context.state_record_service
+                    prefix = 'dodge_audio'
+                    for state_name in ['闪避识别-红光', '闪避识别-黄光']:
+                        state = sr.get_state_recorder(state_name)
+                        if state is not None and state.last_record_time == screenshot_time:
+                            prefix = 'dodge_red' if '红光' in state_name else 'dodge_yellow'
+                            break
+                    debug_utils.save_debug_image(screen, prefix=prefix)
             except Exception:
                 log.error('保存闪避 debug 截图失败', exc_info=True)
 
