@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import contextlib
+import html
 import logging
 import time
 
-from PySide6.QtCore import QObject, QPoint, QTimer, Signal
+from PySide6.QtCore import QObject, QPoint, QRect, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 
 from one_dragon.base.geometry.rectangle import Rect
@@ -163,7 +164,6 @@ class OverlayManager(QObject):
         if not isinstance(payload, OverlayLogEvent):
             return
         self._panel_last_active["log_panel"] = time.time()
-        import html
 
         source = f"{payload.filename}:{payload.lineno}"
         level_name = (payload.level_name or "").upper()
@@ -202,7 +202,7 @@ class OverlayManager(QObject):
             self._hud_window.ensure_created()
         return self._hud_window
 
-    def _iter_panel_names(self):
+    def _iter_panel_names(self) -> list[str]:
         return [
             "log_panel",
             "state_panel",
@@ -271,8 +271,6 @@ class OverlayManager(QObject):
 
     @staticmethod
     def _qt_rect_to_qrect(qt_rect: Rect):
-        from PySide6.QtCore import QRect
-
         return QRect(
             int(getattr(qt_rect, "x1", 0)),
             int(getattr(qt_rect, "y1", 0)),
@@ -432,9 +430,6 @@ class OverlayManager(QObject):
             )
 
     def _build_decision_rows(self, items) -> list[dict]:
-        import html
-        import time
-
         rows: list[dict] = []
         for item in sorted(items, key=lambda x: x.created, reverse=True)[:24]:
             rows.append(
@@ -461,8 +456,6 @@ class OverlayManager(QObject):
         return expr
 
     def _build_perf_rows(self, items) -> list[dict]:
-        import time
-
         now = time.time()
         metric_keys = self._sorted_perf_metric_keys({item.metric for item in items})
 
@@ -647,7 +640,6 @@ class OverlayManager(QObject):
                 agent_enum.value.agent_name + "-" for agent_enum in AgentEnum
             ]
 
-        items: list[tuple[str, str, str]] = []
         # 第二批（常规状态：按键可用 / 前台等），排在自定义/角色专属状态之后
         batch2_names = ("按键可用-", "前台-")
         batch1: list[tuple[str, str, str]] = []
@@ -668,8 +660,7 @@ class OverlayManager(QObject):
                 batch1.append(row)
             elif state_name.startswith(batch2_names):
                 batch2.append(row)
-        items = batch1 + batch2
-        return items
+        return batch1 + batch2
 
     def _build_run_status_line(self) -> str:
         """运行状态精简为一行中文，左下角常驻显示。"""

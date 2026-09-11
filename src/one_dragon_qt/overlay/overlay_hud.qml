@@ -669,21 +669,28 @@ Window {
         }
 
         // 淡入：toastText 设置后 200ms 从透明到不透明
-        NumberAnimation on opacity {
+        // 用独立 NumberAnimation（非 on opacity 值源）：同一属性上挂两个值源动画会互相争抢，行为未定义
+        NumberAnimation {
             id: toastFadeIn
+            target: modeToast
+            property: "opacity"
             from: 0
             to: 1
             duration: 200
             easing.type: Easing.OutCubic
+            running: false
         }
 
         // 淡出：5 秒后触发，结束后清空文本（visible 随之隐藏）
-        NumberAnimation on opacity {
+        NumberAnimation {
             id: toastFadeOut
+            target: modeToast
+            property: "opacity"
             from: 1
             to: 0
             duration: 300
             easing.type: Easing.InCubic
+            running: false
             onFinished: root.toastText = ""
         }
 

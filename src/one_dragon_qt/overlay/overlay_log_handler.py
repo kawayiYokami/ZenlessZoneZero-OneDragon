@@ -15,7 +15,7 @@ class OverlayLogHandler(logging.Handler):
     # 战斗日志不进入 overlay 主日志：自动战斗的识别/操作细节刷屏，
     # 且战斗状态已由 STATE / DECISION 面板单独展示。
     # 路径包含 auto_battle（绝区零战斗逻辑）或 conditional_operation（条件操作框架）即过滤。
-    _FILTER_PATH_PARTS = ("auto_battle", "conditional_operation")
+    _FILTER_PATH_PARTS: tuple[str, ...] = ("auto_battle", "conditional_operation")
 
     def __init__(self, ctx: OneDragonContext):
         super().__init__()

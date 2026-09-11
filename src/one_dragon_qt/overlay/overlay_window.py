@@ -142,16 +142,18 @@ class OverlayWindow(QWidget):
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        # 标签用粗体：需在测量文本尺寸前设置，否则首帧按非粗体测量导致背景框偏窄、文字被裁
+        label_font = painter.font()
+        label_font.setBold(True)
+        painter.setFont(label_font)
 
         for item in self._vision_items:
             rect = self._map_rect(item, scale_x, scale_y)
             if rect is None:
                 continue
 
-            # 光晕色 = 来源色（ocr 粉 / template 橙 / yolo 青 / cv 绿），主体白色描边
-            glow_color = QColor(_VISION_SOURCE_COLOR.get(item.source, item.color or "#bdbdbd"))
-            if item.color:
-                glow_color = QColor(item.color)
+            # 光晕色优先取 item.color，未指定时按来源兜底（ocr 粉 / template 橙 / yolo 青 / cv 绿）
+            glow_color = QColor(item.color or _VISION_SOURCE_COLOR.get(item.source, "#bdbdbd"))
             if not glow_color.isValid():
                 glow_color = QColor("#bdbdbd")
 
@@ -210,9 +212,6 @@ class OverlayWindow(QWidget):
             text_rect = QRect(x, y, text_w, text_h)
 
             painter.fillRect(text_rect, QColor(0, 0, 0, 205))
-            label_font = painter.font()
-            label_font.setBold(True)
-            painter.setFont(label_font)
             painter.setPen(QPen(QColor(255, 255, 255)))
             painter.drawText(
                 text_rect.adjusted(4, 1, -4, -1),

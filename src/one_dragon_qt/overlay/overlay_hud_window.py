@@ -17,14 +17,6 @@ from PySide6.QtQuick import QQuickWindow
 from one_dragon.utils import os_utils
 from one_dragon_qt.overlay.utils import win32_utils
 
-# 面板固定尺寸（与 overlay_hud.qml 中面板宽高一致，样式写死不读配置）
-_PANEL_SIZE: dict[str, tuple[int, int]] = {
-    "log_panel": (460, 300),
-    "state_panel": (320, 260),
-    "decision_panel": (640, 160),
-    "performance_panel": (280, 150),
-}
-
 # QML 根属性名映射：面板名 -> visible 属性
 _PANEL_VISIBLE_MAP: dict[str, str] = {
     "log_panel": "logVisible",
@@ -180,17 +172,24 @@ class OverlayHudWindow:
 
         self._engine = QQmlApplicationEngine()
 
+        # 模型交给 engine 托管生命周期：setContextProperty 不接管 Python QObject 所有权，
+        # 若不挂父对象，Python 侧引用先释放时 QML 仍可能访问已销毁的模型
         self._models = {
             "logModel": OverlayListModel(
-                ["levelColor", "time", "level", "source", "message"]
+                ["levelColor", "time", "level", "source", "message"],
+                parent=self._engine,
             ),
             "stateModel": OverlayListModel(
-                ["big", "accent", "key", "value", "stateValue", "valueColor"]
+                ["big", "accent", "key", "value", "stateValue", "valueColor"],
+                parent=self._engine,
             ),
             "decisionModel": OverlayListModel(
-                ["time", "source", "trigger", "expr", "action", "status"]
+                ["time", "source", "trigger", "expr", "action", "status"],
+                parent=self._engine,
             ),
-            "perfModel": OverlayListModel(["name", "avgText", "peakText"]),
+            "perfModel": OverlayListModel(
+                ["name", "avgText", "peakText"], parent=self._engine
+            ),
         }
 
         ctx = self._engine.rootContext()
@@ -217,11 +216,13 @@ class OverlayHudWindow:
         roots = self._engine.rootObjects()
         if not roots:
             raise RuntimeError("overlay_hud.qml 加载失败，无 root 对象")
-        self._window = roots[0]
-        if not isinstance(self._window, QQuickWindow):
+        root = roots[0]
+        if not isinstance(root, QQuickWindow):
             raise RuntimeError(
-                f"overlay_hud.qml 根对象类型异常: {type(self._window).__name__}"
+                f"overlay_hud.qml 根对象类型异常: {type(root).__name__}"
             )
+        # 校验通过再赋值，避免异常时 self._window 被污染、后续复用到错误对象
+        self._window = root
         return self._window
 
     def _set(self, name: str, value) -> None:
