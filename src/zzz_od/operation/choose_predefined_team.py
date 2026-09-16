@@ -52,8 +52,8 @@ class ChoosePredefinedTeam(ZOperation):
     DISABLED_AVATAR_BRIGHTNESS_RATIO: float = 0.7
     TEAM_SCROLL_STEP: int = 4
     TEAM_SLOT_COUNT: int = 6
-    TEAM_DRAG_START: Point = Point(300, 715)
-    TEAM_DRAG_END: Point = Point(300, 150)
+    TEAM_DRAG_START: Point = Point(960, 715)
+    TEAM_DRAG_END: Point = Point(960, 150)
     MAX_TEAM_COUNT: int = 20
 
     def __init__(
