@@ -55,6 +55,10 @@ class ChoosePredefinedTeam(ZOperation):
     TEAM_DRAG_START: Point = Point(960, 715)
     TEAM_DRAG_END: Point = Point(960, 150)
     MAX_TEAM_COUNT: int = 20
+    # 编队卡片上 100% 不是队名的 UI 文本：槽位标记、右下角标签、头像等级
+    TEAM_NAME_UI_TEXT_SET: frozenset[str] = frozenset(
+        {'1P', '2P', '3P', 'TEAM', 'AGENT', 'BANGBOO', '60'}
+    )
 
     def __init__(
         self,
@@ -578,16 +582,33 @@ class ChoosePredefinedTeam(ZOperation):
 
         return False
 
+    @staticmethod
+    def _is_ui_text(normalized_text: str) -> bool:
+        """判断文本是否一定是卡片上的 UI 文字，而不是队名。"""
+        if normalized_text in ChoosePredefinedTeam.TEAM_NAME_UI_TEXT_SET:
+            return True
+        if 'SELECT' in normalized_text:
+            return True
+        # 队伍人数标记，如 1/3、3/3
+        return re.fullmatch(r'\d+/\d+', normalized_text) is not None
+
     def _find_team_name(
         self,
         ocr_result_map: dict[str, MatchResultList],
         team_slot_rect: Rect,
     ) -> tuple[str | None, MatchResult | None]:
+        """
+        在整个卡片区域内取面积最大的文本作为队名，卡片上的固定 UI 文字排除在外。
+        """
         target_name: str | None = None
         target_mr: MatchResult | None = None
 
         for text, mr_list in ocr_result_map.items():
             if mr_list.max is None:
+                continue
+            if ChoosePredefinedTeam._is_ui_text(
+                str_utils.remove_whitespace(text).upper()
+            ):
                 continue
             mr = mr_list.max
             if (
