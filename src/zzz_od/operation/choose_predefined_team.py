@@ -259,14 +259,22 @@ class ChoosePredefinedTeam(ZOperation):
         if team_name is None:
             return self.round_fail(f'当前页未识别到预备编队 {target_team_idx + 1}')
         if target_team.name != team_name:
-            log.debug(
-                '预备编队名称更新:序号:%d 原名称:%s 新名称:%s',
-                target_team_idx + 1,
-                target_team.name,
-                team_name,
-            )
-            self.ctx.team_config.update_team_name_by_idx(target_team_idx, team_name)
-            target_team.name = team_name
+            if self._is_team_name_reliable(team_name):
+                log.debug(
+                    '预备编队名称更新:序号:%d 原名称:%s 新名称:%s',
+                    target_team_idx + 1,
+                    target_team.name,
+                    team_name,
+                )
+                self.ctx.team_config.update_team_name_by_idx(target_team_idx, team_name)
+                target_team.name = team_name
+            else:
+                log.info(
+                    '识别到的队名不含汉字，保留配置里的名称:序号:%d 识别:%s 保留:%s',
+                    target_team_idx + 1,
+                    team_name,
+                    target_team.name,
+                )
 
         if self._is_team_slot_disabled(
             self.last_screenshot,
@@ -382,7 +390,8 @@ class ChoosePredefinedTeam(ZOperation):
             self.scanned_team_name_set.add(team_name)
 
             if team_member_count is None:
-                self.ctx.team_config.update_team_name_by_idx(team_idx, team_name)
+                if self._is_team_name_reliable(team_name):
+                    self.ctx.team_config.update_team_name_by_idx(team_idx, team_name)
                 self.unrecognized_team_member_count += 1
                 log.warning(
                     '预备编队跳过:序号:%d 队名:%s 未识别队伍人数',
@@ -398,7 +407,8 @@ class ChoosePredefinedTeam(ZOperation):
                 agent_scan_result_list,
             )
             if is_disabled:
-                self.ctx.team_config.update_team_name_by_idx(team_idx, team_name)
+                if self._is_team_name_reliable(team_name):
+                    self.ctx.team_config.update_team_name_by_idx(team_idx, team_name)
                 self.disabled_team_count += 1
                 log.debug(
                     '预备编队禁用:序号:%d 队名:%s 代理人槽位不完整:%s 且头像变暗',
@@ -411,7 +421,7 @@ class ChoosePredefinedTeam(ZOperation):
             team_member_list = agent_list[:team_member_count]
             self.ctx.team_config.update_team_by_idx(
                 team_idx,
-                team_name,
+                team_name if self._is_team_name_reliable(team_name) else None,
                 team_member_list,
             )
             self.scanned_team_idx_list.append(team_idx)
@@ -591,6 +601,11 @@ class ChoosePredefinedTeam(ZOperation):
             return True
         # 队伍人数标记，如 1/3、3/3
         return re.fullmatch(r'\d+/\d+', normalized_text) is not None
+
+    @staticmethod
+    def _is_team_name_reliable(team_name: str) -> bool:
+        """识别到的队名必须含汉字，才允许覆盖配置里已有的名称。"""
+        return re.search(r'[\u4e00-\u9fff]', team_name) is not None
 
     def _find_team_name(
         self,

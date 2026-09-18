@@ -83,15 +83,18 @@ class TeamConfig(YamlConfig):
         team.name = normalized_name
         self.update_team(team)
 
-    def update_team_by_idx(self, team_idx: int, team_name: str, members: list[Agent]) -> None:
+    def update_team_by_idx(self, team_idx: int, team_name: str | None, members: list[Agent]) -> None:
         """
         按游戏内列表顺序同步预备编队
+
+        @param team_name: 队名；传 None 表示识别结果不可靠，保留原有名称
         """
         team = self.get_team_by_idx(team_idx)
         if team is None:
             return
 
-        team.name = team_name
+        if team_name is not None:
+            team.name = team_name
         team.agent_id_list = [member.agent_id for member in members[:3]]
         while len(team.agent_id_list) < 3:
             team.agent_id_list.append('unknown')
