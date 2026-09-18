@@ -61,11 +61,8 @@ class OverlayManager(QObject):
         self.ctx = ctx
         self.config = OverlayConfig()
 
-        # 首次同步 bus.enabled，避免 OverlayConfig.enabled 默认 False 时
-        # 总线仍保持 True，导致启动阶段不必要地构造 trace 对象
-        bus = getattr(self.ctx, "debug_trace_bus", None)
-        if bus is not None:
-            bus.enabled = self.config.enabled
+        # 启动时先同步一次总线开关，之后随档位与显隐变化在 _follow_window 中持续同步
+        self._sync_bus_enabled()
 
         self._supported = win32_utils.is_windows_build_supported(19041)
         self._warned_unsupported = False
@@ -142,15 +139,9 @@ class OverlayManager(QObject):
         self.config = OverlayConfig()
         self._toggle_combo_pressed = False
         self._apply_timer_intervals()
-        # 同步总线启用标志，使生产端在 overlay 关闭时可以跳过构造 trace 对象
-        bus = getattr(self.ctx, "debug_trace_bus", None)
-        if bus is not None:
-            bus.enabled = self.config.enabled
         self._safe_follow_window()
 
     def toggle_visibility(self) -> None:
-        if not self.config.enabled:
-            return
         self.config.visible = not self.config.visible
         self._safe_follow_window()
 
@@ -178,8 +169,6 @@ class OverlayManager(QObject):
 
     def _toggle_display_mode(self) -> None:
         """按调试热键（默认 F12）循环切换显示模式：关闭 -> 普通 -> debug。"""
-        if not self.config.enabled:
-            return
         order = ["off", "normal", "debug"]
         current = self.config.display_mode
         next_mode = order[(order.index(current) + 1) % len(order)]
@@ -249,10 +238,15 @@ class OverlayManager(QObject):
         except Exception:
             log.error("更新 Overlay 窗口失败", exc_info=True)
 
-    def _follow_window(self) -> None:
-        if not self.config.enabled:
-            self._hide_overlay()
+    def _sync_bus_enabled(self) -> None:
+        """同步调试总线开关：档位关闭或整体隐藏时，生产端跳过构造 trace 对象。"""
+        bus = getattr(self.ctx, "debug_trace_bus", None)
+        if bus is None:
             return
+        bus.enabled = self.config.display_mode != "off" and self.config.visible
+
+    def _follow_window(self) -> None:
+        self._sync_bus_enabled()
         if not self._supported:
             self._hide_overlay()
             if not self._warned_unsupported:

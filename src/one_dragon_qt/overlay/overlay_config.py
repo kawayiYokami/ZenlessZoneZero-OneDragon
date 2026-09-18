@@ -6,7 +6,6 @@ from typing import Any
 from one_dragon.base.config.yaml_config import YamlConfig
 
 _DEFAULT_OVERLAY_CONFIG: dict[str, Any] = {
-    "enabled": False,
     "visible": True,
     "vision_layer_enabled": True,
     "vision_yolo_enabled": True,
@@ -19,14 +18,13 @@ _DEFAULT_OVERLAY_CONFIG: dict[str, Any] = {
     "vision_scale_y": 1.0,
     "patched_capture_enabled": False,
     "patched_capture_suffix": "_patched",
-    "display_mode": "normal",
+    "display_mode": "off",
     "follow_interval_ms": 120,
     "input_poll_interval_ms": 50,
     "state_poll_interval_ms": 200,
 }
 
 _OVERLAY_SCALAR_KEYS = {
-    "enabled",
     "visible",
     "display_mode",
     "vision_layer_enabled",
@@ -74,14 +72,6 @@ class OverlayConfig(YamlConfig):
             data[key] = value
             return YamlConfig.update(self, "overlay", data, save=save)
         return YamlConfig.update(self, key, value, save=save)
-
-    @property
-    def enabled(self) -> bool:
-        return bool(self._overlay_data()["enabled"])
-
-    @enabled.setter
-    def enabled(self, value: bool) -> None:
-        self._update_overlay_data("enabled", bool(value))
 
     @property
     def visible(self) -> bool:
