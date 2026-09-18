@@ -7,7 +7,7 @@ from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
-from one_dragon.base.operation.overlay_debug_bus import VisionDrawItem
+from one_dragon.base.debug.debug_trace_bus import VisionTraceItem
 from one_dragon_qt.overlay.utils import win32_utils
 
 _VISION_SOURCE_COLOR = {
@@ -31,7 +31,7 @@ class OverlayWindow(QWidget):
         self._anti_capture_enabled = True
         self._standard_width = 1920
         self._standard_height = 1080
-        self._vision_items: list[VisionDrawItem] = []
+        self._vision_items: list[VisionTraceItem] = []
         self._vision_layer_enabled = True
         self._vision_offset_x = 0
         self._vision_offset_y = 0
@@ -69,7 +69,7 @@ class OverlayWindow(QWidget):
         self._vision_scale_y = max(0.5, min(1.5, float(scale_y)))
         self.update()
 
-    def set_vision_items(self, items: Sequence[VisionDrawItem]) -> None:
+    def set_vision_items(self, items: Sequence[VisionTraceItem]) -> None:
         if not self._vision_layer_enabled:
             if self._vision_items:
                 self._vision_items = []
@@ -152,8 +152,8 @@ class OverlayWindow(QWidget):
             if rect is None:
                 continue
 
-            # 光晕色优先取 item.color，未指定时按来源兜底（ocr 粉 / template 橙 / yolo 青 / cv 绿）
-            glow_color = QColor(item.color or _VISION_SOURCE_COLOR.get(item.source, "#bdbdbd"))
+            # 光晕色按来源兜底（ocr 粉 / template 橙 / yolo 青 / cv 绿）
+            glow_color = QColor(_VISION_SOURCE_COLOR.get(item.source, "#bdbdbd"))
             if not glow_color.isValid():
                 glow_color = QColor("#bdbdbd")
 
@@ -220,9 +220,9 @@ class OverlayWindow(QWidget):
             )
 
     @staticmethod
-    def _format_vision_label(item: VisionDrawItem) -> str:
+    def _format_vision_label(item: VisionTraceItem) -> str:
         label = (item.label or "").strip()
-        if item.score is None:
+        if item.score <= 0:
             return label
         return f"{label} {item.score:.2f}".strip()
 
@@ -234,7 +234,7 @@ class OverlayWindow(QWidget):
         ny2 = max(y1, y2)
         return nx1, ny1, nx2, ny2
 
-    def _map_rect(self, item: VisionDrawItem, scale_x: float, scale_y: float) -> QRect | None:
+    def _map_rect(self, item: VisionTraceItem, scale_x: float, scale_y: float) -> QRect | None:
         map_scale_x = scale_x * self._vision_scale_x
         map_scale_y = scale_y * self._vision_scale_y
         x1 = int(item.x1 * map_scale_x) + self._vision_offset_x

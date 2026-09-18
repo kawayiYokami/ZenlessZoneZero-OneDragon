@@ -4,6 +4,8 @@ import contextlib
 import html
 import logging
 import time
+from collections.abc import Sequence
+from typing import Protocol, TypeVar
 
 from PySide6.QtCore import QObject, QPoint, QRect, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
@@ -24,6 +26,27 @@ except Exception:
     yolo_log = None
 
 
+_VISION_TTL_SECONDS = 1.8
+_DECISION_TTL_SECONDS = 30.0
+_PERF_TTL_SECONDS = 30.0
+
+
+class _CreatedTrace(Protocol):
+    created: float
+
+
+_TraceItem = TypeVar("_TraceItem", bound=_CreatedTrace)
+
+
+def _filter_recent_items(
+    items: Sequence[_TraceItem],
+    now: float,
+    ttl_seconds: float,
+) -> list[_TraceItem]:
+    """按消费端展示 TTL 过滤仍然有效的 trace 项。"""
+    return [item for item in items if now - item.created <= ttl_seconds]
+
+
 class _OverlaySignalBridge(QObject):
     log_received = Signal(object)
 
@@ -37,6 +60,12 @@ class OverlayManager(QObject):
         super().__init__(parent)
         self.ctx = ctx
         self.config = OverlayConfig()
+
+        # 首次同步 bus.enabled，避免 OverlayConfig.enabled 默认 False 时
+        # 总线仍保持 True，导致启动阶段不必要地构造 trace 对象
+        bus = getattr(self.ctx, "debug_trace_bus", None)
+        if bus is not None:
+            bus.enabled = self.config.enabled
 
         self._supported = win32_utils.is_windows_build_supported(19041)
         self._warned_unsupported = False
@@ -113,6 +142,10 @@ class OverlayManager(QObject):
         self.config = OverlayConfig()
         self._toggle_combo_pressed = False
         self._apply_timer_intervals()
+        # 同步总线启用标志，使生产端在 overlay 关闭时可以跳过构造 trace 对象
+        bus = getattr(self.ctx, "debug_trace_bus", None)
+        if bus is not None:
+            bus.enabled = self.config.enabled
         self._safe_follow_window()
 
     def toggle_visibility(self) -> None:
@@ -410,23 +443,27 @@ class OverlayManager(QObject):
         return rows
 
     def _refresh_debug_panels(self) -> None:
-        bus = getattr(self.ctx, "overlay_debug_bus", None)
+        bus = getattr(self.ctx, "debug_trace_bus", None)
         if bus is None:
             return
 
         snapshot = bus.snapshot()
-        if snapshot.decision_items:
+        now = time.time()
+        vision_items = _filter_recent_items(snapshot.vision_items, now, _VISION_TTL_SECONDS)
+        decision_items = _filter_recent_items(snapshot.decision_items, now, _DECISION_TTL_SECONDS)
+        perf_items = _filter_recent_items(snapshot.perf_items, now, _PERF_TTL_SECONDS)
+        if decision_items:
             # 以最新一条决策的时间为面板活跃基准
             self._panel_last_active["decision_panel"] = max(
-                float(x.created) for x in snapshot.decision_items
+                float(x.created) for x in decision_items
             )
         if self._overlay_window is not None:
-            self._overlay_window.set_vision_items(self._filter_vision_items(snapshot.vision_items))
+            self._overlay_window.set_vision_items(self._filter_vision_items(vision_items))
         if self._hud_window is not None:
-            self._hud_window.set_decision_items(self._build_decision_rows(snapshot.decision_items))
-            self._hud_window.set_decision_title(self._build_decision_title(snapshot.decision_items))
+            self._hud_window.set_decision_items(self._build_decision_rows(decision_items))
+            self._hud_window.set_decision_title(self._build_decision_title(decision_items))
             self._hud_window.set_perf_items(
-                self._build_perf_rows(snapshot.performance_items)
+                self._build_perf_rows(perf_items)
             )
 
     def _build_decision_rows(self, items) -> list[dict]:
