@@ -7713,7 +7713,7 @@
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
           "repeat": 16
-        "states": "[自定义-黄光切人, 0, 1]"
+        "states": "[自定义-黄光切人, 0, 0.3]"
       - "operations":
         - "op_name": "设置状态"
           "seconds": 1
@@ -7724,8 +7724,8 @@
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
           "repeat": 5
-        "states": "[自定义-红光闪避, 0, 1] & [叶瞬光-明心境]{0,0}"
-      - "states": "[自定义-连携换人, 0, 1]"
+        "states": "[自定义-红光闪避, 0, 0.3] & [叶瞬光-明心境]{0,0}"
+      - "states": "[自定义-连携换人, 0, 0.3]"
         "sub_handlers":
         - "interrupt_states": "[叶瞬光-明心境]{0,0}"
           "operations":
@@ -7782,6 +7782,24 @@
           - "op_name": "等待秒数"
             "seconds": 0.3
           "states": "[叶瞬光-明心境]{1,120}"
+        - "operations":
+          - "op_name": "设置状态"
+            "seconds": 10
+            "state": "自定义-无视闪光"
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.5
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.5
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.5
+          - "op_name": "按键-普通攻击-按下"
+          - "op_name": "等待秒数"
+            "seconds": 0.5
+          - "op_name": "按键-普通攻击-松开"
+          "states": "[叶瞬光-青溟剑势-红]{6,6}"
         - "operations":
           - "op_name": "等待秒数"
             "seconds": 0.3
