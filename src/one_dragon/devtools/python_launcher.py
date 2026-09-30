@@ -276,7 +276,7 @@ def execute_python_script(
         full_command = " ".join(powershell_command)
         # 使用 subprocess.Popen 启动新的 PowerShell 窗口并执行命令
         subprocess.Popen(
-            ["powershell", "-Command", full_command],
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", full_command],
             creationflags=subprocess.CREATE_NO_WINDOW if no_windows else 0
         )
         print_message("等待主界面弹出...", "INFO")
@@ -289,12 +289,28 @@ def fetch_latest_code(ctx: OneDragonEnvContext) -> None:
         print_message(gt('未开启代码自动更新，跳过'), "INFO")
         return
     _configure_runtime_logger()
+    from one_dragon.envs.git_service import GitSyncStatus
+
     progress_callback = create_git_progress_callback()
-    success, msg = ctx.git_service.fetch_latest_code(progress_callback=progress_callback)
-    if success:
-        print_message(gt('代码更新完成'), "PASS")
+    status, message = ctx.git_service.fetch_latest_code(progress_callback=progress_callback)
+    if status in (GitSyncStatus.SUCCESS, GitSyncStatus.UP_TO_DATE):
+        level = 'PASS'
+    elif status is GitSyncStatus.RUNTIME_INCOMPATIBLE:
+        message = f'{message}, {gt("继续使用当前版本")}'
+        level = 'WARNING'
+    elif status is GitSyncStatus.BUILTIN_TAG_UNAVAILABLE:
+        message = f'{message}, {gt("继续使用内置版本")}'
+        level = 'WARNING'
+    elif status in (GitSyncStatus.REMOTE_UNAVAILABLE, GitSyncStatus.LOCAL_CHANGES):
+        message = f'{message}, {gt("继续使用当前版本")}'
+        level = 'WARNING'
+    elif status is GitSyncStatus.LOCAL_UPDATE_FAILED:
+        message = f'{message}, {gt("请重新运行启动器；仍然失败时请重新安装")}'
+        level = 'ERROR'
     else:
-        print_message(f"{gt('代码更新失败')}: {msg}", "ERROR")
+        message = f'{message}, {gt("请查看日志后重试")}'
+        level = 'ERROR'
+    print_message(message, level)
 
 
 def sync_dependencies(ctx: OneDragonEnvContext) -> None:
@@ -315,7 +331,7 @@ def run_python(app_path, no_windows: bool = True, args: list[str] | None = None,
         print_message(f"OneDragon 启动器 {__version__}", "INFO")
         cwd = verify_working_directory()
         from one_dragon.base.operation.one_dragon_env_context import OneDragonEnvContext
-        ctx = OneDragonEnvContext()
+        ctx = OneDragonEnvContext(prefer_bundled_config=True)
         configure_environment(ctx, cwd)
         fetch_latest_code(ctx)
         sync_dependencies(ctx)
