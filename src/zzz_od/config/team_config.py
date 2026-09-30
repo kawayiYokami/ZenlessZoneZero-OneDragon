@@ -1,5 +1,6 @@
 from one_dragon.base.config.yaml_config import YamlConfig
 from one_dragon.utils import str_utils
+from one_dragon.utils.log_utils import log
 from zzz_od.game_data.agent import Agent
 
 
@@ -71,7 +72,7 @@ class TeamConfig(YamlConfig):
         return None
 
     def update_team_name_by_idx(self, team_idx: int, team_name: str) -> None:
-        """按游戏内列表顺序同步预备编队名称。"""
+        """按游戏内列表顺序同步预备编队名称。名称没有变化时不写入。"""
         team = self.get_team_by_idx(team_idx)
         if team is None:
             return
@@ -80,21 +81,31 @@ class TeamConfig(YamlConfig):
         if team.name == normalized_name:
             return
 
+        log.info(
+            '预备编队名称更新:下标:%d 原名称:%s 新名称:%s',
+            team_idx,
+            team.name,
+            normalized_name,
+        )
         team.name = normalized_name
         self.update_team(team)
 
     def update_team_by_idx(self, team_idx: int, team_name: str | None, members: list[Agent]) -> None:
-        """
-        按游戏内列表顺序同步预备编队
-
-        @param team_name: 队名；传 None 表示识别结果不可靠，保留原有名称
-        """
+        """按游戏内列表顺序同步预备编队；队名未识别时保留原名称。"""
         team = self.get_team_by_idx(team_idx)
         if team is None:
             return
 
         if team_name is not None:
-            team.name = team_name
+            normalized_name = str_utils.remove_whitespace(team_name)
+            if team.name != normalized_name:
+                log.info(
+                    '预备编队名称更新:下标:%d 原名称:%s 新名称:%s',
+                    team_idx,
+                    team.name,
+                    normalized_name,
+                )
+                team.name = normalized_name
         team.agent_id_list = [member.agent_id for member in members[:3]]
         while len(team.agent_id_list) < 3:
             team.agent_id_list.append('unknown')
