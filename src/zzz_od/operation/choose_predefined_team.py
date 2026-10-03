@@ -267,6 +267,16 @@ class ChoosePredefinedTeam(ZOperation):
         team_name = recognition.team_name
         if team_name is not None:
             target_team.name = team_name
+
+        # 禁用只存在于式舆防卫战；其他场景（区域巡防、实战模拟室等）不判禁用。
+        if self.is_shiyu_defense and self._is_team_slot_disabled(
+            self.last_screenshot,
+            ocr_result_map,
+            team_name,
+            team_slot_rect,
+        ):
+            return self.round_fail(f'预备编队已禁用，停止选择 {team_name}')
+
         # 识别到代理人才写角色；识别不到只同步队名，避免清空已有角色。
         agent_list = [
             match_result.data
@@ -284,14 +294,6 @@ class ChoosePredefinedTeam(ZOperation):
             )
         elif team_name is not None:
             self.ctx.team_config.update_team_name_by_idx(target_team_idx, team_name)
-
-        if self.is_shiyu_defense and self._is_team_slot_disabled(
-            self.last_screenshot,
-            ocr_result_map,
-            team_name,
-            team_slot_rect,
-        ):
-            return self.round_fail(f'预备编队已禁用，停止选择 {team_name}')
 
         select_button_mr = self._find_select_button(ocr_result_map, team_slot_rect)
         if select_button_mr is None:
@@ -416,7 +418,6 @@ class ChoosePredefinedTeam(ZOperation):
                 team_slot_rect,
             )
             if is_disabled:
-                self.ctx.team_config.update_team_name_by_idx(team_idx, team_name)
                 self.disabled_team_count += 1
                 log.debug(
                     '预备编队禁用:序号:%d 队名:%s 代理人槽位不完整:%s 且头像变暗',
