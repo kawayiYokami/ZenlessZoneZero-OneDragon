@@ -778,7 +778,34 @@ class ChoosePredefinedTeam(ZOperation):
         team_name: str,
         team_slot_rect: Rect,
     ) -> bool:
-        """重新识别当前卡片，供点击和选中确认前拦截禁用队伍。"""
+        """判断当前卡片是否禁用；变暗可能是加载黑帧，等 1 秒二次确认。"""
+        if not self._is_team_disabled_on_screen(
+            screen,
+            ocr_result_map,
+            team_name,
+            team_slot_rect,
+        ):
+            return False
+
+        time.sleep(1)
+        new_screen = self.screenshot()
+        new_ocr_result_map = self.ctx.ocr.run_ocr(new_screen)
+        log.debug('预备编队禁用疑似:队名:%s 等待 1 秒后二次确认', team_name)
+        return self._is_team_disabled_on_screen(
+            new_screen,
+            new_ocr_result_map,
+            team_name,
+            team_slot_rect,
+        )
+
+    def _is_team_disabled_on_screen(
+        self,
+        screen: MatLike,
+        ocr_result_map: dict[str, MatchResultList],
+        team_name: str,
+        team_slot_rect: Rect,
+    ) -> bool:
+        """按一次截图判断当前卡片是否禁用。"""
         agent_slot_set = self._get_team_agent_slot_set(
             ocr_result_map,
             team_slot_rect,
