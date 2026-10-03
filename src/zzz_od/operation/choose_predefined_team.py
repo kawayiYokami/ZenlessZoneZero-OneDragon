@@ -101,6 +101,11 @@ class ChoosePredefinedTeam(ZOperation):
         self.start_at_team_list: bool = start_at_team_list
         self.finish_without_confirm: bool = finish_without_confirm
 
+    @property
+    def is_shiyu_defense(self) -> bool:
+        """是否为式舆防卫战的自动配队场景：只有它会传入目标队伍列表。"""
+        return self.shiyu_target_list is not None
+
     @operation_node(name='画面识别', node_max_retry_times=10, is_start_node=True)
     def check_screen(self) -> OperationRoundResult:
         if self.start_at_team_list:
@@ -207,7 +212,7 @@ class ChoosePredefinedTeam(ZOperation):
 
         if self.pending_cancel_button_center is not None:
             ocr_result_map = self.ctx.ocr.run_ocr(self.last_screenshot)
-            if self._is_team_slot_disabled(
+            if self.is_shiyu_defense and self._is_team_slot_disabled(
                 self.last_screenshot,
                 ocr_result_map,
                 target_team.name,
@@ -228,7 +233,7 @@ class ChoosePredefinedTeam(ZOperation):
 
         if self.pending_select_button_center is not None:
             ocr_result_map = self.ctx.ocr.run_ocr(self.last_screenshot)
-            if self._is_team_slot_disabled(
+            if self.is_shiyu_defense and self._is_team_slot_disabled(
                 self.last_screenshot,
                 ocr_result_map,
                 target_team.name,
@@ -277,7 +282,7 @@ class ChoosePredefinedTeam(ZOperation):
                 agent_list[:team_member_count] if team_member_count is not None else agent_list,
             )
 
-        if self._is_team_slot_disabled(
+        if self.is_shiyu_defense and self._is_team_slot_disabled(
             self.last_screenshot,
             ocr_result_map,
             team_name,
@@ -401,11 +406,11 @@ class ChoosePredefinedTeam(ZOperation):
                 )
                 continue
 
-            is_disabled = self._is_team_disabled(
+            is_disabled = self._is_team_slot_disabled(
+                screen,
+                ocr_result_map,
                 team_name,
-                agent_slot_set,
-                team_member_count,
-                agent_scan_result_list,
+                team_slot_rect,
             )
             if is_disabled:
                 self.ctx.team_config.update_team_name_by_idx(team_idx, team_name)
