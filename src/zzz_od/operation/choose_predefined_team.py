@@ -267,20 +267,23 @@ class ChoosePredefinedTeam(ZOperation):
         team_name = recognition.team_name
         if team_name is not None:
             target_team.name = team_name
-        team_member_count = self._get_team_member_count(
-            ocr_result_map,
-            team_slot_rect,
-        )
+        # 识别到代理人才写角色；识别不到只同步队名，避免清空已有角色。
         agent_list = [
             match_result.data
             for match_result in recognition.agent_match_result_list
         ]
-        if team_name is not None or agent_list:
+        if len(agent_list) > 0:
+            team_member_count = self._get_team_member_count(
+                ocr_result_map,
+                team_slot_rect,
+            )
             self.ctx.team_config.update_team_by_idx(
                 target_team_idx,
                 team_name,
                 agent_list[:team_member_count] if team_member_count is not None else agent_list,
             )
+        elif team_name is not None:
+            self.ctx.team_config.update_team_name_by_idx(target_team_idx, team_name)
 
         if self.is_shiyu_defense and self._is_team_slot_disabled(
             self.last_screenshot,
