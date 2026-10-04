@@ -100,6 +100,7 @@ if not getattr(sys, 'frozen', False):
     from functools import cached_property, lru_cache, partial, wraps
     from importlib import metadata
     from io import BytesIO
+    from itertools import count
     from logging import DEBUG
     from logging.handlers import TimedRotatingFileHandler
     from math import atan2, degrees, hypot, isfinite
