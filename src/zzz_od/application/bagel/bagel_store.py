@@ -310,7 +310,7 @@ class BagelStoreSafe(BagelOperation):
         """先按住再移动，给游戏时间抓起物品，避免拖成结果列表滚动。"""
         self._panel_guard.reset()
         self.ctx.controller.drag_to(
-            end=destination, start=source, duration=0.8, press_time=0.1,
+            end=destination, start=source, duration=0.8,
         )
 
     def _drag_visually_ok(
