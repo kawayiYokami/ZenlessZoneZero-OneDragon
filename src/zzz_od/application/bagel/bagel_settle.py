@@ -105,6 +105,8 @@ class BagelSettleWarehouse(BagelOperation):
             ).execute()
             if not result.success:
                 return self.round_by_op_result(result)
+            if result.status not in (BagelCleanWarehouse.STATUS_DONE, BagelCleanWarehouse.STATUS_SKIPPED):
+                return self.round_fail(f'第 {index} 步出售未完成确认（{result.status}），停止并保留现场')
             log.info('贝果仓库清理第 %s 步完成：%s', index, result.status)
         self.sale_completed = True
         return self.round_success(self.deposit_status)

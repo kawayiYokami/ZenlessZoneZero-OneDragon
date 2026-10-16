@@ -38,7 +38,7 @@ class BagelCleanWarehouse(BagelOperation):
     """用仓库快速选择卖掉贵重物品、战术棱镜、其他的 C–S，只留 Z。"""
 
     STATUS_SKIPPED: str = '没有可出售物品'
-    STATUS_DONE: str = '已批量出售'
+    STATUS_DONE: str = '确认出售已完成'
 
     def __init__(
         self, ctx: ZContext, filter_areas: tuple[str, ...] = FILTER_TICKS,
@@ -241,6 +241,7 @@ class BagelCleanWarehouse(BagelOperation):
         )
 
     @node_from(from_name='点击确认出售', status='确认出售')
+    @node_from(from_name='点击确认出售', status='出售弹窗确认')
     @operation_node(name='确认出售弹窗', timeout_seconds=15)
     def confirm_sale_dialog(self) -> OperationRoundResult:
         """只确认本次已核对筛选、有件数的出售预览。"""
