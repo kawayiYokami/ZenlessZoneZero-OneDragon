@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QCursor, QFontMetrics
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -214,6 +214,8 @@ class FluentDropdownButton(QFrame):
             # 设置固定尺寸策略，防止标签被压缩
             tag.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             self._flow_layout.addWidget(tag)
+        wrapped_height = self._flow_layout.heightForWidth(max(1, self._flow_widget.width()))
+        self.setMinimumHeight(max(32, wrapped_height + 8))
 
     def mousePressEvent(self, event):
         """鼠标点击事件"""
@@ -496,12 +498,23 @@ class MultiSelectionComboBox(QWidget, AdapterInitMixin):
 
     def _toggle_dropdown_menu(self) -> None:
         """切换下拉菜单显示/隐藏"""
-        # 如果菜单已显示，则隐藏它
-        if self._menu is not None and self._menu.isVisible():
+        # 菜单在鼠标按下时关闭，按钮点击也在按下时发出。
+        # 光标仍在按钮内时先保留菜单引用，让这次点击只负责关闭。
+        if self._menu is not None:
             self._menu.close()
             self._menu = None
-        else:
-            self._show_dropdown_menu()
+            return
+
+        self._show_dropdown_menu()
+
+    def _on_dropdown_menu_closed(self) -> None:
+        """菜单关闭后，仅在光标已离开按钮时清除引用"""
+        if self._menu is None:
+            return
+
+        pos = self._dropdown_btn.mapFromGlobal(QCursor.pos())
+        if not self._dropdown_btn.rect().contains(pos):
+            self._menu = None
 
     def _show_dropdown_menu(self) -> None:
         """显示下拉菜单"""
@@ -517,6 +530,8 @@ class MultiSelectionComboBox(QWidget, AdapterInitMixin):
                 lambda checked, i=item: self._on_item_triggered(i, checked)
             )
             self._menu.addAction(action)
+
+        self._menu.closedSignal.connect(self._on_dropdown_menu_closed)
 
         # 显示菜单，使用 DROP_DOWN 动画
         button_rect = self._dropdown_btn.geometry()
