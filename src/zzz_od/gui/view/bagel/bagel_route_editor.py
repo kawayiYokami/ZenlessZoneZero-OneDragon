@@ -6,6 +6,8 @@ import argparse
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+import PySide6.QtGui as QtGui
+import PySide6.QtWidgets as QtWidgets
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
@@ -13,22 +15,17 @@ from PySide6.QtGui import (
     QImage,
     QPainter,
     QPainterPath,
-    QPalette,
     QPen,
     QPixmap,
 )
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
-    QFormLayout,
-    QGraphicsEllipseItem,
-    QGraphicsItem,
     QGraphicsScene,
     QGraphicsView,
     QHBoxLayout,
     QListWidgetItem,
     QScrollArea,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -81,7 +78,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from PySide6.QtGui import QCloseEvent, QWheelEvent
-    from PySide6.QtWidgets import QGraphicsSceneMouseEvent
 
     from zzz_od.context.zzz_context import ZContext
 
@@ -91,7 +87,7 @@ def route_color(stage: str) -> QColor:
     return QColor({'move': '#006cba', 'box': '#a96100', 'safe': '#7851a9'}[stage])
 
 
-class RoutePointItem(QGraphicsEllipseItem):
+class RoutePointItem(QtWidgets.QGraphicsEllipseItem):
     """拖动结束后提交一次撤销记录，点击同步选择。"""
 
     def __init__(
@@ -110,8 +106,8 @@ class RoutePointItem(QGraphicsEllipseItem):
         self.setBrush(route_color(point.stage))
         self.setPen(QPen(route_color(point.stage), 0.4))
         self.setFlags(
-            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
-            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
         )
         self.setZValue(10)
         self.setToolTip(
@@ -120,12 +116,12 @@ class RoutePointItem(QGraphicsEllipseItem):
             f'走过位置后，{point.passed_radius:g} 像素以内可继续下一段。'
         )
 
-    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+    def mousePressEvent(self, event: QtWidgets.QGraphicsSceneMouseEvent) -> None:
         """选点时不重建正在接收鼠标事件的场景。"""
         self.selected(self.index)
         super().mousePressEvent(event)
 
-    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+    def mouseReleaseEvent(self, event: QtWidgets.QGraphicsSceneMouseEvent) -> None:
         """松手后延迟交回坐标，避免销毁当前事件接收对象。"""
         super().mouseReleaseEvent(event)
         index, changed = self.index, self.changed
@@ -133,7 +129,7 @@ class RoutePointItem(QGraphicsEllipseItem):
         QTimer.singleShot(0, lambda: changed(index, xy))
 
 
-class FlowMarkerItem(QGraphicsEllipseItem):
+class FlowMarkerItem(QtWidgets.QGraphicsEllipseItem):
     """点击其它移动目的地时选择对应步骤。"""
 
     def __init__(
@@ -148,9 +144,9 @@ class FlowMarkerItem(QGraphicsEllipseItem):
         self.setPen(QPen(Qt.PenStyle.NoPen))
         self.setToolTip(title)
         self.setZValue(5)
-        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
 
-    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+    def mouseReleaseEvent(self, event: QtWidgets.QGraphicsSceneMouseEvent) -> None:
         """延迟选择，避免重绘销毁当前鼠标事件接收者。"""
         super().mouseReleaseEvent(event)
         QTimer.singleShot(0, self.selected)
@@ -199,13 +195,13 @@ class BagelRouteEditor(QDialog):
         super().__init__(parent)
         self.setFont(QFont('Microsoft YaHei UI', 10))
         palette = self.palette()
-        for role in (QPalette.ColorRole.Window, QPalette.ColorRole.Button):
+        for role in (QtGui.QPalette.ColorRole.Window, QtGui.QPalette.ColorRole.Button):
             palette.setColor(role, QColor(248, 249, 252))
-        palette.setColor(QPalette.ColorRole.Base, QColor('#ffffff'))
+        palette.setColor(QtGui.QPalette.ColorRole.Base, QColor('#ffffff'))
         for role in (
-            QPalette.ColorRole.WindowText,
-            QPalette.ColorRole.Text,
-            QPalette.ColorRole.ButtonText,
+            QtGui.QPalette.ColorRole.WindowText,
+            QtGui.QPalette.ColorRole.Text,
+            QtGui.QPalette.ColorRole.ButtonText,
         ):
             palette.setColor(role, QColor('#202020'))
         self.setPalette(palette)
@@ -310,7 +306,7 @@ class BagelRouteEditor(QDialog):
         self._button('保存草稿', self.save_draft, top)
         self._button('保存为正式流程', self.export_flow, top)
         layout.addLayout(top)
-        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal, self)
         self.view: RouteMapView = RouteMapView(self)
         map_panel = QWidget(self)
         map_layout = QVBoxLayout(map_panel)
@@ -351,13 +347,13 @@ class BagelRouteEditor(QDialog):
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         properties = QWidget(self)
-        form = QFormLayout(properties)
+        form = QtWidgets.QFormLayout(properties)
         form.setContentsMargins(16, 16, 16, 16)
         form.setVerticalSpacing(12)
         form.setHorizontalSpacing(12)
         form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        self.property_form: QFormLayout = form
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.property_form: QtWidgets.QFormLayout = form
         self.action_info: SubtitleLabel = SubtitleLabel(self)
         self.action_info.setWordWrap(True)
         form.addRow(self.action_info)
@@ -1104,7 +1100,7 @@ class BagelRouteEditor(QDialog):
         label.setBrush(spawn_color)
         label.setPos(model.spawn[0] + 3, model.spawn[1] + 2)
         label.setFont(self.font())
-        label.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        label.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         if spawn_selected:
             circle = scene.addEllipse(
                 model.spawn[0] - 5, model.spawn[1] - 5, 10, 10, QPen(spawn_color, 0.5),
@@ -1152,7 +1148,7 @@ class BagelRouteEditor(QDialog):
                         self._select_point,
                     )
                     item.setFlag(
-                        QGraphicsItem.GraphicsItemFlag.ItemIsMovable, not self.running
+                        QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, not self.running
                     )
                     scene.addItem(item)
                     item.setSelected(point_index == self._selected_point)

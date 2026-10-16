@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import replace
 from uuid import uuid4
 
+import PySide6.QtWidgets as QtWidgets
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
     ComboBox,
@@ -105,9 +106,9 @@ class StepTypeInput(QWidget):
         for category in ('移动', '箱子操作', '检查与退出'):
             self.category_combo.addItem(category)
         self.action_combo: ComboBox = ComboBox(self)
-        self.form: QFormLayout = QFormLayout(self)
+        self.form: QtWidgets.QFormLayout = QtWidgets.QFormLayout(self)
         self.form.setContentsMargins(0, 0, 0, 0)
-        self.form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.form.addRow('大类', self.category_combo)
         self.form.addRow('完成条件', self.action_combo)
         self.category_combo.currentIndexChanged.connect(self._change_category)
@@ -155,7 +156,7 @@ class BagelStepDialog(QDialog):
         self.setMinimumWidth(510)
         layout = QVBoxLayout(self)
         layout.addWidget(SubtitleLabel('新增步骤', self))
-        self.form: QFormLayout = QFormLayout()
+        self.form: QtWidgets.QFormLayout = QtWidgets.QFormLayout()
         self.form.setVerticalSpacing(12)
         layout.addLayout(self.form)
         self.type_input: StepTypeInput = StepTypeInput(map_id, self)

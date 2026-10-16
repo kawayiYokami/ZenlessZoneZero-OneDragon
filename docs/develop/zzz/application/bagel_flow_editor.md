@@ -224,6 +224,12 @@ uv run --env-file .env python -m zzz_od.gui.view.bagel.bagel_route_editor --inst
 
 制图重建方法和定位测试范围见[固定地图说明](bagel_fixed_map.md)。
 
+## 依赖清单
+
+编辑器新增的 Qt 组件通过 `PySide6.QtGui`、`PySide6.QtWidgets` 模块访问，例如 `QtGui.QPalette`、`QtWidgets.QSplitter`。生成器因此记录模块导入，避免把这些组件追加到与悬浮面板共用的长导入行，减少并行功能修改依赖清单时的冲突。组件用途和界面行为不变。
+
+修改导入后运行 `deploy/generate_module_manifest.py` 重新生成清单，并检查编辑器交互及清单生成结果。不要复制其他功能分支的清单，或手工拼接组件名称；打包依赖必须与当前分支源码一致。
+
 ## 测试
 
 界面回归位于独立测试仓 `zzz-od-test/test/zzz_od/gui/view/bagel/`，按被测模块划分：
