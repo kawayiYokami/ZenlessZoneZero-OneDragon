@@ -28,6 +28,21 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
 
+class PersistentCheckableMenu(CheckableMenu):
+    """勾选后保持打开的多选菜单"""
+
+    def _onItemClicked(self, item) -> None:
+        """勾选选项后不关闭菜单"""
+        action = item.data(Qt.ItemDataRole.UserRole)
+        if action not in self.menuActions() or not action.isEnabled():
+            return
+
+        if self.view.itemWidget(item) and not action.property("selectable"):
+            return
+
+        action.trigger()
+
+
 class FluentTagLabel(QFrame):
     """Fluent 风格标签控件，显示选中的项，带关闭按钮"""
 
@@ -518,8 +533,8 @@ class MultiSelectionComboBox(QWidget, AdapterInitMixin):
 
     def _show_dropdown_menu(self) -> None:
         """显示下拉菜单"""
-        # 使用 CheckableMenu，自动继承主题样式，支持多选
-        self._menu = CheckableMenu(parent=self)
+        # 使用勾选后保持打开的菜单，方便连续多选
+        self._menu = PersistentCheckableMenu(parent=self)
 
         # 为每个选项创建 Action
         for item in self._items:
