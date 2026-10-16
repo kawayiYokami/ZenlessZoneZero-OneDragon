@@ -2,23 +2,27 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QRect, Qt
+from PySide6.QtCore import QEvent, QObject, QRect, Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
+    FluentIcon,
+    PrimaryPushButton,
     SimpleCardWidget,
     StrongBodyLabel,
     SubtitleLabel,
+    ToolButton,
 )
 
 from one_dragon_qt.services.app_setting.app_setting_provider import GroupIdMixin
 from one_dragon_qt.utils.config_utils import get_prop_adapter
+from one_dragon_qt.widgets.multi_selection_combo_box import MultiSelectionComboBox
 from one_dragon_qt.widgets.setting_card.combo_box_setting_card import (
     ComboBoxSettingCard,
 )
-from one_dragon_qt.widgets.setting_card.multi_selection_combo_box_setting_card import (
-    MultiSelectionComboBoxSettingCard,
+from one_dragon_qt.widgets.setting_card.multi_push_setting_card import (
+    MultiPushSettingCard,
 )
 from one_dragon_qt.widgets.setting_card.setting_card_base import SettingCardBase
 from one_dragon_qt.widgets.setting_card.spin_box_setting_card import SpinBoxSettingCard
@@ -28,6 +32,7 @@ from zzz_od.application.bagel import bagel_usage
 from zzz_od.application.bagel.bagel_config import (
     BagelCleanMode,
     BagelCleanQuality,
+    BagelCleanStep,
     BagelCleanType,
 )
 from zzz_od.application.bagel.bagel_const import APP_ID, CLEAN_MODE_CUSTOM
@@ -39,12 +44,20 @@ if TYPE_CHECKING:
     from zzz_od.context.zzz_context import ZContext
 
 
-class _BagelMultiSelectionCard(MultiSelectionComboBoxSettingCard):
-    """贝果筛选使用无信号赋值，并同步选中项说明。"""
+class _CleanStepHeightFilter(QObject):
+    """复用多选设置卡的做法：下拉框变高后抬高卡片。"""
 
-    def _set_value_from_adapter(self, value: list[str] | None) -> None:
-        """明确走多选接口，避免通用适配器选中 Fluent 父类的 setValue。"""
-        self.set_value(value, emit_signal=False)
+    def __init__(self, card: QWidget, fit: object) -> None:
+        """过滤器挂在卡片上，生命周期与卡片一致。"""
+        super().__init__(card)
+        self._card: QWidget = card
+        self._fit = fit
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """不拦截事件，只在尺寸变化后延迟重算。"""
+        if event.type() == QEvent.Type.Resize:
+            QTimer.singleShot(0, lambda: self._fit(self._card))
+        return False
 
 
 class _WrappedHintLabel(QLabel):
@@ -186,19 +199,18 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         )
         self.clean_mode_card.value_changed.connect(self._refresh_clean_options)
         layout.addWidget(self.clean_mode_card)
-        self.clean_types_card: _BagelMultiSelectionCard = _BagelMultiSelectionCard(
-            icon='', title='出售类型', options_enum=BagelCleanType,
-        )
-        layout.addWidget(self.clean_types_card)
-        self.clean_qualities_card: _BagelMultiSelectionCard = _BagelMultiSelectionCard(
-            icon='', title='出售品质', options_enum=BagelCleanQuality,
-        )
-        layout.addWidget(self.clean_qualities_card)
+        self.clean_step_list: QWidget = QWidget(widget)
+        self.clean_step_layout: QVBoxLayout = QVBoxLayout(self.clean_step_list)
+        self.clean_step_layout.setContentsMargins(0, 0, 0, 0)
+        self.clean_step_layout.setSpacing(8)
+        layout.addWidget(self.clean_step_list)
+        self.clean_step_cards: list[MultiPushSettingCard] = []
+        self.add_clean_step_btn: PrimaryPushButton = PrimaryPushButton(text='新增出售步骤')
+        self.add_clean_step_btn.clicked.connect(self._on_add_clean_step)
+        layout.addWidget(self.add_clean_step_btn)
         self.sale_validation: BodyLabel = BodyLabel(bagel_usage.INCOMPLETE_SALE_HINT, widget)
         self.sale_validation.setWordWrap(True)
         layout.addWidget(self.sale_validation)
-        self.clean_types_card.value_changed.connect(self._refresh_clean_options)
-        self.clean_qualities_card.value_changed.connect(self._refresh_clean_options)
         for card in (self.success_rounds_card, self.failure_retries_card,
                      self.auto_clean_switch, self.sell_interval_card, self.clean_mode_card):
             _wrap_card(card)
@@ -211,22 +223,113 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         return widget
 
     def _refresh_clean_options(self, *_args: object) -> None:
-        """仅开启清理时显示方案，自定义时显示两组筛选。"""
+        """仅开启清理时显示方案，自定义时显示可增删的出售步骤。"""
         enabled = self.auto_clean_switch.btn.isChecked()
         self.clean_mode_card.setVisible(enabled)
         self.sell_interval_card.setVisible(enabled)
         visible = enabled and self.clean_mode_card.getValue() == CLEAN_MODE_CUSTOM
-        self.clean_types_card.setVisible(visible)
-        self.clean_qualities_card.setVisible(visible)
+        self.clean_step_list.setVisible(visible)
+        self.add_clean_step_btn.setVisible(visible)
         self.sale_title.setText('已有库存也会出售' if enabled else '已关闭自动出售')
         self.sale_hint.setText(bagel_usage.CLEAN_HINT if enabled else bagel_usage.NO_CLEAN_HINT)
         # 通用卡片的 setContent 会省略长文案，此页用换行标签保留完整内容。
         self.clean_mode_card.contentLabel.setText(
             bagel_usage.CUSTOM_SALE_HINT if visible else bagel_usage.DEFAULT_SALE_HINT,
         )
-        self.sale_validation.setVisible(visible and (
-            not self.clean_types_card.get_value() or not self.clean_qualities_card.get_value()
+        steps = () if self.config is None else self.config.clean_steps
+        incomplete = any(not step.types or not step.qualities for step in steps)
+        self.sale_validation.setVisible(visible and (not steps or incomplete))
+
+    def _rebuild_clean_steps(self) -> None:
+        """按当前配置重画步骤。加载时不写回。"""
+        while self.clean_step_layout.count():
+            item = self.clean_step_layout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self.clean_step_cards.clear()
+        if self.config is None:
+            return
+        for index, step in enumerate(self.config.clean_steps):
+            self.clean_step_layout.addWidget(self._make_clean_step_card(index, step))
+        self._refresh_clean_options()
+
+    def _make_clean_step_card(self, index: int, step: BagelCleanStep) -> MultiPushSettingCard:
+        """一步一张卡：类型、品质、上移、下移、删除。"""
+        types_box = MultiSelectionComboBox(min_width=160)
+        types_box.set_items([item.value for item in BagelCleanType])
+        types_box.set_value(list(step.types), emit_signal=False)
+        qualities_box = MultiSelectionComboBox(min_width=120)
+        qualities_box.set_items([item.value for item in BagelCleanQuality])
+        qualities_box.set_value(list(step.qualities), emit_signal=False)
+        up_btn = ToolButton(FluentIcon.UP)
+        down_btn = ToolButton(FluentIcon.DOWN)
+        delete_btn = ToolButton(FluentIcon.DELETE)
+        card = MultiPushSettingCard(
+            icon='', title=f'第 {index + 1} 步',
+            content='同一步里，类型和品质都符合才出售',
+            btn_list=[types_box, qualities_box, up_btn, down_btn, delete_btn],
+        )
+        card.types_box = types_box
+        card.qualities_box = qualities_box
+        # 与多选设置卡相同：去掉固定高度，跟随下拉框换行后的最小高度。
+        card.setMaximumHeight(16777215)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        height_filter = _CleanStepHeightFilter(card, self._fit_clean_step_card)
+        card.height_filter = height_filter
+        for box in (types_box, qualities_box):
+            box.setContentsMargins(0, 9, 0, 9)
+            box.installEventFilter(height_filter)
+            box.selection_changed.connect(lambda _value, current=card: QTimer.singleShot(0, lambda: self._fit_clean_step_card(current)))
+        types_box.selection_changed.connect(lambda _value, current=index: self._save_clean_step(current))
+        qualities_box.selection_changed.connect(lambda _value, current=index: self._save_clean_step(current))
+        up_btn.clicked.connect(lambda _checked=False, current=index: self._move_clean_step(current, -1))
+        down_btn.clicked.connect(lambda _checked=False, current=index: self._move_clean_step(current, 1))
+        delete_btn.clicked.connect(lambda _checked=False, current=index: self._delete_clean_step(current))
+        self.clean_step_cards.append(card)
+        return card
+
+    def _fit_clean_step_card(self, card: MultiPushSettingCard) -> None:
+        """取两个多选框里更高的一个，卡片只设置最小高度。"""
+        heights = []
+        for box in (card.types_box, card.qualities_box):
+            margins = box.contentsMargins()
+            heights.append(box._dropdown_btn.minimumHeight() + margins.top() + margins.bottom())
+        card.setMinimumHeight(max(heights))
+        card.updateGeometry()
+
+    def _save_clean_step(self, index: int) -> None:
+        """改完这一步立刻写入，不关闭页面。"""
+        if self.config is None or not 0 <= index < len(self.clean_step_cards):
+            return
+        card = self.clean_step_cards[index]
+        self.config.update_clean_step(index, BagelCleanStep(
+            tuple(card.types_box.get_value()), tuple(card.qualities_box.get_value()),
         ))
+        self._refresh_clean_options()
+
+    def _on_add_clean_step(self) -> None:
+        """追加空步骤，留在当前页继续填。"""
+        if self.config is None:
+            return
+        self.config.add_clean_step()
+        self._rebuild_clean_steps()
+
+    def _delete_clean_step(self, index: int) -> None:
+        """删掉这一步并重排序号。"""
+        if self.config is None:
+            return
+        self.config.delete_clean_step(index)
+        self._rebuild_clean_steps()
+
+    def _move_clean_step(self, index: int, offset: int) -> None:
+        """和相邻步骤交换，出售按新顺序执行。"""
+        if self.config is None:
+            return
+        target = index + offset
+        if not 0 <= target < len(self.config.clean_steps):
+            return
+        self.config.move_clean_step(index, target)
+        self._rebuild_clean_steps()
 
     def _clean_value_loaded(self, _value: object) -> None:
         """适配器异步载入后同步选项的显示状态。"""
@@ -248,12 +351,9 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
             get_prop_adapter(self.config, 'auto_clean_warehouse'),
         )
         self.clean_mode_card.init_with_adapter(get_prop_adapter(self.config, 'clean_mode'))
-        self.clean_types_card.init_with_adapter(get_prop_adapter(self.config, 'clean_types'))
-        self.clean_qualities_card.init_with_adapter(get_prop_adapter(self.config, 'clean_qualities'))
+        self._rebuild_clean_steps()
         self.failure_retries_card.init_with_adapter(get_prop_adapter(self.config, 'max_failure_retries'))
         self.success_rounds_card.init_with_adapter(get_prop_adapter(self.config, 'max_success_rounds'))
         self.sell_interval_card.init_with_adapter(get_prop_adapter(self.config, 'sell_interval'))
         self.auto_clean_switch._on_adapter_value_applied = self._clean_value_loaded
         self.clean_mode_card._on_adapter_value_applied = self._clean_value_loaded
-        self.clean_types_card._on_adapter_value_applied = self._clean_value_loaded
-        self.clean_qualities_card._on_adapter_value_applied = self._clean_value_loaded

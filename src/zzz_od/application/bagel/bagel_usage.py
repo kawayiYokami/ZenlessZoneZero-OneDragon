@@ -22,8 +22,8 @@ RETRY_HINT: str = '局内失败后最多额外重开的次数。成功或暂停�
 CLEAN_SWITCH_HINT: str = '开启后，有物入仓按间隔出售；满仓或残留可提前出售并重试入仓一次。空箱不卖。关闭后不出售。'
 SELL_INTERVAL_HINT: str = '按本任务非空入仓次数累计，失败局带回物资也计入。正常达到成功上限时补卖；满仓或残留可提前卖一次。'
 DEFAULT_SALE_HINT: str = '默认出售贵重物品、战术棱镜和其他物品中的 C/B/A/S 品质。默认不出售 Z 品质、装备、战术道具和门禁卡。'
-CUSTOM_SALE_HINT: str = '请至少选择一种类型和一种品质。物品同时符合两项条件时，程序才会出售。选择 Z 品质或装备等类型后，相应物品也可能被出售。'
-INCOMPLETE_SALE_HINT: str = '类型或品质未选择，任务无法启动。请至少选择一种类型和一种品质。'
+CUSTOM_SALE_HINT: str = '每一步都至少选择一种类型和一种品质。同一步里同时符合两项才出售。多步按从上到下的顺序各卖一次。选择 Z 品质或装备等类型后，相应物品也可能被出售。'
+INCOMPLETE_SALE_HINT: str = '某一步的类型或品质未选择，任务无法启动。请补全，或删掉这一步。'
 ACCOUNT_HINT: str = '这些设置只用于当前账号和应用组。切换账号或应用组后，请检查次数、清理开关和出售方案。'
 LOCATION_WAIT_HINT: str = '小地图暂时无法定位。程序已停止移动，正在读取新截图。'
 FEEDBACK_HINT: str = '反馈时，请提供停止原因、发生时间、所用角色、次数设置、清理开关、出售方案和相关日志。如果程序保存了现场截图，请一并提供。'
@@ -36,8 +36,15 @@ def log_start(config: BagelConfig) -> None:
     if config.auto_clean_warehouse:
         log.info('出售间隔：%s 次非空入仓；正常达到成功上限时补卖。计数不跨任务。', config.sell_interval)
         log.info('满仓或入仓后残留时，最多出售一次；有残留再入仓一次，仍残留或状态不明则停止。安全箱物品也在筛选范围内。')
-        names = '、'.join(name.removeprefix('筛选-') for name in config.clean_filter_areas())
-        log.info('清理仓库已开启。出售范围：%s。类型和品质须同时符合。已有库存也会出售。', names)
+        groups = config.clean_filter_groups()
+        parts = [
+            '、'.join(name.removeprefix('筛选-') for name in areas) or '未选择'
+            for areas in groups
+        ]
+        log.info(
+            '清理仓库已开启。按顺序出售 %s 步：%s。同一步内类型和品质须同时符合。已有库存也会出售。',
+            len(groups), '；'.join(f'第{index}步 {text}' for index, text in enumerate(parts, start=1)),
+        )
     else:
         log.info('清理仓库已关闭。程序只入仓，不出售物品。')
     log.info('空箱结算跳过出售，仍核对安全箱和仓库容量；安全箱为空且容量可读时，满仓也可继续。')
@@ -66,7 +73,7 @@ def stop_guidance(status: str | None) -> str:
     if '已完成仓库结算，停止自动重开' in reason:
         return ('失败局已完成结算，不再重开。本局不计成功。当前停在结算仓库。'
                 '请查看日志和现场截图，检查失败原因，再决定是否重新启动任务。')
-    if '自定义清理要同时选择类型和品质' in reason:
+    if '自定义清理每一步都要同时选择类型和品质' in reason:
         return INCOMPLETE_SALE_HINT
     if reason == '人工结束':
         return '任务已按停止操作结束。请核对当前画面和携带物，再决定是否重新启动。'

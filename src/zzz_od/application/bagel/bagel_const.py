@@ -36,7 +36,7 @@ NAV_LOCATE_MISS_LIMIT: int = 3
 # 电子保险箱完成四轮点按后等待搜索结果，点按时机按光圈状态判断。
 SAFE_UNLOCK_HITS: int = 4
 
-# 仓库清理：default 用下面的固定组合；custom 用用户勾选。
+# 仓库清理：default 用下面的固定组合；custom 按 clean_steps 顺序，每步用该步的类型和品质。
 CLEAN_MODE_DEFAULT: str = 'default'
 CLEAN_MODE_CUSTOM: str = 'custom'
 CLEAN_TYPES: tuple[str, ...] = ('贵重物品', '战术棱镜', '其他', '装备', '战术道具', '门禁卡')

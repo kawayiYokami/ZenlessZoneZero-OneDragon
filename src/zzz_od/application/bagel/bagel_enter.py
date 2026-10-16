@@ -41,11 +41,12 @@ class BagelEnter(BagelOperation):
         self, ctx: ZContext, *, allow_clear_loadout: bool = False,
         allow_world_recovery: bool = False,
         recovery_auto_clean: bool = False, recovery_filter_areas: tuple[str, ...] = FILTER_TICKS,
+        recovery_filter_groups: tuple[tuple[str, ...], ...] | None = None,
     ) -> None:
         """仅应用首次入场显式允许清空；独立工具默认只核对零携带。"""
         super().__init__(ctx, op_name='贝果-零携带入场', timeout_seconds=660 if allow_clear_loadout else 240)
         self.recovery_auto_clean: bool = recovery_auto_clean
-        self.recovery_filter_areas: tuple[str, ...] = recovery_filter_areas
+        self.recovery_filter_groups: tuple[tuple[str, ...], ...] = recovery_filter_groups or (recovery_filter_areas,)
         self.allow_clear_loadout: bool = allow_clear_loadout
         self.allow_world_recovery: bool = allow_world_recovery
         self.world_recovery_attempted: bool = False
@@ -154,7 +155,8 @@ class BagelEnter(BagelOperation):
             return self.round_retry('无法核对启动仓库数量', wait=0.5)
         settlement = self.round_by_find_area(self.last_screenshot, '贝果-仓库', '返回研究站').is_success
         stored = BagelSettleWarehouse(
-            self.ctx, self.recovery_auto_clean, self.recovery_filter_areas,
+            self.ctx, self.recovery_auto_clean,
+            filter_groups=self.recovery_filter_groups,
             sell_due=False, starting=True,
         ).execute()
         self.screenshot()

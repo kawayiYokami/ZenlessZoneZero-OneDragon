@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 
 from one_dragon.base.config.config_item import ConfigItem
@@ -13,6 +14,14 @@ from zzz_od.application.bagel.bagel_const import (
     DEFAULT_CLEAN_QUALITIES,
     DEFAULT_CLEAN_TYPES,
 )
+
+
+@dataclass(frozen=True)
+class BagelCleanStep:
+    """一次出售：类型和品质同时命中才卖。"""
+
+    types: tuple[str, ...]
+    qualities: tuple[str, ...]
 
 
 class BagelConfig(ApplicationConfig):
@@ -72,7 +81,7 @@ class BagelConfig(ApplicationConfig):
 
     @property
     def clean_mode(self) -> str:
-        """default 用固定类型和品质；custom 用下面两项勾选。"""
+        """default 用固定类型和品质；custom 按 clean_steps 顺序多次出售。"""
         return self._text_mode('clean_mode', CLEAN_MODE_DEFAULT)
 
     @clean_mode.setter
@@ -83,32 +92,80 @@ class BagelConfig(ApplicationConfig):
         self.update('clean_mode', value)
 
     @property
-    def clean_types(self) -> list[str]:
-        """自定义时要卖的仓库类型。"""
-        return self._name_list('clean_types')
+    def clean_steps(self) -> list[BagelCleanStep]:
+        """自定义时按列表顺序各出售一次。没有配置就是还没有步骤。"""
+        raw = self.get('clean_steps', [])
+        if type(raw) is not list:
+            raise ValueError('clean_steps 必须是列表')
+        return [self._parse_step(item) for item in raw]
 
-    @clean_types.setter
-    def clean_types(self, value: list[str]) -> None:
-        """保存类型勾选，不接受名单以外的名字。"""
-        self._set_names('clean_types', value, CLEAN_TYPES)
+    @clean_steps.setter
+    def clean_steps(self, value: list[BagelCleanStep]) -> None:
+        """保存出售步骤。"""
+        if type(value) is not list:
+            raise ValueError('clean_steps 必须是列表')
+        self.update('clean_steps', [self._step_dict(step) for step in value])
 
-    @property
-    def clean_qualities(self) -> list[str]:
-        """自定义时要卖的品质。"""
-        return self._name_list('clean_qualities')
+    def add_clean_step(self, step: BagelCleanStep | None = None) -> None:
+        """在末尾追加一步。"""
+        steps = list(self.clean_steps)
+        steps.append(step or BagelCleanStep((), ()))
+        self.clean_steps = steps
 
-    @clean_qualities.setter
-    def clean_qualities(self, value: list[str]) -> None:
-        """保存品质勾选，不接受名单以外的名字。"""
-        self._set_names('clean_qualities', value, CLEAN_QUALITIES)
+    def update_clean_step(self, index: int, step: BagelCleanStep) -> None:
+        """替换指定步骤。"""
+        steps = list(self.clean_steps)
+        if not 0 <= index < len(steps):
+            raise ValueError('清理步骤序号超出范围')
+        steps[index] = step
+        self.clean_steps = steps
 
-    def clean_filter_areas(self) -> tuple[str, ...]:
-        """快速选择里要点中的区域名。默认忽略自定义勾选。"""
-        if self.clean_mode == CLEAN_MODE_CUSTOM:
-            names = (*self.clean_types, *self.clean_qualities)
-        else:
+    def delete_clean_step(self, index: int) -> None:
+        """删除指定步骤。"""
+        steps = list(self.clean_steps)
+        if not 0 <= index < len(steps):
+            raise ValueError('清理步骤序号超出范围')
+        del steps[index]
+        self.clean_steps = steps
+
+    def move_clean_step(self, index: int, target: int) -> None:
+        """把一步挪到目标位置。"""
+        steps = list(self.clean_steps)
+        if not 0 <= index < len(steps) or not 0 <= target < len(steps):
+            raise ValueError('清理步骤序号超出范围')
+        step = steps.pop(index)
+        steps.insert(target, step)
+        self.clean_steps = steps
+
+    def clean_filter_groups(self) -> tuple[tuple[str, ...], ...]:
+        """每步快速选择要点中的区域名。默认只有固定的一步。"""
+        if self.clean_mode != CLEAN_MODE_CUSTOM:
             names = (*DEFAULT_CLEAN_TYPES, *DEFAULT_CLEAN_QUALITIES)
-        return tuple(f'筛选-{name}' for name in names)
+            return (tuple(f'筛选-{name}' for name in names),)
+        return tuple(
+            tuple(f'筛选-{name}' for name in (*step.types, *step.qualities))
+            for step in self.clean_steps
+        )
+
+    def _parse_step(self, value: object) -> BagelCleanStep:
+        """读取一步；名单外或重复的名字留给启动校验拒绝。"""
+        if type(value) is not dict:
+            raise ValueError('清理步骤必须是对象')
+        return BagelCleanStep(tuple(self._stored_names(value.get('types'))), tuple(self._stored_names(value.get('qualities'))))
+
+    def _step_dict(self, step: BagelCleanStep) -> dict[str, list[str]]:
+        """写入前校验类型和品质。"""
+        types = list(step.types)
+        qualities = list(step.qualities)
+        self._set_names_checked(types, CLEAN_TYPES, '清理类型')
+        self._set_names_checked(qualities, CLEAN_QUALITIES, '清理品质')
+        return {'types': types, 'qualities': qualities}
+
+    def _stored_names(self, value: object) -> list[str]:
+        """读取一步里的名字列表。"""
+        if type(value) is not list or any(type(item) is not str for item in value):
+            raise ValueError('清理步骤的类型和品质必须是字符串列表')
+        return list(value)
 
     def _text_mode(self, name: str, default: str) -> str:
         """读取文本配置；手改成非文本时交给启动校验拒绝。"""
@@ -117,23 +174,15 @@ class BagelConfig(ApplicationConfig):
             raise ValueError(f'{name} 必须是文本')
         return value
 
-    def _name_list(self, name: str) -> list[str]:
-        """读取字符串列表；缺省为空。"""
-        value = self.get(name, [])
-        if type(value) is not list or any(type(item) is not str for item in value):
-            raise ValueError(f'{name} 必须是字符串列表')
-        return list(value)
-
-    def _set_names(self, name: str, value: list[str], allowed: tuple[str, ...]) -> None:
+    def _set_names_checked(self, value: list[str], allowed: tuple[str, ...], label: str) -> None:
         """拒绝非列表、重复和名单外的名字。"""
-        if type(value) is not list or any(type(item) is not str or item not in allowed for item in value):
-            raise ValueError(f'{name} 只能从规定名单里选择')
+        if any(item not in allowed for item in value):
+            raise ValueError(f'{label}只能从规定名单里选择')
         if len(set(value)) != len(value):
-            raise ValueError(f'{name} 不能重复')
-        self.update(name, value)
+            raise ValueError(f'{label}不能重复')
 
     def validate(self) -> None:
-        """启动前校验手工修改的 YAML；旧名单字段不再读取。"""
+        """启动前校验配置。"""
         interval = self.sell_interval
         if type(interval) is not int or not 1 <= interval <= 999:
             raise ValueError('sell_interval 必须是 1 至 999 的整数')
@@ -147,20 +196,20 @@ class BagelConfig(ApplicationConfig):
             raise ValueError('auto_clean_warehouse 必须是布尔值')
         if self.clean_mode not in (CLEAN_MODE_DEFAULT, CLEAN_MODE_CUSTOM):
             raise ValueError('clean_mode 只能是 default 或 custom')
-        types = self.clean_types
-        qualities = self.clean_qualities
-        if any(name not in CLEAN_TYPES for name in types):
-            raise ValueError('清理类型不在快速选择里')
-        if any(name not in CLEAN_QUALITIES for name in qualities):
-            raise ValueError('清理品质不在快速选择里')
-        if len(set(types)) != len(types) or len(set(qualities)) != len(qualities):
-            raise ValueError('清理筛选不能重复')
+        steps = self.clean_steps
+        for step in steps:
+            if any(name not in CLEAN_TYPES for name in step.types):
+                raise ValueError('清理类型不在快速选择里')
+            if any(name not in CLEAN_QUALITIES for name in step.qualities):
+                raise ValueError('清理品质不在快速选择里')
+            if len(set(step.types)) != len(step.types) or len(set(step.qualities)) != len(step.qualities):
+                raise ValueError('清理筛选不能重复')
         if (
             self.auto_clean_warehouse
             and self.clean_mode == CLEAN_MODE_CUSTOM
-            and (not types or not qualities)
+            and (not steps or any(not step.types or not step.qualities for step in steps))
         ):
-            raise ValueError('自定义清理要同时选择类型和品质')
+            raise ValueError('自定义清理每一步都要同时选择类型和品质')
 
 
 class BagelCleanMode(Enum):

@@ -189,7 +189,7 @@ class BagelApp(ZApplication):
         result = BagelEnter(
             self.ctx, allow_clear_loadout=allow_clear_loadout, allow_world_recovery=True,
             recovery_auto_clean=self.config.auto_clean_warehouse,
-            recovery_filter_areas=self.config.clean_filter_areas(),
+            recovery_filter_groups=self.config.clean_filter_groups(),
         ).execute()
         if retrying_failure and not result.success:
             return self._finish_failed_round(result, '额外入场')
@@ -293,7 +293,8 @@ class BagelApp(ZApplication):
         log.info('贝果出售计划：累计入仓 %s/%s；正常结束补卖=%s',
                  self.rounds_since_sell, self.config.sell_interval, finishing)
         result = BagelSettleWarehouse(
-            self.ctx, self.config.auto_clean_warehouse, self.config.clean_filter_areas(),
+            self.ctx, self.config.auto_clean_warehouse,
+            filter_groups=self.config.clean_filter_groups(),
             sell_due=due or finishing,
         ).execute()
         if result.success:

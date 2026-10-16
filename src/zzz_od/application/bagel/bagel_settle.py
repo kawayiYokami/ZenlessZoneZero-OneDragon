@@ -26,12 +26,13 @@ class BagelSettleWarehouse(BagelOperation):
     def __init__(
         self, ctx: ZContext, auto_clean: bool, filter_areas: tuple[str, ...] = FILTER_TICKS,
         *, sell_due: bool = True, starting: bool = False,
+        filter_groups: tuple[tuple[str, ...], ...] | None = None,
     ) -> None:
-        """应用决定本次是否到期；满仓或残留允许提前出售一次。"""
+        """应用决定本次是否到期；满仓或残留允许提前出售。自定义多步按顺序各卖一次。"""
         super().__init__(ctx, op_name='贝果-结算仓库', timeout_seconds=180)
         self.starting: bool = starting
         self.auto_clean: bool = auto_clean
-        self.filter_areas: tuple[str, ...] = filter_areas
+        self.filter_groups: tuple[tuple[str, ...], ...] = filter_groups or (filter_areas,)
         self.sell_due: bool = sell_due
         self.deposit_status: str = BagelDeposit.STATUS_EMPTY
         self.sale_completed: bool = False
@@ -93,14 +94,18 @@ class BagelSettleWarehouse(BagelOperation):
         if not self.sell_due and not self.retry_deposit and pair[0] < pair[1]:
             log.info('贝果结算：未到出售间隔，本局只入仓')
             return self.round_success(self.deposit_status)
+        if not self.filter_groups or any(not areas for areas in self.filter_groups):
+            return self.round_fail('自定义清理每一步都要同时选择类型和品质')
         reason = '残留物资' if self.retry_deposit else '仓库已满' if pair[0] >= pair[1] else '到期或正常结束'
-        log.info('贝果结算：%s，按所选方案出售一次', reason)
-        result = BagelCleanWarehouse(
-            self.ctx, self.filter_areas, allow_safe_items=self.retry_deposit,
-        ).execute()
-        if not result.success:
-            return self.round_by_op_result(result)
-        log.info('贝果仓库清理完成：%s', result.status)
+        log.info('贝果结算：%s，按所选方案顺序出售 %s 步', reason, len(self.filter_groups))
+        for index, areas in enumerate(self.filter_groups, start=1):
+            log.info('贝果结算：开始第 %s/%s 步出售', index, len(self.filter_groups))
+            result = BagelCleanWarehouse(
+                self.ctx, areas, allow_safe_items=self.retry_deposit,
+            ).execute()
+            if not result.success:
+                return self.round_by_op_result(result)
+            log.info('贝果仓库清理第 %s 步完成：%s', index, result.status)
         self.sale_completed = True
         return self.round_success(self.deposit_status)
 
