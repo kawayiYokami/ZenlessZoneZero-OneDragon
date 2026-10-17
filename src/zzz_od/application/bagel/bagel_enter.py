@@ -11,6 +11,7 @@ from zzz_od.application.bagel.bagel_clear_loadout import BagelClearLoadout
 from zzz_od.application.bagel.bagel_const import RECOMMENDED_VALUE
 from zzz_od.application.bagel.bagel_exit import BagelExit
 from zzz_od.application.bagel.bagel_investment import read_investment
+from zzz_od.application.bagel.bagel_open_compendium import BagelOpenCompendium
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_return import BagelReturn
 from zzz_od.application.bagel.bagel_screen import (
@@ -40,16 +41,17 @@ class BagelEnter(BagelOperation):
 
     def __init__(
         self, ctx: ZContext, *, allow_clear_loadout: bool = False,
-        allow_world_recovery: bool = False,
+        allow_world_recovery: bool = False, prepare_shortcut_entry: bool = False,
         recovery_auto_clean: bool = False, recovery_filter_areas: tuple[str, ...] = FILTER_TICKS,
         recovery_filter_groups: tuple[tuple[str, ...], ...] | None = None,
     ) -> None:
-        """仅应用首次入场显式允许清空；独立工具默认只核对零携带。"""
+        """正式应用首次入场允许清空并重建快捷手册入口；独立工具默认复用现有贝果页。"""
         super().__init__(ctx, op_name='贝果-零携带入场', timeout_seconds=660 if allow_clear_loadout else 240)
         self.recovery_auto_clean: bool = recovery_auto_clean
         self.recovery_filter_groups: tuple[tuple[str, ...], ...] = recovery_filter_groups or (recovery_filter_areas,)
         self.allow_clear_loadout: bool = allow_clear_loadout
         self.allow_world_recovery: bool = allow_world_recovery
+        self.prepare_shortcut_entry: bool = prepare_shortcut_entry
         self.world_recovery_attempted: bool = False
         self.clear_attempted: bool = False
         self.loadout_misses: int = 0
@@ -57,7 +59,6 @@ class BagelEnter(BagelOperation):
         self.confirmed_warnings: set[str] = set()
         self.investment_confirmed: bool = False
         self.investment_retries: int = 0
-        self.transport_started: bool = False
         self._pending_warning: str | None = None
         self._warning_started_at: float = 0
         self._warning_reclicked: bool = False
@@ -71,7 +72,6 @@ class BagelEnter(BagelOperation):
         self.confirmed_warnings.clear()
         self.investment_confirmed = False
         self.investment_retries = 0
-        self.transport_started = False
         self.clear_attempted = False
         self.loadout_misses = 0
         self._pending_warning = None
@@ -84,13 +84,6 @@ class BagelEnter(BagelOperation):
         super().handle_pause()
         self._resume_check = True
         self.zero_checked = False
-
-    def _at_reception(self) -> bool:
-        """传送后用普通大世界与达塔名称确认交互位置。"""
-        return (
-            self.round_by_find_area(self.last_screenshot, '大世界-普通', '快捷手册').is_success
-            and self.round_by_find_area(self.last_screenshot, '贝果-研究站', '接待员名称').is_success
-        )
 
     def _ordinary_warehouse(self) -> str | None:
         """普通仓库是其他应用的局部画面，按标题限定识别。"""
@@ -195,42 +188,22 @@ class BagelEnter(BagelOperation):
     @node_from(from_name='返回启动仓库上一页')
     @operation_node(name='打开贝果主界面', timeout_seconds=120)
     def open_hub(self) -> OperationRoundResult:
-        """优先使用现有贝果入口；安全画面才允许传送到研究站。"""
-        if self.round_by_find_area(self.last_screenshot, '贝果-备战', '预设组合').is_success:
-            return self.round_success('已在备战')
-        if self.round_by_find_area(self.last_screenshot, '贝果-选图', '前往备战').is_success:
-            return self.round_success()
-        if (
-            self.round_by_find_area(self.last_screenshot, '贝果-研究站', '标题').is_success
-            and self.round_by_find_area(self.last_screenshot, '贝果-研究站', '前往空洞').is_success
-        ):
-            return self.round_success()
-        at_dialog = (
-            self.round_by_find_area(self.last_screenshot, '贝果-研究站', '对话人').is_success
-            and self.round_by_find_area(self.last_screenshot, '贝果-研究站', '出发对话').is_success
-        )
-        if self.transport_started:
-            if at_dialog:
-                result = self.round_by_find_and_click_area(
-                    self.last_screenshot, '贝果-研究站', '出发对话', retry_wait=1,
-                )
-                if result.is_success:
-                    return self.round_wait('等待贝果主界面', wait=1)
-                return result
-            if self._at_reception():
-                if self.node_clicked:
-                    return self.round_wait('等待达塔对话或贝果主界面', wait=1)
-                self.ctx.controller.interact(press=True, press_time=0.2, release=True)
-                self.node_clicked = True
-                return self.round_wait('等待达塔对话', wait=1)
-            if self.round_by_find_area(self.last_screenshot, '大世界-普通', '快捷手册').is_success:
-                return self.round_fail('传送落地后未识别达塔，停止并留现场')
-            return self.round_wait('等待传送后识别达塔', wait=1)
+        """首次重建快捷手册入口；后续各局复用已打开的贝果页面。"""
+        at_prepare = self._has('预设组合', '贝果-备战')
+        at_map = self._has('前往备战', '贝果-选图')
+        at_hub = all(self._has(name, '贝果-研究站') for name in ('标题', '前往空洞'))
+        if not self.prepare_shortcut_entry:
+            if at_prepare:
+                return self.round_success('已在备战')
+            if at_map or at_hub:
+                return self.round_success()
+        at_dialog = all(self._has(name, '贝果-研究站') for name in ('对话人', '出发对话'))
         current = self.check_and_update_current_screen(self.last_screenshot)
         if current is None:
             current = self._ordinary_warehouse()
-        # 达塔前按普通大世界处理；达塔对话也交给通用返回与传送，不从原地继续。
-        allowed = at_dialog or current == '大世界-普通' or current in {
+        # 现有贝果页面无法证明入场来源；首次启动也必须离开研究站地图。
+        allowed = at_prepare or at_map or at_hub or at_dialog or current in {
+            '大世界-普通', '大世界-勘域',
             '菜单', '菜单-更多功能', '快捷手册', '仓库-材料道具',
             '仓库-驱动仓库', '仓库-音擎仓库', '地图',
         } or (current is not None and current.startswith('快捷手册-'))
@@ -250,12 +223,25 @@ class BagelEnter(BagelOperation):
             return self.round_fail(f'当前画面 {current or "未知"} 不支持自动进入贝果，已留现场')
         if current in {'仓库-材料道具', '仓库-音擎仓库', '仓库-驱动仓库'}:
             self.ctx.screen_loader.update_current_screen_name(current)
-        result = Transport(self.ctx, '奥蒙德研究站', '迷宫诡域').execute()
-        if not result.success:
-            return self.round_by_op_result(result)
-        self.transport_started = True
-        return self.round_wait('等待研究站传送落地', wait=1)
+        return self.round_success('需要快捷手册入口')
 
+    @node_from(from_name='打开贝果主界面', status='需要快捷手册入口')
+    @operation_node(name='传送六分街', screenshot_before_round=False)
+    def transport_for_shortcut(self) -> OperationRoundResult:
+        """先离开研究站地图，避免快捷手册入场后仍返回研究站大世界。"""
+        operation = Transport(self.ctx, '六分街', '喵吉长官')
+        operation.timeout_seconds = min(120, max(0, self.timeout_seconds - self.operation_usage_time))
+        return self.round_by_op_result(operation.execute())
+
+    @node_from(from_name='传送六分街')
+    @operation_node(name='从快捷手册进入贝果', screenshot_before_round=False)
+    def enter_by_compendium(self) -> OperationRoundResult:
+        """传送成功后才打开快捷手册，完整识别贝果主界面后继续。"""
+        operation = BagelOpenCompendium(self.ctx)
+        operation.timeout_seconds = min(90, max(0, self.timeout_seconds - self.operation_usage_time))
+        return self.round_by_op_result(operation.execute())
+
+    @node_from(from_name='从快捷手册进入贝果')
     @node_from(from_name='打开贝果主界面')
     @operation_node(name='打开贝果选图', timeout_seconds=20)
     def open_map(self) -> OperationRoundResult:

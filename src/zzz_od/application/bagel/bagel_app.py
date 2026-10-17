@@ -188,6 +188,7 @@ class BagelApp(ZApplication):
         log.info('贝果收集：准备第 %s 次入场', self.attempts + 1)
         result = BagelEnter(
             self.ctx, allow_clear_loadout=allow_clear_loadout, allow_world_recovery=True,
+            prepare_shortcut_entry=allow_clear_loadout,
             recovery_auto_clean=self.config.auto_clean_warehouse,
             recovery_filter_groups=self.config.clean_filter_groups(),
         ).execute()
@@ -238,7 +239,7 @@ class BagelApp(ZApplication):
     @node_from(from_name='判断整体重试次数', status='继续入场')
     @operation_node(name='返回入口', screenshot_before_round=False)
     def return_entry(self) -> OperationRoundResult:
-        """回研究站入口后再开下一局。"""
+        """返回贝果主界面后开下一局；大世界落点由入场操作重建入口。"""
         result = BagelReturn(self.ctx).execute()
         return (
             self._finish_failed_round(result, '返回入口') if self.failure_retry_pending
@@ -307,7 +308,7 @@ class BagelApp(ZApplication):
     @node_from(from_name='结算仓库')
     @operation_node(name='成功局返回入口', screenshot_before_round=False)
     def return_after_success(self) -> OperationRoundResult:
-        """最后一局也回到研究站入口。"""
+        """最后一局也返回，并记录实际到达的页面。"""
         result = BagelReturn(self.ctx).execute()
         self.last_return_status = result.status if result.success else None
         return self.round_by_op_result(result)

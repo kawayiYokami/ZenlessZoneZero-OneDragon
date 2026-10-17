@@ -174,7 +174,11 @@ class BagelRunFlow(BagelOperation):
         if step.action in ('store', 'close'):
             title = '搜查容器标题' if step.target == 'box' else '电子保险箱标题'
             if not self._has(title):
-                return '未识别对应容器搜查面板'
+                other_title = '电子保险箱标题' if step.target == 'box' else '搜查容器标题'
+                if self._has(other_title) or self._has('大保险解锁提示'):
+                    return '未识别对应容器搜查面板'
+                # 没有局内 HUD 或其他容器证据时，缺标题只表示画面暂不完整。
+                return self.STATUS_SEARCH_PENDING
             return (
                 None
                 if (

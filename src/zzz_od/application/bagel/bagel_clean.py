@@ -57,6 +57,7 @@ class BagelCleanWarehouse(BagelOperation):
         self._warehouse_before: int | None = None
         self._pending_filter: str | None = None
         self._filter_clicked_at: float = 0
+        self._filter_missing_frames: int = 0
 
     def handle_init(self) -> None:
         """每次执行清空勾选进度。"""
@@ -67,6 +68,7 @@ class BagelCleanWarehouse(BagelOperation):
         self._warehouse_before = None
         self._pending_filter = None
         self._filter_clicked_at = 0
+        self._filter_missing_frames = 0
 
     def _has_area(self, area_name: str) -> bool:
         """当前帧是否命中仓库指定文字区。"""
@@ -90,6 +92,16 @@ class BagelCleanWarehouse(BagelOperation):
     def _in_filter(self) -> bool:
         """快速选择弹窗是否打开。"""
         return self._has_area('快速选择标题')
+
+    def _require_filter(self) -> OperationRoundResult | None:
+        """标题缺失时只读复查，不能用单帧异常截图断言弹窗已关闭。"""
+        if self._in_filter():
+            self._filter_missing_frames = 0
+            return None
+        self._filter_missing_frames += 1
+        if self._filter_missing_frames <= 3:
+            return self.round_wait('快速选择暂未识别，等待新截图', wait=0.25)
+        return self.round_fail('快速选择连续4帧未识别，停止并保留现场')
 
     def _in_sell_mode(self) -> bool:
         """已点批量出售，底栏为取消/批量选择/确认出售。"""
@@ -160,8 +172,9 @@ class BagelCleanWarehouse(BagelOperation):
     @operation_node(name='勾选筛选', node_max_retry_times=8, timeout_seconds=25)
     def tick_filter(self) -> OperationRoundResult:
         """先取消禁止项，再补选目标项；每次点击后回读，不盲目翻转已有选择。"""
-        if not self._in_filter():
-            return self.round_fail('快速选择已关闭，停止并保留现场')
+        pending = self._require_filter()
+        if pending is not None:
+            return pending
         states = self._filter_states()
         if self._pending_filter is not None:
             name = self._pending_filter
@@ -191,8 +204,9 @@ class BagelCleanWarehouse(BagelOperation):
     @operation_node(name='读取筛选数量')
     def read_count(self) -> OperationRoundResult:
         """用弹窗里的件数决定要不要点确认出售。"""
-        if not self._in_filter():
-            return self.round_fail('读取筛选数量时快速选择已关闭')
+        pending = self._require_filter()
+        if pending is not None:
+            return pending
         states = self._filter_states()
         if states is None or any(selected != (name in self.filter_areas) for name, selected in states.items()):
             return self.round_fail('筛选条件不符，停止并保留现场')
