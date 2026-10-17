@@ -113,6 +113,7 @@ class PcControllerBase(ControllerBase):
         self.gamepad_action_keys: dict[str, list[str]] = {}
         self._game_input_mode: str = 'keyboard_mouse'  # 游戏当前识别的输入设备
         self._drag_lock: RLock = RLock()
+        self._drag_in_progress: bool = False
         self._active_drag: _DragSession | None = None
 
     def init_game_win(self) -> bool:
@@ -464,18 +465,32 @@ class PcControllerBase(ControllerBase):
             return False
 
     def drag_to(self, end: Point, start: Point | None = None, duration: float = 0.5) -> None:
-        """按住拖拽。
+        """普通拖拽，不响应取消。
 
         Args:
             end: 拖拽目的点
             start: 拖拽开始点
             duration: 拖拽持续时间
         """
+        self._drag_to(end, start, duration, None)
+
+    def drag_to_cancellable(self, end: Point, start: Point | None = None, duration: float = 0.5) -> None:
+        """执行可取消拖拽，正常时序与普通拖拽相同。
+
+        Args:
+            end: 拖拽目的点
+            start: 拖拽开始点
+            duration: 拖拽持续时间
+        """
+        self._drag_to(end, start, duration, _DragSession())
+
+    def _drag_to(self, end: Point, start: Point | None, duration: float, session: _DragSession | None) -> None:
+        """登记拖拽并按前后台模式分发；普通拖拽不登记取消状态。"""
         with self._drag_lock:
-            if self._active_drag is not None:
+            if self._drag_in_progress:
                 log.warning('已有拖拽尚未结束，忽略重叠拖拽')
                 return
-            session = _DragSession()
+            self._drag_in_progress = True
             self._active_drag = session
         try:
             if start is None:
@@ -486,27 +501,29 @@ class PcControllerBase(ControllerBase):
                 self._foreground_drag(start, end, duration, session)
         finally:
             try:
-                session.release()
+                if session is not None:
+                    session.release()
             finally:
                 with self._drag_lock:
                     self._active_drag = None
+                    self._drag_in_progress = False
 
     def cancel_drag(self) -> None:
-        """取消当前拖拽；不等待线程退出，避免暂停回调互相等待。"""
+        """取消当前可取消拖拽，不影响普通拖拽，也不等待线程退出。"""
         with self._drag_lock:
             session = self._active_drag
         # 不持有控制器锁获取输入锁，避免重入清理时出现锁顺序相反。
         if session is not None:
             session.cancel()
 
-    def _foreground_drag(self, start: Point, end: Point, duration: float, session: _DragSession) -> None:
+    def _foreground_drag(self, start: Point, end: Point, duration: float, session: _DragSession | None) -> None:
         """前台拖拽：通过 pyautogui 按住拖动。
 
         Args:
             start: 拖拽起点（游戏坐标）
             end: 拖拽终点（游戏坐标）
             duration: 拖拽持续时间
-            session: 本次拖拽的取消与释放状态
+            session: 本次拖拽的取消状态；None 表示普通拖拽
         """
         from_pos = self.game_win.game2win_pos(start)
         if from_pos is None:
@@ -517,9 +534,12 @@ class PcControllerBase(ControllerBase):
         if to_pos is None:
             log.error('拖拽终点不在游戏窗口区域 (%s)', end)
             return
-        drag_mouse(from_pos, to_pos, duration=duration, session=session)
+        if session is None:
+            drag_mouse(from_pos, to_pos, duration=duration)
+        else:
+            _drag_mouse_cancellable(from_pos, to_pos, duration, session)
 
-    def _background_drag(self, start: Point, end: Point, duration: float, session: _DragSession) -> None:
+    def _background_drag(self, start: Point, end: Point, duration: float, session: _DragSession | None) -> None:
         """后台拖拽：用 SetCursorPos 移动光标，配合 PostMessage WM_LBUTTONDOWN/UP。
         消除拖动后的惯性，按下后等待 0.02 秒。
 
@@ -527,8 +547,9 @@ class PcControllerBase(ControllerBase):
             start: 拖拽起点（游戏坐标）
             end: 拖拽终点（游戏坐标）
             duration: 拖拽持续时间
-            session: 本次拖拽的取消与释放状态
+            session: 本次拖拽的取消状态；None 时创建不对外取消的释放状态
         """
+        session = session if session is not None else _DragSession()
         if session.cancelled.is_set() or not self._ensure_mouse_mode(session):
             log.error('拖拽已取消或无法切到键鼠模式，后台拖拽停止')
             return
@@ -661,19 +682,46 @@ def get_mouse_sensitivity():
     return speed.value
 
 
-def drag_mouse(
-    start: Point, end: Point, duration: float = 0.5, *, session: _DragSession | None = None,
-) -> None:
+def drag_mouse(start: Point, end: Point, duration: float = 0.5) -> None:
     """按住鼠标左键进行画面拖动 (消除拖动后的惯性)。
 
     Args:
         start: 原位置
         end: 拖动位置
         duration: 包含拖动前后停顿的时间预算，移动阶段至少 0.1 秒
-        session: 调用者持有的取消状态；独立调用时创建本次状态
     """
 
-    session = session if session is not None else _DragSession()
+    # 移动到起点并按下
+    pyautogui.moveTo(start.x, start.y)
+    pyautogui.mouseDown()
+    time.sleep(PcControllerBase.SLEEP_BEFORE_DRAG_START)
+
+    # 减去拖动前后停顿之后的移动时长
+    duration_drag = max(duration - PcControllerBase.SLEEP_BEFORE_DRAG_START - PcControllerBase.SLEEP_BEFORE_DRAG_END, PcControllerBase.DRAG_MIN_DURATION)
+    # 分步移动到终点
+    steps = max(int(duration_drag / 0.02), 5)
+    for i in range(1, steps + 1):
+        t = i / steps
+        cx = int(start.x + (end.x - start.x) * t)
+        cy = int(start.y + (end.y - start.y) * t)
+        pyautogui.moveTo(cx, cy)
+        ctypes.windll.user32.mouse_event(PcControllerBase.MOUSEEVENTF_MOVE, 0, 0, 0, 0)
+        time.sleep(duration_drag / steps)
+    # 松开之前先定住鼠标以消除滑动惯性
+    time.sleep(PcControllerBase.SLEEP_BEFORE_DRAG_END)
+    # 松开
+    pyautogui.mouseUp()
+
+
+def _drag_mouse_cancellable(start: Point, end: Point, duration: float, session: _DragSession) -> None:
+    """沿用普通拖拽时序，并在各段等待与输入前检查取消状态。
+
+    Args:
+        start: 原位置
+        end: 拖动位置
+        duration: 包含拖动前后停顿的时间预算，移动阶段至少 0.1 秒
+        session: 本次拖拽的取消与释放状态
+    """
     try:
         if not session.send(lambda: pyautogui.moveTo(start.x, start.y)):
             return

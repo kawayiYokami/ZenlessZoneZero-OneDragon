@@ -309,7 +309,7 @@ class BagelStoreSafe(BagelOperation):
     def _drag_item(self, source: Point, destination: Point) -> None:
         """先按住再移动，给游戏时间抓起物品，避免拖成结果列表滚动。"""
         self._panel_guard.reset()
-        self.ctx.controller.drag_to(
+        self.ctx.controller.drag_to_cancellable(
             end=destination, start=source, duration=0.8,
         )
 

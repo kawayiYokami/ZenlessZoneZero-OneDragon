@@ -117,8 +117,18 @@ class ControllerBase:
         """
         pass
 
+    def drag_to_cancellable(self, end: Point, start: Point | None = None, duration: float = 0.5) -> None:
+        """执行支持取消的拖拽；不支持时禁止退回普通拖拽。
+
+        Args:
+            end: 拖拽目的点
+            start: 拖拽开始点
+            duration: 拖拽持续时间
+        """
+        raise NotImplementedError('当前控制器不支持可取消拖拽')
+
     def cancel_drag(self) -> None:
-        """取消当前拖拽；有拖拽输入的控制器负责停止移动并释放鼠标。"""
+        """取消当前可取消拖拽；实现方负责停止移动并释放鼠标。"""
         pass
 
     def close_game(self):
