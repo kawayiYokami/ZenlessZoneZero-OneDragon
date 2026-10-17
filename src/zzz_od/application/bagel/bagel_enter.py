@@ -18,6 +18,7 @@ from zzz_od.application.bagel.bagel_screen import (
     entry_warning,
     parse_capacity_pair,
     read_area,
+    read_entry_warning_text,
     read_loadout,
     warehouse_sale_state,
     zero_loadout,
@@ -377,7 +378,7 @@ class BagelEnter(BagelOperation):
     @node_from(from_name='核对零携带')
     @operation_node(name='确认入场并等待加载', timeout_seconds=90, node_max_retry_times=3)
     def confirm_entry(self) -> OperationRoundResult:
-        """仅处理核实零携带之后出现的三类确认，未知弹窗保留现场。"""
+        """零携带核验后处理装备与未满编提示，未知弹窗保留现场。"""
         if self._resume_check:
             return self.round_fail('入场暂停后需重新核对选图与携带，请从入口重新运行')
         if not self.zero_checked:
@@ -421,7 +422,7 @@ class BagelEnter(BagelOperation):
                 self.investment_confirmed = True
                 return self.round_wait('等待零投资入场', wait=1)
             return result
-        text = read_area(self.ctx, self.last_screenshot, '贝果-入场确认', '提示')
+        text = read_entry_warning_text(self.ctx, self.last_screenshot)
         warning = entry_warning(text)
         if warning is not None:
             if warning == self._pending_warning:

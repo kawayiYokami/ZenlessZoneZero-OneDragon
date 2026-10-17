@@ -4,6 +4,7 @@ import re
 from typing import TYPE_CHECKING
 
 from one_dragon.base.geometry.rectangle import Rect
+from one_dragon.base.matcher.ocr import ocr_utils
 from one_dragon.base.screen import screen_utils
 from one_dragon.utils import cal_utils
 from zzz_od.application.bagel.bagel_const import MAP_TITLE, RECOMMENDED_VALUE
@@ -152,12 +153,28 @@ def complete_loadout(values: dict[str, str]) -> bool:
     return True
 
 
-def entry_warning(text: str) -> str | None:
-    """区分三个已实拍的入场弹窗；其他确认框不能自动确认。
+def read_entry_warning_text(ctx: ZContext, screen: MatLike) -> str:
+    """按行读取入场提示，避免同一行识别框的高度偏差颠倒文字顺序。"""
+    area = ctx.screen_loader.get_area('贝果-入场确认', '提示')
+    if area is None:
+        raise ValueError('缺少贝果画面区域：贝果-入场确认/提示')
+    matches = ctx.ocr_service.get_ocr_result_list(
+        screen, rect=area.pc_rect, crop_first=True, color_range=area.color_range,
+    )
+    # 先按行的中心高度排列，再复用合行规则从左到右拼接；不丢弃任何提示文字。
+    ordered = sorted(matches, key=lambda match: (match.center.y, match.x))
+    ocr_map = ctx.ocr_service.convert_list_to_map(ordered)
+    return ocr_utils.merge_ocr_result_to_single_line(ocr_map, join_space=False)
 
-    提示区可能只 OCR 到第一行，因此用关键片段匹配，不用整句全等。
+
+def entry_warning(text: str) -> str | None:
+    """区分已知入场弹窗；其他确认框不能自动确认。
+
+    装备提示可能只识别到第一行，沿用关键片段匹配；未满编提示要求完整文案。
     """
     compact = re.sub(r'[\s，,。？?：:（）()、]', '', text)
+    if compact == '代理人队伍未满编是否继续出战':
+        return '代理人队伍未满编'
     if (
         '当前装备价值为0' in compact
         and '未达到推荐价值' in compact
