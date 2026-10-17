@@ -11,10 +11,9 @@ if TYPE_CHECKING:
     from zzz_od.application.bagel.bagel_config import BagelConfig
 
 
-GUIDE_URL: str = 'https://github.com/Cora093/ZenlessZoneZero-OneDragon/blob/bagel/docs/develop/zzz/application/bagel_usage.md'
 ROLE_HINT: str = '请尽量不要使用有特殊移动方式的角色（如星见雅、叶瞬光等）。这类移动可能影响导航与定位的稳定性。'
-LOADOUT_TITLE: str = '首次入场会卸下背包物品身上装备'
-LOADOUT_HINT: str = '首次入场前，程序会将背包和安全箱内的物品放入仓库，再卸下已装备物品。从贝果局内启动会先正常退出，仅保留安全箱。'
+LOADOUT_TITLE: str = '首次入场会清空背包并卸下装备'
+LOADOUT_HINT: str = '首次入场前，程序会将背包和安全箱内的物品转存到仓库，再卸下已装备物品。从贝果局内启动会先正常退出，仅保留安全箱。'
 CLEAN_HINT: str = '有物入仓按间隔出售，正常结束时补卖。范围包含已有库存；满仓或残留可提前出售一次，安全箱中符合筛选的物品也会出售。空箱不卖。'
 NO_CLEAN_HINT: str = '程序只将物品放入仓库，不出售物品。首次入场仍会清空携带物。安全箱为空且仓库容量可读时，即使满仓也可继续；仍有物资或状态不明则停止。'
 SUCCESS_HINT: str = '成功入仓并完成结算后计数。失败局和空箱局不计成功。填 0 不限次数，异常时仍可能停止。'
@@ -101,4 +100,3 @@ def log_feedback() -> None:
         log.info('当前日志：%s', '、'.join(sorted(paths)))
     else:
         log.info('日志默认在程序运行目录的 .log/；如已配置其他路径，请以该路径为准。')
-    log.info('使用说明：%s', GUIDE_URL)
