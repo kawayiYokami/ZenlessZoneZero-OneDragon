@@ -117,6 +117,10 @@ class ControllerBase:
         """
         pass
 
+    def cancel_drag(self) -> None:
+        """取消当前拖拽；有拖拽输入的控制器负责停止移动并释放鼠标。"""
+        pass
+
     def close_game(self):
         """
         关闭游戏
