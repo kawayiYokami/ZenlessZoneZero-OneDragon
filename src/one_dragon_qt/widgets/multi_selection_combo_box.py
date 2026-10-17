@@ -25,11 +25,19 @@ from one_dragon_qt.services.styles_manager import OdQtStyleSheet
 from one_dragon_qt.widgets.adapter_init_mixin import AdapterInitMixin
 
 if TYPE_CHECKING:
+    from PySide6.QtCore import QPoint
     from PySide6.QtWidgets import QWidget
 
 
 class PersistentCheckableMenu(CheckableMenu):
     """勾选后保持打开的多选菜单"""
+
+    def exec(
+        self, pos: 'QPoint', ani: bool = True,
+        aniType: MenuAnimationType = MenuAnimationType.DROP_DOWN,
+    ) -> None:
+        """显式调用 Fluent 菜单，避免实例绑定到不接受动画参数的 QMenu.exec。"""
+        CheckableMenu.exec(self, pos, ani=ani, aniType=aniType)
 
     def _onItemClicked(self, item) -> None:
         """勾选选项后不关闭菜单"""
