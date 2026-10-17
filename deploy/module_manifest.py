@@ -77,7 +77,7 @@ if not getattr(sys, 'frozen', False):
     from PIL import Image, ImageDraw, ImageFont
     from PySide6 import QtCore
     from PySide6.QtCore import QEasingCurve, QEvent, QEventLoop, QMimeData, QObject, QPoint, QPointF, QPropertyAnimation, QRect, QRectF, QRegularExpression, QSize, QThread, QTimer, QUrl, Qt, Signal
-    from PySide6.QtGui import QBrush, QCloseEvent, QColor, QCursor, QDesktopServices, QDrag, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QFont, QFontMetrics, QGuiApplication, QIcon, QImage, QIntValidator, QKeyEvent, QKeySequence, QLinearGradient, QMouseEvent, QPaintEvent, QPainter, QPainterPath, QPen, QPixmap, QResizeEvent, QShowEvent, QSyntaxHighlighter, QTextCharFormat, QValidator, QWheelEvent, Qt
+    from PySide6.QtGui import QBrush, QCloseEvent, QColor, QDesktopServices, QDrag, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QFont, QFontMetrics, QGuiApplication, QIcon, QImage, QIntValidator, QKeyEvent, QKeySequence, QLinearGradient, QMouseEvent, QPaintEvent, QPainter, QPainterPath, QPen, QPixmap, QResizeEvent, QShowEvent, QSyntaxHighlighter, QTextCharFormat, QValidator, QWheelEvent, Qt
     from PySide6.QtMultimedia import QMediaPlayer
     from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
     from PySide6.QtWidgets import QAbstractButton, QAbstractItemView, QAbstractScrollArea, QApplication, QComboBox, QCompleter, QDialog, QFileDialog, QFrame, QGraphicsDropShadowEffect, QGraphicsEffect, QGraphicsOpacityEffect, QGraphicsScene, QGraphicsView, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QListView, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSpacerItem, QSpinBox, QStackedWidget, QStyle, QStyledItemDelegate, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget
@@ -100,6 +100,7 @@ if not getattr(sys, 'frozen', False):
     from email.utils import formataddr
     from enum import Enum, IntEnum, StrEnum
     from functools import cached_property, lru_cache, partial, wraps
+    from html import escape
     from importlib import metadata
     from io import BytesIO
     from itertools import count
@@ -114,13 +115,14 @@ if not getattr(sys, 'frozen', False):
     from pygit2.enums import CheckoutStrategy, ConfigLevel, ResetMode, SortMode
     from pynput import keyboard, mouse
     from pynput.keyboard import Controller, Key
-    from qfluentwidgets import Action, BodyLabel, CaptionLabel, CardWidget, CheckBox, CheckableMenu, ColorDialog, ComboBox, Dialog, DisplayLabel, DoubleSpinBox, EditableComboBox, ExpandSettingCard, FlowLayout, FluentIcon, FluentIconBase, FluentStyleSheet, FluentThemeColor, FluentWindow, FlyoutViewBase, HorizontalFlipView, HorizontalSeparator, HyperlinkButton, HyperlinkCard, ImageLabel, IndeterminateProgressBar, IndicatorPosition, InfoBar, InfoBarIcon, InfoBarPosition, LargeTitleLabel, LineEdit, ListItemDelegate, ListWidget, MSFluentWindow, MaskDialogBase, MenuAnimationType, MessageBox, MessageBoxBase, NavigationBar, NavigationBarPushButton, NavigationItemPosition, PillPushButton, PipsPager, PipsScrollButtonDisplayMode, Pivot, PixmapLabel, PlainTextEdit, PopUpAniStackedWidget, PrimaryPushButton, ProgressBar, ProgressRing, PushButton, PushSettingCard, RoundMenu, ScrollArea, SegmentedWidget, SettingCard, SettingCardGroup, SimpleCardWidget, SpinBox, SplashScreen, SplitTitleBar, StrongBodyLabel, StyleSheetBase, SubtitleLabel, SwitchButton, TableWidget, TeachingTip, TeachingTipTailPosition, Theme, TitleLabel, ToolButton, ToolTip, ToolTipFilter, ToolTipPosition, TransparentPushButton, TransparentToolButton, VBoxLayout, drawIcon, getFont, isDarkTheme, qconfig, qrouter, setCustomStyleSheet, setFont, setTheme, setThemeColor, themeColor
+    from qfluentwidgets import Action, BodyLabel, CaptionLabel, CardWidget, CheckBox, CheckableMenu, ColorDialog, ComboBox, Dialog, DisplayLabel, DoubleSpinBox, EditableComboBox, ExpandSettingCard, FlowLayout, FluentIcon, FluentIconBase, FluentStyleSheet, FluentThemeColor, FluentWindow, FlyoutViewBase, HorizontalFlipView, HorizontalSeparator, HyperlinkButton, HyperlinkCard, IconWidget, ImageLabel, IndeterminateProgressBar, IndicatorPosition, InfoBar, InfoBarIcon, InfoBarPosition, LargeTitleLabel, LineEdit, ListItemDelegate, ListWidget, MSFluentWindow, MaskDialogBase, MenuAnimationType, MessageBox, MessageBoxBase, NavigationBar, NavigationBarPushButton, NavigationItemPosition, PillPushButton, PipsPager, PipsScrollButtonDisplayMode, Pivot, PixmapLabel, PlainTextEdit, PopUpAniStackedWidget, PrimaryPushButton, ProgressBar, ProgressRing, PushButton, PushSettingCard, RoundMenu, ScrollArea, SegmentedWidget, SettingCard, SettingCardGroup, SimpleCardWidget, SpinBox, SplashScreen, SplitTitleBar, StrongBodyLabel, StyleSheetBase, SubtitleLabel, SwitchButton, TableWidget, TeachingTip, TeachingTipTailPosition, Theme, TitleLabel, ToolButton, ToolTip, ToolTipFilter, ToolTipPosition, TransparentPushButton, TransparentToolButton, VBoxLayout, drawIcon, getFont, isDarkTheme, qconfig, qrouter, setCustomStyleSheet, setFont, setTheme, setThemeColor, themeColor
     from qfluentwidgets.common.animation import BackgroundAnimationWidget, ScaleSlideAnimation
     from qfluentwidgets.common.overload import singledispatchmethod
     from qfluentwidgets.common.smooth_scroll import SmoothMode
     from qfluentwidgets.components.navigation.pivot import PivotItem
     from qfluentwidgets.components.settings.expand_setting_card import GroupSeparator
     from qfluentwidgets.components.settings.setting_card import SettingIconWidget
+    from qfluentwidgets.components.widgets.card_widget import CardSeparator
     from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
     from qfluentwidgets.components.widgets.teaching_tip import TeachTipBubble, TeachingTipManager
     from qfluentwidgets.window.stacked_widget import StackedWidget

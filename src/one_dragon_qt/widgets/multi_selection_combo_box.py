@@ -1,7 +1,8 @@
 from typing import TYPE_CHECKING, Any
 
+import PySide6.QtGui as QtGui
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QCursor, QFontMetrics
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -535,7 +536,7 @@ class MultiSelectionComboBox(QWidget, AdapterInitMixin):
         if self._menu is None:
             return
 
-        pos = self._dropdown_btn.mapFromGlobal(QCursor.pos())
+        pos = self._dropdown_btn.mapFromGlobal(QtGui.QCursor.pos())
         if not self._dropdown_btn.rect().contains(pos):
             self._menu = None
 

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QObject, QSignalBlocker, Qt, QTimer, Signal
+from PySide6 import QtCore
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QGridLayout,
@@ -72,7 +73,7 @@ class CountSpinBox(SpinBox, AdapterInitMixin):
 
     def _set_value_from_adapter(self, value: int) -> None:
         """阻断初始化信号，防止加载时写回。"""
-        with QSignalBlocker(self):
+        with QtCore.QSignalBlocker(self):
             self.setValue(value)
         self.setEnabled(True)
 
@@ -98,7 +99,7 @@ class AutoSaleSwitch(SwitchButton, AdapterInitMixin):
 
     def _set_value_from_adapter(self, value: bool) -> None:
         """载入开关值，不发送保存信号。"""
-        with QSignalBlocker(self):
+        with QtCore.QSignalBlocker(self):
             self.setChecked(value)
         self.setEnabled(True)
         self.state_changed.emit()
@@ -128,7 +129,7 @@ class SaleModeSelector(SegmentedWidget, AdapterInitMixin):
 
     def _set_value_from_adapter(self, value: str) -> None:
         """阻断初始化信号，保留原配置。"""
-        with QSignalBlocker(self):
+        with QtCore.QSignalBlocker(self):
             self.setCurrentItem(value)
         self.setEnabled(True)
         self.state_changed.emit()
