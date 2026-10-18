@@ -37,9 +37,9 @@ class PcControllerBase(ControllerBase):
     MOUSEEVENTF_LEFTUP = 0x0004
 
     # 按下鼠标后到开始拖动前的等待时间 (用于稳定按压)
-    SLEEP_BEFORE_DRAG_START: float = 0.3
+    SLEEP_BEFORE_DRAG_START: float = 0.6
     # 拖动后的等待时间 (用于消除拖动惯性)
-    SLEEP_BEFORE_DRAG_END: float = 0.2
+    SLEEP_BEFORE_DRAG_END: float = 1.0
     # (DRAG_MIN_DURATION + SLEEP_BEFORE_DRAG_START + SLEEP_BEFORE_DRAG_END) 为整个拖动过程的最小时间
     DRAG_MIN_DURATION: float = 0.1
 
@@ -486,10 +486,15 @@ class PcControllerBase(ControllerBase):
             self._set_cursor_to(hwnd, sx, sy)
             time.sleep(0.01)
             win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, 0)
-            time.sleep(0.02)
+            time.sleep(PcControllerBase.SLEEP_BEFORE_DRAG_START)
 
-            # 减去 SLEEP_BEFORE_DRAG_END 之后的间隔
-            duration_drag = max(duration - PcControllerBase.SLEEP_BEFORE_DRAG_END, PcControllerBase.DRAG_MIN_DURATION)
+            # 减去拖动前后停顿之后的移动时长
+            duration_drag = max(
+                duration
+                - PcControllerBase.SLEEP_BEFORE_DRAG_START
+                - PcControllerBase.SLEEP_BEFORE_DRAG_END,
+                PcControllerBase.DRAG_MIN_DURATION,
+            )
             # 分步移动到终点
             steps = max(int(duration_drag / 0.02), 5)
             for i in range(1, steps + 1):

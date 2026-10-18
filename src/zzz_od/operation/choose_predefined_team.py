@@ -56,6 +56,8 @@ class ChoosePredefinedTeam(ZOperation):
     TEAM_SLOT_COUNT: int = 6
     TEAM_DRAG_START: Point = Point(960, 715)
     TEAM_DRAG_END: Point = Point(960, 150)
+    # 一次翻页拖动的总时长预算：按住停顿 0.6 + 移动 0.3 + 松手前定住 1.0
+    TEAM_DRAG_DURATION: float = 1.9
     MAX_TEAM_COUNT: int = 20
     # 编队卡片上 100% 不是队名的 UI 文本：槽位标记、右下角标签、头像等级
     TEAM_NAME_UI_TEXT_SET: frozenset[str] = frozenset(
@@ -853,11 +855,11 @@ class ChoosePredefinedTeam(ZOperation):
             self.ctx.controller.drag_to(
                 start=ChoosePredefinedTeam.TEAM_DRAG_START,
                 end=ChoosePredefinedTeam.TEAM_DRAG_END,
-                duration=0.5,
+                duration=ChoosePredefinedTeam.TEAM_DRAG_DURATION,
             )
         else:
             self.ctx.controller.drag_to(
                 start=ChoosePredefinedTeam.TEAM_DRAG_END,
                 end=ChoosePredefinedTeam.TEAM_DRAG_START,
-                duration=0.5,
+                duration=ChoosePredefinedTeam.TEAM_DRAG_DURATION,
             )
