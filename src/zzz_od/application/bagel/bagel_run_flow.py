@@ -12,7 +12,6 @@ from pynput import mouse
 from one_dragon.base.controller.pc_button import pc_button_utils
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils import cv2_utils
-from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
 from zzz_od.application.bagel.bagel_container import ContainerRecovery, container_state
 from zzz_od.application.bagel.bagel_exit import BagelExit
@@ -36,25 +35,26 @@ if TYPE_CHECKING:
     from zzz_od.context.zzz_context import ZContext
 
 
-def release_flow_inputs(ctx: ZContext) -> None:
-    """收回本流程使用的前进、交互与拖拽输入。"""
+def release_flow_inputs(ctx: ZContext, *, release_mouse: bool = True) -> None:
+    """释放流程输入；暂停回调不松鼠标，让当前拖拽自行完成。"""
     controller = ctx.controller
-    try:
-        controller.cancel_drag()
-    except Exception:
-        # 输入设备异常时仍执行下方的独立松键，不能中断其余清理。
-        log.error('取消贝果拖拽失败，继续释放输入', exc_info=True)
     controller.is_moving = False
-    controller.btn_controller.reset()
-    controller.keyboard_controller.reset()
-    # 定时按键和拖拽不在持续按下集合里，需要额外释放。
+    if release_mouse:
+        controller.btn_controller.reset()
+        controller.keyboard_controller.reset()
+    elif controller.background_mode:
+        controller.btn_controller.reset()  # 后台只重置手柄，不打断鼠标拖拽。
+    # 定时按键不在持续按下集合里，需要额外释放。
     keys = controller.game_config.get_action_keys('keyboard')
     for action in ('move_w', 'interact'):
         key = keys[action]
         if pc_button_utils.is_mouse_button(key):
-            controller.keyboard_controller.mouse.release(pc_button_utils.get_mouse_button(key))
+            if release_mouse:
+                controller.keyboard_controller.mouse.release(pc_button_utils.get_mouse_button(key))
         else:
             controller.keyboard_controller.keyboard.release(pc_button_utils.get_keyboard_button(key))
+    if not release_mouse:
+        return
     controller.keyboard_controller.mouse.release(mouse.Button.left)
     if controller.background_mode:
         hwnd = controller.game_win.get_hwnd()
@@ -454,8 +454,8 @@ class BagelRunFlow(BagelOperation):
         return self.round_wait('执行下一步骤', wait=0.1)
 
     def handle_pause(self) -> None:
-        """框架暂停时释放输入。"""
-        release_flow_inputs(self.ctx)
+        """暂停时释放按键，鼠标由当前拖拽完成后释放。"""
+        release_flow_inputs(self.ctx, release_mouse=False)
         super().handle_pause()
 
     def after_operation_done(self, result: OperationResult) -> None:

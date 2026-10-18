@@ -116,8 +116,8 @@ class BagelApp(ZApplication):
         return execute_bagel_round(self)
 
     def handle_pause(self) -> None:
-        """暂停只释放输入，累计重试和首次清空资格保持不变。"""
-        release_flow_inputs(self.ctx)
+        """暂停释放按键，不打断当前拖拽，也不重置累计状态。"""
+        release_flow_inputs(self.ctx, release_mouse=False)
         super().handle_pause()
 
     def handle_init(self) -> None:
