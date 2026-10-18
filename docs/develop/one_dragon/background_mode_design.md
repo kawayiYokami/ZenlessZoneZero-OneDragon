@@ -258,12 +258,12 @@ move_mouse_relative(dx, dy)
 **`PcControllerBase` 核心方法：**
 - `background_mode: bool` — 全局后台模式标志
 - `click(pos, press_time, pc_alt, gamepad_key)` — 统一入口，根据模式分发
-- `drag_to(start, end, duration)` — 统一拖拽入口，根据模式分发
+- `drag_to(end, start=None, duration=0.5, *, timing=None)` — 统一拖拽入口；可选 `DragTiming` 指定按下等待、移动、松开前等待
 - `_foreground_click(pos, press_time, pc_alt)` — 前台 pyautogui 点击，可选 ALT 解锁光标
-- `_foreground_drag(start, end, duration)` — 前台 pyautogui 拖拽
+- `_foreground_drag(start, end, duration, *, timing=None)` — 前台 pyautogui 拖拽
 - `_gamepad_click(gamepad_key)` — 后台 + gamepad_key 手柄替代，通过 `gamepad_action_keys` 解析动作名为实际按键
 - `_background_click(pos, press_time)` — 后台 SetCursorPos + PostMessage 点击
-- `_background_drag(start, end, duration)` — 后台 SetCursorPos + PostMessage 拖拽
+- `_background_drag(start, end, duration, *, timing=None)` — 后台 SetCursorPos + PostMessage 拖拽
 - `_send_activate()` — 发送 `WM_ACTIVATE(WA_ACTIVE)` 到游戏窗口
 - `enable_background_mode()` — 开启后台模式（PostMessage + Xbox/DS4）
 - `enable_foreground_mode()` — 开启前台模式（pyautogui + 键盘）
@@ -285,6 +285,19 @@ move_mouse_relative(dx, dy)
 - `get_gamepad_action_keys(gamepad_type) -> dict[str, list[str]]` — 返回 `{action_name: [key, ...]}`
   - `gamepad_type`: `'xbox'` / `'ds4'`（默认读 `config.background_gamepad_type`）
   - 例如 `get_gamepad_action_keys('xbox')` → `{'menu': ['xbox_start'], 'compendium': ['xbox_lb', 'xbox_a'], ...}`
+
+### 拖拽时序
+
+`drag_to` 和前台底层函数 `drag_mouse` 接受仅限关键字的 `timing: DragTiming | None = None`。不传或传 `None` 时保留原行为，`duration` 默认仍为 0.5 秒：
+
+| 模式 | 按下等待 | 移动时间 | 松开前等待 |
+|------|----------|----------|------------|
+| 前台 | 不等待 | `max(duration - 0.2, 0.1)` | 0.2 秒 |
+| 后台 | 0.02 秒，不计入 `duration` | `max(duration - 0.2, 0.1)` | 0.2 秒 |
+
+需要其他时序时，调用方从 `one_dragon.base.controller.drag_timing` 导入 `DragTiming`，显式填写 `press_wait`（按下等待）、`move_duration`（移动时间）和 `release_wait`（松开前等待）。三个字段均以秒为单位，必须是有限的非负数。传入 `timing` 后不再使用 `duration`，移动时间仍至少为 0.1 秒；例如 `DragTiming(press_wait=0.6, move_duration=0.3, release_wait=1.0)` 的三段合计为 1.9 秒。
+
+各场景在自己的调用处设置时序，不修改公共默认值。上述时间不包含模式切换和输入调用开销；前后台输入顺序、移动步数计算及默认调用保持不变。
 
 ## 前置条件
 
