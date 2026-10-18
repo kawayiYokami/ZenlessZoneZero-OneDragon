@@ -103,6 +103,30 @@ def read_loadout(ctx: ZContext, screen: MatLike) -> dict[str, str]:
     return values
 
 
+def prepare_detail_state(ctx: ZContext, screen: MatLike) -> bool | None:
+    """识别备战详情；仅三个分区标题均在原位时确认无遮挡，其余保留未知。"""
+    areas = (
+        ('武备价值', '代理人武备'), ('装备价值', '装备'), ('道具价值', '道具'),
+    )
+    regions: list[tuple[Rect, str]] = []
+    for area, label in areas:
+        region = ctx.screen_loader.get_area('贝果-备战', area)
+        if region is None:
+            raise ValueError(f'缺少贝果画面区域：贝果-备战/{area}')
+        regions.append((region.pc_rect, label))
+    bounds = Rect(min(rect.x1 for rect, _ in regions) - 20, 0, screen.shape[1], screen.shape[0])
+    matches = ctx.ocr_service.get_ocr_result_list(screen, rect=bounds, crop_first=True)
+    text = ''.join(re.sub(r'\s', '', match.data) for match in matches)
+    if any(label in text for label in ('放入背包', '放入安全箱', '放入仓储枢纽')):
+        return True
+    for rect, label in regions:
+        title = ''.join(re.sub(r'\s', '', match.data) for match in matches
+                        if cal_utils.cal_overlap_percent(match.rect, rect, base=match.rect) > 0.7)
+        if label not in title:
+            return None
+    return False
+
+
 def empty_capacity(text: str) -> bool:
     """仅接受已识别的零占用和正容量，不接受空字符串或锁定容量。"""
     return re.fullmatch(r'0/[1-9][0-9]*', text.replace(' ', '')) is not None
