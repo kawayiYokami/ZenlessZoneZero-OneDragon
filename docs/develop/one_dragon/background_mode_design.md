@@ -288,12 +288,12 @@ move_mouse_relative(dx, dy)
 
 ### 拖拽时序
 
-`drag_to` 和前台底层函数 `drag_mouse` 接受仅限关键字的 `timing: DragTiming | None = None`。不传或传 `None` 时保留原行为，`duration` 默认仍为 0.5 秒：
+`drag_to` 和前台底层函数 `drag_mouse` 接受仅限关键字的 `timing: DragTiming | None = None`。不传或传 `None` 时按 `SLEEP_BEFORE_DRAG_START` 和 `SLEEP_BEFORE_DRAG_END` 两个常量计算，前后台一致，`duration` 默认仍为 0.5 秒：
 
 | 模式 | 按下等待 | 移动时间 | 松开前等待 |
 |------|----------|----------|------------|
-| 前台 | 不等待 | `max(duration - 0.2, 0.1)` | 0.2 秒 |
-| 后台 | 0.02 秒，不计入 `duration` | `max(duration - 0.2, 0.1)` | 0.2 秒 |
+| 前台 | `SLEEP_BEFORE_DRAG_START`（0.3 秒） | `max(duration - 0.3 - 0.2, 0.1)` | `SLEEP_BEFORE_DRAG_END`（0.2 秒） |
+| 后台 | 同前台 | 同前台 | 同前台 |
 
 需要其他时序时，调用方从 `one_dragon.base.controller.drag_timing` 导入 `DragTiming`，显式填写 `press_wait`（按下等待）、`move_duration`（移动时间）和 `release_wait`（松开前等待）。三个字段均以秒为单位，必须是有限的非负数。传入 `timing` 后不再使用 `duration`，移动时间仍至少为 0.1 秒；例如 `DragTiming(press_wait=0.6, move_duration=0.3, release_wait=1.0)` 的三段合计为 1.9 秒。
 
