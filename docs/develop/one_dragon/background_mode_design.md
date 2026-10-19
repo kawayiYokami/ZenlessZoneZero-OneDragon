@@ -256,12 +256,12 @@ move_mouse_relative(dx, dy)
 **`PcControllerBase` 核心方法：**
 - `background_mode: bool` — 全局后台模式标志
 - `click(pos, press_time, pc_alt, gamepad_key)` — 统一入口，根据模式分发
-- `drag_to(end, start=None, duration=0.5)` — 同步拖拽，按前后台模式分发，不支持中途取消
+- `drag_to(end, start=None, duration=0.5, *, timing=None)` — 同步拖拽，按前后台模式分发；可选 `DragTiming` 指定三段时序
 - `_foreground_click(pos, press_time, pc_alt)` — 前台 pyautogui 点击，可选 ALT 解锁光标
-- `_foreground_drag(start, end, duration)` — 前台 pyautogui 拖拽
+- `_foreground_drag(start, end, duration, *, timing=None)` — 前台 pyautogui 拖拽
 - `_gamepad_click(gamepad_key)` — 后台 + gamepad_key 手柄替代，通过 `gamepad_action_keys` 解析动作名为实际按键
 - `_background_click(pos, press_time)` — 后台 SetCursorPos + PostMessage 点击
-- `_background_drag(start, end, duration)` — 后台 SetCursorPos + PostMessage 拖拽
+- `_background_drag(start, end, duration, *, timing=None)` — 后台 SetCursorPos + PostMessage 拖拽
 - `_send_activate()` — 发送 `WM_ACTIVATE(WA_ACTIVE)` 到游戏窗口
 - `enable_background_mode()` — 开启后台模式（PostMessage + Xbox/DS4）
 - `enable_foreground_mode()` — 开启前台模式（pyautogui + 键盘）
@@ -284,15 +284,11 @@ move_mouse_relative(dx, dy)
   - `gamepad_type`: `'xbox'` / `'ds4'`（默认读 `config.background_gamepad_type`）
   - 例如 `get_gamepad_action_keys('xbox')` → `{'menu': ['xbox_start'], 'compendium': ['xbox_lb', 'xbox_a'], ...}`
 
-#### 拖拽按下等待
+#### 拖拽输入与清理
 
-`drag_to` 使用固定等待，不接收 `press_time` 参数。前台鼠标左键按下后等待 0.3 秒，移动到终点后再等待 0.2 秒松开；移动时间为 `max(duration - 0.3 - 0.2, 0.1)`。默认 `duration=0.5` 时，移动阶段为 0.1 秒，三段合计 0.6 秒；这不是无按下等待的旧时序。
-
-后台保持按下后等待 0.02 秒，移动时间为 `max(duration - 0.2, 0.1)`，终点等待 0.2 秒。后台按下等待不计入 `duration`。上述时间不包含切换输入模式、发送消息和鼠标操作本身的开销；移动阶段至少 0.1 秒，因此较小的 `duration` 不能保证同样短的总耗时。
+前后台共用的参数、默认时序和最短移动时间见[控制器拖拽时序](one_dragon_architecture.md#拖拽时序)。前台通过 pyautogui 按下和松开鼠标；后台使用 PostMessage，并在输入前确认键鼠模式。
 
 拖拽同步执行，不支持中途取消。前后台都在 `finally` 中尝试松开左键；系统松键调用失败时不能保证已经释放。暂停和停止由调用方在动作之间处理，不应在异步回调中提前松开拖拽鼠标。
-
-贝果物资拖拽的按下等待时间和结果核验规则，见[贝果应用说明](../zzz/application/bagel.md#拖拽时序)。
 
 ## 前置条件
 

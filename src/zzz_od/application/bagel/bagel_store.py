@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from one_dragon.base.controller.drag_timing import DragTiming
 from one_dragon.base.geometry.point import Point
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
@@ -46,6 +47,13 @@ class BagelStoreSafe(BagelOperation):
 
     STATUS_EMPTY: str = '无可入箱物品'
     STATUS_DONE: str = '已装入安全箱'
+    # 保留物品搬运的前后台时序，不依赖公共拖拽默认值。
+    FOREGROUND_DRAG_TIMING: DragTiming = DragTiming(
+        press_wait=0.3, move_duration=0.3, release_wait=0.2,
+    )
+    BACKGROUND_DRAG_TIMING: DragTiming = DragTiming(
+        press_wait=0.02, move_duration=0.6, release_wait=0.2,
+    )
     # 拖拽后画面无变化时的重拖上限。搜索出高价值物品时游戏会先播一段加载动画，
     # 画面更新滞后于点击，一次重试不够；上限之后停止并保留现场。
     DRAG_REPEAT_LIMIT: int = 3
@@ -309,8 +317,13 @@ class BagelStoreSafe(BagelOperation):
     def _drag_item(self, source: Point, destination: Point) -> None:
         """先按住再移动，给游戏时间抓起物品，避免拖成结果列表滚动。"""
         self._panel_guard.reset()
+        timing = (
+            self.BACKGROUND_DRAG_TIMING
+            if self.ctx.controller.background_mode
+            else self.FOREGROUND_DRAG_TIMING
+        )
         self.ctx.controller.drag_to(
-            end=destination, start=source, duration=0.8,
+            end=destination, start=source, timing=timing,
         )
 
     def _drag_visually_ok(
