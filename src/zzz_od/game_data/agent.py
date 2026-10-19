@@ -447,7 +447,7 @@ class AgentEnum(Enum):
         RareTypeEnum.S,
         AgentTypeEnum.SUPPORT,
         DmgTypeEnum.PHYSICAL,
-        ["sunna", "sunna_afternoon_tea_break", "sunna_delusions_in_business"],
+        ["sunna", "sunna_afternoon_tea_break", "sunna_delusions_in_business", "sunna_kfc"],
     )
 
     YESHUNGUANG = Agent(
