@@ -497,7 +497,7 @@ class AgentEnum(Enum):
                                            hsv_color=(90, 255, 255), hsv_color_diff=(90, 200, 100),
                                            connect_cnt=2)])
 
-    NANGONGYU = Agent('nangongyu', '南宫羽', RareTypeEnum.S, AgentTypeEnum.STUN, DmgTypeEnum.ETHER, ['nangongyu', 'nangongyu_muse', 'nangongyu_heartfelt_support'],
+    NANGONGYU = Agent('nangongyu', '南宫羽', RareTypeEnum.S, AgentTypeEnum.STUN, DmgTypeEnum.ETHER, ['nangongyu', 'nangongyu_muse', 'nangongyu_heartfelt_support', 'nangongyu_kfc'],
                       state_list=[
                           AgentStateDef('南宫羽-重拍', AgentStateCheckWay.FOREGROUND_COLOR_RANGE_LENGTH,
                                         template_id='nangongyu',
