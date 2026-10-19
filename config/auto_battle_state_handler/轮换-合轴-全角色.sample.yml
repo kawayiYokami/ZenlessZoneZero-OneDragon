@@ -18,6 +18,7 @@ handlers:
                 state_list: ["自定义-合轴时间", "自定义-动作不打断"]
 
           - state_template: "卢西娅-暗破检测"
+          - state_template: "琉音-送客决策"
           - state_template: "琉音-刷好评"
 
           # 星见雅 有6豆就切过去
@@ -47,7 +48,6 @@ handlers:
               - op_name: "清除状态"
                 state_list: ["自定义-合轴时间", "自定义-动作不打断"]
 
-          - state_template: "琉音-送客决策"
           - state_template: "琉音-刷好评"
           - state_template: "奥菲丝-强特决策"
 
