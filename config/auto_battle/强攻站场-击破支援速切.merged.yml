@@ -6966,31 +6966,16 @@
           - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
+          - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
           - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
           - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
           - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
-          - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.2
           - "op_name": "按键-普通攻击-按下"
@@ -7007,10 +6992,8 @@
           "post_delay": 0.1
           "repeat": 25
         "states": ""
-    - "interrupt_states": "![前台-琉音]"
+    - "interrupt_states": "[自定义-琉音-送客, 0.5, 99] & ![前台-琉音]"
       "operations":
-      - "agent_name": "琉音"
-        "op_name": "按键-切换角色"
       - "op_name": "设置状态"
         "state": "自定义-琉音-送客"
       - "op_name": "设置状态"
@@ -7038,7 +7021,16 @@
       - "op_name": "按键-普通攻击-按下"
       - "op_name": "等待秒数"
         "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
+      - "op_name": "按键-普通攻击-按下"
+      - "op_name": "等待秒数"
+        "seconds": 0.2
+      - "op_name": "按键-普通攻击-按下"
+      - "op_name": "等待秒数"
+        "seconds": 0.2
+      - "op_name": "按键-普通攻击-按下"
+      - "op_name": "等待秒数"
+        "seconds": 0.2
+      - "op_name": "按键-普通攻击-按下"
       - "op_name": "等待秒数"
         "seconds": 0.2
       - "op_name": "按键-普通攻击-按下"
@@ -7047,31 +7039,7 @@
       - "op_name": "按键-普通攻击-松开"
       - "op_name": "等待秒数"
         "seconds": 0.2
-      - "op_name": "按键-普通攻击-按下"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-按下"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-按下"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-按下"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      "states": "[琉音-客诉]{1, 1} & [琉音-好评]{90, 120} & ![叶瞬光-青溟剑势-白]{1,6}"
+      "states": "[琉音-客诉]{1, 1} & [琉音-好评]{90, 120}"
     - "interrupt_states": "![琉音-特殊技可用] | ![前台-琉音]"
       "states": "[琉音-特殊技可用] "
       "sub_handlers":
@@ -17238,31 +17206,16 @@
           - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
+          - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
           - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
           - "op_name": "按键-普通攻击-按下"
           - "op_name": "等待秒数"
             "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
           - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
-          - "op_name": "按键-普通攻击-按下"
-          - "op_name": "等待秒数"
-            "seconds": 0.2
-          - "op_name": "按键-普通攻击-松开"
           - "op_name": "等待秒数"
             "seconds": 0.2
           - "op_name": "按键-普通攻击-按下"
@@ -17279,10 +17232,8 @@
           "post_delay": 0.1
           "repeat": 25
         "states": ""
-    - "interrupt_states": "![前台-琉音]"
+    - "interrupt_states": "[自定义-琉音-送客, 0.5, 99] & ![前台-琉音]"
       "operations":
-      - "agent_name": "琉音"
-        "op_name": "按键-切换角色"
       - "op_name": "设置状态"
         "state": "自定义-琉音-送客"
       - "op_name": "设置状态"
@@ -17310,7 +17261,16 @@
       - "op_name": "按键-普通攻击-按下"
       - "op_name": "等待秒数"
         "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
+      - "op_name": "按键-普通攻击-按下"
+      - "op_name": "等待秒数"
+        "seconds": 0.2
+      - "op_name": "按键-普通攻击-按下"
+      - "op_name": "等待秒数"
+        "seconds": 0.2
+      - "op_name": "按键-普通攻击-按下"
+      - "op_name": "等待秒数"
+        "seconds": 0.2
+      - "op_name": "按键-普通攻击-按下"
       - "op_name": "等待秒数"
         "seconds": 0.2
       - "op_name": "按键-普通攻击-按下"
@@ -17319,31 +17279,7 @@
       - "op_name": "按键-普通攻击-松开"
       - "op_name": "等待秒数"
         "seconds": 0.2
-      - "op_name": "按键-普通攻击-按下"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-按下"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-按下"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-按下"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      - "op_name": "按键-普通攻击-松开"
-      - "op_name": "等待秒数"
-        "seconds": 0.2
-      "states": "[琉音-客诉]{1, 1} & [琉音-好评]{90, 120} & ![叶瞬光-青溟剑势-白]{1,6}"
+      "states": "[琉音-客诉]{1, 1} & [琉音-好评]{90, 120}"
     - "interrupt_states": "![琉音-特殊技可用] | ![前台-琉音]"
       "states": "[琉音-特殊技可用] "
       "sub_handlers":
