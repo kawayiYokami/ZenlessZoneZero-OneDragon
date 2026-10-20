@@ -201,7 +201,7 @@ class BagelEnter(BagelOperation):
         current = self.check_and_update_current_screen(self.last_screenshot)
         if current is None:
             current = self._ordinary_warehouse()
-        # 现有贝果页面无法证明入场来源；首次启动也必须离开研究站地图。
+        # 现有贝果页面无法确定入场前位置，因此首次启动必须重新传送。
         allowed = at_prepare or at_map or at_hub or at_dialog or current in {
             '大世界-普通', '大世界-勘域',
             '菜单', '菜单-更多功能', '快捷手册', '仓库-材料道具',
@@ -226,14 +226,14 @@ class BagelEnter(BagelOperation):
         return self.round_success('需要快捷手册入口')
 
     @node_from(from_name='打开贝果主界面', status='需要快捷手册入口')
-    @operation_node(name='传送六分街', screenshot_before_round=False)
+    @operation_node(name='传送录像店', screenshot_before_round=False)
     def transport_for_shortcut(self) -> OperationRoundResult:
-        """先离开研究站地图，避免快捷手册入场后仍返回研究站大世界。"""
-        operation = Transport(self.ctx, '六分街', '喵吉长官')
+        """传送到「录像店－房间」，下一节点再打开快捷手册。"""
+        operation = Transport(self.ctx, '录像店', '房间')
         operation.timeout_seconds = min(120, max(0, self.timeout_seconds - self.operation_usage_time))
         return self.round_by_op_result(operation.execute())
 
-    @node_from(from_name='传送六分街')
+    @node_from(from_name='传送录像店')
     @operation_node(name='从快捷手册进入贝果', screenshot_before_round=False)
     def enter_by_compendium(self) -> OperationRoundResult:
         """传送成功后才打开快捷手册，完整识别贝果主界面后继续。"""

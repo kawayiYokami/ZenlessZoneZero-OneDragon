@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 class BagelOpenCompendium(BagelOperation):
-    """从普通大世界的快捷手册进入贝果主界面；调用前须离开研究站地图。"""
+    """从普通大世界打开快捷手册并进入贝果主界面。调用者负责准备入场前位置。"""
 
     def __init__(self, ctx: ZContext) -> None:
         """复用快捷手册列表区域，不执行副本传送确认。"""
