@@ -10,7 +10,7 @@ area_list:
   - 500
   - 85
   id_mark: true
-  text: 迷宫诡域贝果计划
+  text: 迷宫诡域：古怪试炼
   lcs_percent: 0.9
 - area_name: 前往空洞
   pc_rect:
