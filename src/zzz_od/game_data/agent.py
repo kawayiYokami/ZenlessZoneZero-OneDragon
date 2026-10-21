@@ -586,4 +586,8 @@ class AgentEnum(Enum):
                     state_list=[AgentStateDef('菲欧妮-燔焰', AgentStateCheckWay.FOREGROUND_COLOR_RANGE_LENGTH,
                                               template_id='phoenix',
                                               hsv_color=(4, 128, 255), hsv_color_diff=(9, 128, 55),
-                                              max_length=100)])
+                                              max_length=120),
+                                AgentStateDef('菲欧妮-升变', AgentStateCheckWay.COLOR_RANGE_CONNECT,
+                                              template_id='phoenix_pp',
+                                              hsv_color=(10, 128, 255), hsv_color_diff=(10, 128, 20),
+                                              connect_cnt=4)])
