@@ -57,6 +57,10 @@ class BagelStoreSafe(BagelOperation):
     # 拖拽后画面无变化时的重拖上限。搜索出高价值物品时游戏会先播一段加载动画，
     # 画面更新滞后于点击，一次重试不够；上限之后停止并保留现场。
     DRAG_REPEAT_LIMIT: int = 3
+    # 连续等不到稳定画面的帧数上限（每帧等待 0.3 秒，即约 3 秒）。
+    # 面板刚打开、以及拖拽后物品落地都有动画，留足时间；每次发出拖拽前会清零，
+    # 所以这是「一件物品一次」的预算，不会跨件累计。
+    PANEL_WAIT_ROUNDS_LIMIT: int = 10
 
     def __init__(self, ctx: ZContext) -> None:
         """只收集当前容器，不关闭面板，也不补做交互。"""
@@ -93,7 +97,13 @@ class BagelStoreSafe(BagelOperation):
         self._safe_unknown_rounds = 0
 
     def _check_search_panel(self) -> OperationRoundResult | None:
-        """搜查和拖后回读共用门槛；中断优先，未知画面有界等待。"""
+        """搜查和拖后回读共用门槛；中断优先，未知画面有界等待。
+
+        `_panel_wait_rounds` 是「连续等不到稳定画面」的帧数，**每次发出拖拽
+        前都会清零**（见 `store_next`）。之前它只在守卫通过时清零，于是开局
+        等面板铺开的几帧会被一直记着，拖完一件后再等几帧就累积越过上限，
+        在画面完全正常的情况下误报「搜查面板状态持续不明」。
+        """
         if self.is_bagel_result():
             self._clear_pending()
             return self.round_fail(self.STATUS_DEFEATED)
@@ -113,7 +123,7 @@ class BagelStoreSafe(BagelOperation):
             return None
         self._search_frame = None
         self._panel_wait_rounds += 1
-        if self._panel_wait_rounds < 6:
+        if self._panel_wait_rounds < self.PANEL_WAIT_ROUNDS_LIMIT:
             return self.round_wait('等待搜查面板到位并稳定', wait=0.3)
         self._clear_pending()
         return self.round_fail('搜查面板状态持续不明，停止并保留现场')
@@ -247,13 +257,9 @@ class BagelStoreSafe(BagelOperation):
         if before is None or source is None or destination is None or kind is None:
             return self.round_fail('缺少入箱前后对照数据')
         safe = inspect_safe_slots(self.last_screenshot)
-        destination_index = SAFE_SLOT_CENTERS.index(destination)
         if safe is None:
             return self._wait_for_safe_slots()
         self._safe_unknown_rounds = 0
-        if destination_index in safe.locked:
-            self._clear_pending()
-            return self.round_fail('入箱后安全箱格子状态不明或目标已锁定，停止并保留现场')
         if self._drag_visually_ok(kind, before, source, destination):
             self._clear_pending()
             self._drag_repeated = 0
@@ -317,6 +323,9 @@ class BagelStoreSafe(BagelOperation):
     def _drag_item(self, source: Point, destination: Point) -> None:
         """先按住再移动，给游戏时间抓起物品，避免拖成结果列表滚动。"""
         self._panel_guard.reset()
+        # 每次发出拖拽都重新给一次「等面板稳住」的预算：开局等面板铺开、
+        # 拖后等物品落地是两段独立动画，不能把前者的帧数算进后者的上限。
+        self._panel_wait_rounds = 0
         timing = (
             self.BACKGROUND_DRAG_TIMING
             if self.ctx.controller.background_mode
