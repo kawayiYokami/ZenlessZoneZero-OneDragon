@@ -581,3 +581,5 @@ class AgentEnum(Enum):
                    ])
 
     ROXY = Agent('roxy', '洛克茜', RareTypeEnum.S, AgentTypeEnum.STUN, DmgTypeEnum.WIND, ['roxy'])
+
+    PHOENIX = Agent('phoenix', '菲欧妮', RareTypeEnum.S, AgentTypeEnum.ANOMALY, DmgTypeEnum.FIRE, ['phoenix'])
