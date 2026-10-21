@@ -11333,7 +11333,12 @@
             "state": "自定义-动作不打断"
           - "op_name": "按键-特殊攻击"
             "post_delay": 0.1
-            "repeat": 10
+            "repeat": 6
+          - "op_name": "按键-普通攻击"
+            "post_delay": 0.1
+            "repeat": 19
+          - "op_name": "设置状态"
+            "state": "自定义-合轴时间"
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
           "states": "[自定义-红光闪避, 0, 1]"
@@ -11359,6 +11364,23 @@
             - "op_name": "等待秒数"
               "seconds": 0.3
             "states": ""
+        - "debug_name": "终结技"
+          "operations":
+          - "op_name": "设置状态"
+            "seconds_add": -1
+            "state": "自定义-失衡时间"
+          - "op_name": "设置状态"
+            "seconds": 4.5
+            "state": "自定义-动作不打断"
+          - "op_name": "按键-终结技"
+            "post_delay": 0.1
+            "repeat": 20
+          - "op_name": "按键-终结技"
+            "post_delay": 0.1
+            "repeat": 15
+          - "op_name": "等待秒数"
+            "seconds": 1
+          "states": "[菲欧妮-终结技可用]"
         - "debug_name": "燔焰90以上-长按普攻焚罪"
           "interrupt_states": "[菲欧妮-燔焰]{0, 30}"
           "operations":
@@ -11397,45 +11419,31 @@
           - "op_name": "按键-普通攻击-松开"
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
-          "states": "[菲欧妮-燔焰]{90, 100}"
+          "states": "[菲欧妮-燔焰]{90, 120}"
         - "debug_name": "焚罪结算完毕-合轴"
           "operations":
           - "op_name": "清除状态"
             "state": "自定义-菲欧妮-焚罪"
           - "op_name": "设置状态"
             "state": "自定义-合轴时间"
-          "states": "[自定义-菲欧妮-焚罪, 0, 6] & [菲欧妮-燔焰]{0, 30}"
-        - "debug_name": "强化特殊技"
-          "interrupt_states": "![菲欧妮-特殊技可用]"
+          "states": "[自定义-菲欧妮-焚罪, 0, 6]"
+        - "debug_name": "强化特殊技或升变-特殊技"
           "operations":
           - "op_name": "设置状态"
             "seconds": 1.5
             "state": "自定义-动作不打断"
           - "op_name": "按键-特殊攻击"
             "post_delay": 0.1
-            "repeat": 10
+            "repeat": 6
+          - "op_name": "按键-普通攻击"
+            "post_delay": 0.1
+            "repeat": 19
+          - "op_name": "设置状态"
+            "state": "自定义-合轴时间"
           - "op_name": "清除状态"
             "state": "自定义-动作不打断"
-          "states": "[菲欧妮-特殊技可用]"
-        - "debug_name": "终结技"
-          "operations":
-          - "op_name": "设置状态"
-            "seconds_add": -1
-            "state": "自定义-失衡时间"
-          - "op_name": "设置状态"
-            "seconds": 4.5
-            "state": "自定义-动作不打断"
-          - "op_name": "按键-终结技"
-            "post_delay": 0.1
-            "repeat": 20
-          - "op_name": "按键-终结技"
-            "post_delay": 0.1
-            "repeat": 15
-          - "op_name": "等待秒数"
-            "seconds": 1
-          "states": "[菲欧妮-终结技可用]"
+          "states": "[菲欧妮-特殊技可用] | [菲欧妮-升变]{1, 99}"
         - "debug_name": "普攻攒燔焰"
-          "interrupt_states": "[菲欧妮-特殊技可用]"
           "operations":
           - "op_name": "按键-普通攻击"
             "post_delay": 0.1
@@ -22662,7 +22670,12 @@
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击"
           "post_delay": 0.1
-          "repeat": 10
+          "repeat": 6
+        - "op_name": "按键-普通攻击"
+          "post_delay": 0.1
+          "repeat": 19
+        - "op_name": "设置状态"
+          "state": "自定义-合轴时间"
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
         "states": "[自定义-红光闪避, 0, 1]"
@@ -22688,6 +22701,23 @@
           - "op_name": "等待秒数"
             "seconds": 0.3
           "states": ""
+      - "debug_name": "终结技"
+        "operations":
+        - "op_name": "设置状态"
+          "seconds_add": -1
+          "state": "自定义-失衡时间"
+        - "op_name": "设置状态"
+          "seconds": 4.5
+          "state": "自定义-动作不打断"
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 20
+        - "op_name": "按键-终结技"
+          "post_delay": 0.1
+          "repeat": 15
+        - "op_name": "等待秒数"
+          "seconds": 1
+        "states": "[菲欧妮-终结技可用]"
       - "debug_name": "燔焰90以上-长按普攻焚罪"
         "interrupt_states": "[菲欧妮-燔焰]{0, 30}"
         "operations":
@@ -22726,45 +22756,31 @@
         - "op_name": "按键-普通攻击-松开"
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
-        "states": "[菲欧妮-燔焰]{90, 100}"
+        "states": "[菲欧妮-燔焰]{90, 120}"
       - "debug_name": "焚罪结算完毕-合轴"
         "operations":
         - "op_name": "清除状态"
           "state": "自定义-菲欧妮-焚罪"
         - "op_name": "设置状态"
           "state": "自定义-合轴时间"
-        "states": "[自定义-菲欧妮-焚罪, 0, 6] & [菲欧妮-燔焰]{0, 30}"
-      - "debug_name": "强化特殊技"
-        "interrupt_states": "![菲欧妮-特殊技可用]"
+        "states": "[自定义-菲欧妮-焚罪, 0, 6]"
+      - "debug_name": "强化特殊技或升变-特殊技"
         "operations":
         - "op_name": "设置状态"
           "seconds": 1.5
           "state": "自定义-动作不打断"
         - "op_name": "按键-特殊攻击"
           "post_delay": 0.1
-          "repeat": 10
+          "repeat": 6
+        - "op_name": "按键-普通攻击"
+          "post_delay": 0.1
+          "repeat": 19
+        - "op_name": "设置状态"
+          "state": "自定义-合轴时间"
         - "op_name": "清除状态"
           "state": "自定义-动作不打断"
-        "states": "[菲欧妮-特殊技可用]"
-      - "debug_name": "终结技"
-        "operations":
-        - "op_name": "设置状态"
-          "seconds_add": -1
-          "state": "自定义-失衡时间"
-        - "op_name": "设置状态"
-          "seconds": 4.5
-          "state": "自定义-动作不打断"
-        - "op_name": "按键-终结技"
-          "post_delay": 0.1
-          "repeat": 20
-        - "op_name": "按键-终结技"
-          "post_delay": 0.1
-          "repeat": 15
-        - "op_name": "等待秒数"
-          "seconds": 1
-        "states": "[菲欧妮-终结技可用]"
+        "states": "[菲欧妮-特殊技可用] | [菲欧妮-升变]{1, 99}"
       - "debug_name": "普攻攒燔焰"
-        "interrupt_states": "[菲欧妮-特殊技可用]"
         "operations":
         - "op_name": "按键-普通攻击"
           "post_delay": 0.1
