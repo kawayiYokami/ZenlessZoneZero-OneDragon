@@ -18,10 +18,25 @@ class BagelExit(BagelOperation):
         """创建有界退出流程，不自动出售或返回研究站。"""
         super().__init__(ctx, op_name='贝果-退出到仓库', timeout_seconds=120)
 
+    def _at_settle_warehouse(self) -> bool:
+        """结算仓库的两个按钮都在才算到仓库，避免过渡画面误判。"""
+        return all(
+            self.round_by_find_area(self.last_screenshot, '贝果-仓库', area).is_success
+            for area in ('放入仓库', '返回研究站')
+        )
+
     @operation_node(name='打开贝果暂停菜单', is_start_node=True, timeout_seconds=15)
     def open_menu(self) -> OperationRoundResult:
         """由调用方确认贝果流程；普通攻击按钮出现后打开菜单，再核对专用退出提示。"""
-        if all(self._has(area, '贝果-仓库') for area in ('放入仓库', '返回研究站')):
+        if self._has('标题', '贝果-拟态单质提示'):
+            # 上一次退出就停在这个提示上，先点掉它，再重新判断当前画面。
+            self.round_by_find_and_click_area(
+                self.last_screenshot, '贝果-拟态单质提示', '确认',
+                until_not_find_all=[('贝果-拟态单质提示', '标题')],
+                retry_wait=0.5,
+            )
+            return self.round_wait('关闭拟态单质提示后重新检查退出画面', wait=0.5)
+        if self._at_settle_warehouse():
             return self.round_success('已到结算仓库')
         if self._has('提示', '贝果-退出确认'):
             return self.round_success('已到退出确认')
@@ -80,12 +95,28 @@ class BagelExit(BagelOperation):
             return self.round_success('结算已继续')
         return self.round_wait('等待贝果结算', wait=1)
 
-    @node_from(from_name='打开贝果暂停菜单', status='已到结算仓库')
     @node_from(from_name='等待贝果结算')
+    @operation_node(name='关闭拟态单质提示', timeout_seconds=20)
+    def close_mimic_notice(self) -> OperationRoundResult:
+        """带出的拟态单质失活时游戏会弹提示，不点确认就进不了结算仓库。
+
+        提示标题是「带出的拟态单质已失活，转化为惰性单质」，出现在结算之后、
+        结算仓库之前，面板压住仓库按钮，等仓库会一直等到超时。这里只按标题判据
+        点确认，没有提示就直接放行，交给等待结算仓库。
+        """
+        if self._has('标题', '贝果-拟态单质提示'):
+            return self.round_by_find_and_click_area(
+                self.last_screenshot, '贝果-拟态单质提示', '确认',
+                until_not_find_all=[('贝果-拟态单质提示', '标题')],
+                success_wait=1, retry_wait=1,
+            )
+        return self.round_success('无拟态单质提示')
+
+    @node_from(from_name='打开贝果暂停菜单', status='已到结算仓库')
+    @node_from(from_name='关闭拟态单质提示')
     @operation_node(name='等待结算仓库', timeout_seconds=30)
     def wait_warehouse(self) -> OperationRoundResult:
         """到达后保留现场，由调用者核对安全箱再决定如何入仓。"""
-        if all(self.round_by_find_area(self.last_screenshot, '贝果-仓库', area).is_success
-               for area in ('放入仓库', '返回研究站')):
+        if self._at_settle_warehouse():
             return self.round_success('已到结算仓库')
         return self.round_wait('等待结算仓库', wait=1)
