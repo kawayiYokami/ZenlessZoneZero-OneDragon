@@ -168,16 +168,24 @@ def identify_type(screen: MatLike, center: Point) -> str:
     return best_type
 
 
-def inspect_occupied(screen: MatLike, centers: tuple[Point, ...]) -> list[BagelSlotMark]:
+def inspect_occupied(
+    screen: MatLike,
+    centers: tuple[Point, ...],
+    indices: Sequence[int] | None = None,
+) -> list[BagelSlotMark]:
     """只识别已占用格子的品质和类型。
 
     Args:
         screen: 整屏 RGB。
         centers: 结果格、安全箱或背包格心。
+        indices: 只识别这些下标；None 表示按灰度方差自行判断哪些格子有物品。
     """
     marks: list[BagelSlotMark] = []
     for index, center in enumerate(centers):
-        if not slot_occupied(screen, center):
+        if indices is not None:
+            if index not in indices:
+                continue
+        elif not slot_occupied(screen, center):
             continue
         marks.append(
             BagelSlotMark(

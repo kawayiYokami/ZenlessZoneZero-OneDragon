@@ -22,9 +22,12 @@ from zzz_od.application.bagel.bagel_search_panel import SearchPanelGuard
 from zzz_od.application.bagel.bagel_slots import (
     RESULT_SLOT_CENTERS,
     SAFE_SLOT_CENTERS,
+    SLOT_ITEM,
+    SLOT_LOADING,
     inspect_safe_slots,
     slot_crop,
     slot_occupied,
+    slot_states,
     swap_visually_ok,
     transfer_visually_ok,
 )
@@ -72,6 +75,11 @@ class BagelStoreSafe(BagelOperation):
     # 面板刚打开、以及拖拽后物品落地都有动画，留足时间；每次发出拖拽前会清零，
     # 所以这是「一件物品一次」的预算，不会跨件累计。
     PANEL_WAIT_ROUNDS_LIMIT: int = 10
+    # 没有可拖动候选、却还有格子处于「加载中」时，最多等这么多帧（约 3 秒）。
+    # 等待只在连续加载期间计数，某一帧没有加载中格子就清零：揭示动画是一次性的，
+    # 清零后再出现说明游戏又在揭示新的格子，应该重新给足时间；而某个格子一直判成
+    # 加载中（例如暗色图标始终不过 0x28）时预算不会回涨，不会拖长本步。
+    LOADING_ROUNDS_LIMIT: int = 10
 
     def __init__(self, ctx: ZContext) -> None:
         """只收集当前容器，不关闭面板，也不补做交互。"""
@@ -92,6 +100,7 @@ class BagelStoreSafe(BagelOperation):
         self._panel_guard: SearchPanelGuard = SearchPanelGuard()
         self._panel_wait_rounds: int = 0
         self._safe_unknown_rounds: int = 0
+        self._loading_rounds: int = 0
 
     def handle_init(self) -> None:
         """每次执行清空已装入计数与待核对拖拽。"""
@@ -112,6 +121,7 @@ class BagelStoreSafe(BagelOperation):
         self._panel_guard.reset()
         self._panel_wait_rounds = 0
         self._safe_unknown_rounds = 0
+        self._loading_rounds = 0
 
     def _check_search_panel(self) -> OperationRoundResult | None:
         """搜查和拖后回读共用门槛；中断优先，未知画面有界等待。
@@ -201,16 +211,31 @@ class BagelStoreSafe(BagelOperation):
         if panel_result is not None:
             return panel_result
         screen = self.last_screenshot
+        states = slot_states(screen, RESULT_SLOT_CENTERS)
+        # 三态按格各自判断：有可拖动的格子就立刻拖，不必等其它格子揭示完。
+        # 只有一件候选都没有、还剩格子处于加载中时才需要等，避免把没揭示完的
+        # 箱子判成「无可入箱物品」直接跳过。等待有上限，避免某个格子一直判成
+        # 加载中拖长本步。
         # 金币不入安全箱：拾取后直接进携带货币、不占安全箱格子，所以从候选里直接去掉，
         # 它连拖都不会被拖；识别不稳（角标还没画出来）时由拖拽前复核兜底，见 _recheck_source。
         results = [
-            mark for mark in inspect_occupied(screen, RESULT_SLOT_CENTERS)
+            mark for mark in inspect_occupied(
+                screen,
+                RESULT_SLOT_CENTERS,
+                [index for index, state in enumerate(states) if state == SLOT_ITEM],
+            )
             if mark.index not in self._unstorable
             and mark.item_type != ITEM_TYPE_CURRENCY
         ]
         if not self._search_complete():
             results = self._stable_results(results)
         if not results:
+            loading = [index for index, state in enumerate(states) if state == SLOT_LOADING]
+            if not loading:
+                self._loading_rounds = 0
+            if loading and self._loading_rounds < self.LOADING_ROUNDS_LIMIT:
+                self._loading_rounds += 1
+                return self.round_wait('等待搜查结果加载完成', wait=0.3)
             if not self._search_complete():
                 return self.round_wait('等待新的搜查结果', wait=0.3)
             if inspect_safe_slots(screen) is None:

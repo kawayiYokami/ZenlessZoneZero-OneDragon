@@ -11,15 +11,17 @@ from one_dragon.base.geometry.point import Point
 if TYPE_CHECKING:
     from cv2.typing import MatLike
 
-# 开箱面板卡片实测（1080p 原生截图量得，非估算）：
-# 卡片 90x112 一格。结果面板为 5 列 2 排，格心 x 从 1353 起每 100 一列，
-# y 为 254 与 380；安全箱为一排 5 格，格心 x 从 259 起每 101 一格，y 883。
-# 旧值（结果 y 330/431、安全箱 y 855）是按旧版面板标的，在新面板上会让
-# 64x64 采样窗横跨两排卡片，导致空格被判成占用，必须按实测改回。
-_RESULT_XS: tuple[int, ...] = (1353, 1453, 1553, 1653, 1753)
-_RESULT_YS: tuple[int, ...] = (254, 380)
-_SAFE_XS: tuple[int, ...] = (259, 360, 461, 562, 663)
-_SAFE_Y: int = 883
+# 开箱面板卡片实测（1080p 原生截图按边框亮脊量得，非估算）：
+# 卡片约 88x105 一格。结果面板为 5 列 2 排，左边界 x=1308/1409/1510/1611/1712，
+# 上边界 y=203 与 324，格心 x 从 1352 起每 101 一列，y 为 256 与 377；
+# 安全箱为一排 5 格，左边界 215/313/415/516/617，格心 x 从 260 起每 101 一格，
+# y 897。旧值（结果 y 254/380、安全箱 y 883）是估算值，纵向差 2–3 像素，
+# 安全箱差 14 像素；卡片上下边框亮度不同（上边框约 50，下边框约 34），
+# 靠边框定位时必须按上边框取。
+_RESULT_XS: tuple[int, ...] = (1352, 1453, 1554, 1655, 1756)
+_RESULT_YS: tuple[int, ...] = (256, 377)
+_SAFE_XS: tuple[int, ...] = (260, 360, 461, 562, 663)
+_SAFE_Y: int = 897
 RESULT_SLOT_CENTERS: tuple[Point, ...] = tuple(
     Point(x, y) for y in _RESULT_YS for x in _RESULT_XS
 )
@@ -36,6 +38,23 @@ _OCCUPIED_STD_MIN: float = 20.0
 _EMPTY_MAX_STD: float = 12.0
 _EMPTY_MAX_MEAN: float = 45.0
 _APPEARANCE_MEAN_DIFF_MIN: float = 12.0
+
+# 结果格的三种状态。
+SLOT_ITEM: str = '有物品'
+SLOT_EMPTY: str = '空'
+SLOT_LOADING: str = '加载中'
+
+# 结果格判据：只看卡片底部那一小条方框内三通道的最大值。
+# 实测四帧：空格与未揭示的格子最大 27–60（底色和底部短横线都不过百），
+# 有物品的格子 255（物品高光与堆叠数字），两者之间空档很大。
+# 方框放在卡片下沿内侧，横向居中；结果格被选中时的光标亮条在卡片左边缘，
+# 落不进这个方框，不会把空格读成有物品。
+_ITEM_BOX_HALF_W: int = 16
+_ITEM_BOX_TOP: int = 31
+_ITEM_BOX_BOTTOM: int = 47
+_ITEM_MAX_CHANNEL: int = 240
+# 低于这个值算「加载中」：格子还没画出东西，整条方框接近纯黑。
+_LOADING_MAX_CHANNEL: int = 40
 
 
 @dataclass(frozen=True)
@@ -128,6 +147,52 @@ def occupied_indices(screen: MatLike, centers: tuple[Point, ...]) -> list[int]:
 def empty_indices(screen: MatLike, centers: tuple[Point, ...]) -> list[int]:
     """返回空格子下标，从左到右。"""
     return [index for index, center in enumerate(centers) if not slot_occupied(screen, center)]
+
+
+def slot_max_channel(screen: MatLike, center: Point) -> int | None:
+    """卡片底部方框内三通道的最大值；越界返回 None。
+
+    方框只取卡片下沿内侧一条，横向以格心居中。结果格被选中时的光标亮条
+    压在卡片左边缘，落不进这个方框，不会把空格读成有物品。
+
+    Args:
+        screen: 框架截图，RGB。
+        center: 格心（1080p 游戏坐标）。
+    """
+    x1 = int(center.x) - _ITEM_BOX_HALF_W
+    x2 = int(center.x) + _ITEM_BOX_HALF_W
+    y1 = int(center.y) + _ITEM_BOX_TOP
+    y2 = int(center.y) + _ITEM_BOX_BOTTOM
+    if x1 < 0 or y1 < 0 or x2 > screen.shape[1] or y2 > screen.shape[0]:
+        return None
+    return int(screen[y1:y2, x1:x2].max())
+
+
+def slot_state(screen: MatLike, center: Point) -> str | None:
+    """按底部方框最大值分三档；越界返回 None。
+
+    Args:
+        screen: 框架截图，RGB。
+        center: 格心（1080p 游戏坐标）。
+    """
+    value = slot_max_channel(screen, center)
+    if value is None:
+        return None
+    if value >= _ITEM_MAX_CHANNEL:
+        return SLOT_ITEM
+    if value < _LOADING_MAX_CHANNEL:
+        return SLOT_LOADING
+    return SLOT_EMPTY
+
+
+def slot_states(screen: MatLike, centers: tuple[Point, ...]) -> list[str | None]:
+    """按三态识别一排格子，判不出的格子为 None。
+
+    Args:
+        screen: 框架截图，RGB。
+        centers: 格心（1080p 游戏坐标）。
+    """
+    return [slot_state(screen, center) for center in centers]
 
 
 def slot_appearance_changed(
