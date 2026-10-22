@@ -130,7 +130,7 @@ if not getattr(sys, 'frozen', False):
     from sklearn.preprocessing import scale
     from soundcard.mediafoundation import SoundcardRuntimeWarning
     from threading import Event, Lock
-    from types import ModuleType
+    from types import ModuleType, TracebackType
     from typing import Any, Callable, ClassVar, Dict, IO, Iterable, List, Literal, NamedTuple, Optional, Protocol, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast
     from urllib.parse import urlencode, urlparse
     from uuid import uuid4
