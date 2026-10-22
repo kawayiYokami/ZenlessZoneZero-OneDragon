@@ -20,14 +20,19 @@ if TYPE_CHECKING:
 QUALITY_RANK: dict[str, int] = {'Z': 5, 'S': 4, 'A': 3, 'B': 2, 'C': 1, '?': 0}
 ITEM_TYPE_OTHER: str = '其他'
 ITEM_TYPE_CURRENCY: str = '金币'
+ITEM_TYPE_BLUEPRINT: str = '蓝图'
+# 特殊奖励专指使用切面钻石角标的菲林、零号业绩，不代表全部撤离奖励。
+ITEM_TYPE_SPECIAL_REWARD: str = '特殊奖励'
 QUALITY_UNKNOWN: str = '?'
 
-# 同品质时的类型顺序，来自仓库「快速选择」名称。
+# 同组、同品质时的类型顺序；两种蓝图开关状态共用。
 TYPE_RANK: dict[str, int] = {
-    '贵重物品': 5,
-    '战术棱镜': 4,
-    '装备': 3,
-    '门禁卡': 2,
+    ITEM_TYPE_SPECIAL_REWARD: 7,
+    '贵重物品': 6,
+    ITEM_TYPE_BLUEPRINT: 5,
+    '门禁卡': 4,
+    '战术棱镜': 3,
+    '装备': 2,
     '战术道具': 1,
     ITEM_TYPE_OTHER: 0,
     '材料': -1,
@@ -55,12 +60,15 @@ _QUALITY_HALF_W: int = 44
 _QUALITY_HALF_H: int = 54
 
 _BADGE_FILES: tuple[tuple[str, str], ...] = (
+    (ITEM_TYPE_BLUEPRINT, 'blueprint'),
     (ITEM_TYPE_CURRENCY, 'currency'),
     ('战术道具', 'tactic'),
     ('战术棱镜', 'prism_bell'),
     ('战术棱镜', 'prism_char'),
     ('装备', 'equip'),
+    ('装备', 'backpack'),
     ('贵重物品', 'valuable'),
+    (ITEM_TYPE_SPECIAL_REWARD, 'valuable_reward'),
     ('门禁卡', 'keycard'),
     # 历史文件 other 也是白色箱子材料角标，不能因匹配到不同实拍而改变优先级。
     ('材料', 'other'),
@@ -87,12 +95,15 @@ class BagelSlotMark:
         """类型排序值；未识别按其他。"""
         return TYPE_RANK.get(self.item_type, 0)
 
-    @property
-    def priority(self) -> tuple[bool, int, int]:
-        """金币最低；材料低于所有其他物品，非材料先比品质再比类型。"""
+    def priority(self, blueprint_priority: bool = True) -> tuple[int, int, int]:
+        """先分组，再比品质和类型；开启时蓝图独立分组且只比品质。"""
         if self.item_type == ITEM_TYPE_CURRENCY:
-            return False, -1, self.type_rank
-        return (self.item_type != '材料', self.quality_rank, self.type_rank)
+            return -1, -1, self.type_rank
+        if blueprint_priority and self.item_type == ITEM_TYPE_BLUEPRINT:
+            return 2, self.quality_rank, 0
+        if self.item_type == '材料':
+            return 0, self.quality_rank, self.type_rank
+        return 1, self.quality_rank, self.type_rank
 
 
 @dataclass(frozen=True)
@@ -105,9 +116,13 @@ class StoreChoice:
     mark: BagelSlotMark
 
 
-def is_strictly_better(left: BagelSlotMark, right: BagelSlotMark) -> bool:
-    """先区分材料，再比品质和类型，相等则不替换。"""
-    return left.priority > right.priority
+def is_strictly_better(
+    left: BagelSlotMark,
+    right: BagelSlotMark,
+    blueprint_priority: bool = True,
+) -> bool:
+    """按同一开关比较两件物品，优先级相等则不替换。"""
+    return left.priority(blueprint_priority) > right.priority(blueprint_priority)
 
 
 def identify_quality(screen: MatLike, center: Point) -> str:
@@ -202,23 +217,24 @@ def choose_store_action(
     results: Sequence[BagelSlotMark],
     safes: Sequence[BagelSlotMark],
     safe_empty: Sequence[int],
+    blueprint_priority: bool = True,
 ) -> StoreChoice | None:
-    """挑选一件非金币结果；安全箱满时仅严格更优的物品可以对换。"""
+    """用同一优先级选择非金币候选和箱内目标；满箱时仅严格更优才对换。"""
     candidates = [mark for mark in results if mark.item_type != ITEM_TYPE_CURRENCY]
     if not candidates:
         return None
     candidate = max(
         candidates,
-        key=lambda mark: (*mark.priority, -mark.index),
+        key=lambda mark: (*mark.priority(blueprint_priority), -mark.index),
     )
     if safe_empty:
         return StoreChoice(ACTION_FILL, candidate.index, safe_empty[0], candidate)
     if safes:
         worst = min(
             safes,
-            key=lambda mark: (*mark.priority, mark.index),
+            key=lambda mark: (*mark.priority(blueprint_priority), mark.index),
         )
-        if is_strictly_better(candidate, worst):
+        if is_strictly_better(candidate, worst, blueprint_priority):
             return StoreChoice(ACTION_SWAP, candidate.index, worst.index, candidate)
     return None
 

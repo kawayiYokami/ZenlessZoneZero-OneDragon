@@ -77,6 +77,7 @@ class BagelRunFlow(BagelOperation):
         map_snapshot: BagelFixedMap | None = None,
         continuous_safe_unlock: bool = False,
         on_location_wait: Callable[[], None] | None = None,
+        blueprint_priority: bool = True,
     ) -> None:
         """校验勾选清单；正式任务可连续执行相邻的保险箱交互与解锁。"""
         super().__init__(ctx, op_name=f'贝果流程-{flow.name}', node_max_retry_times=0)
@@ -106,6 +107,7 @@ class BagelRunFlow(BagelOperation):
         self._container_step_id: str | None = None
         self._approach_step: BagelStep | None = None
         self._reapproach_pending: bool = False
+        self.blueprint_priority: bool = blueprint_priority
         self.continuous_safe_unlock: bool = continuous_safe_unlock
         self.on_location_wait: Callable[[], None] | None = on_location_wait
         self._step_started_at: float = 0
@@ -321,7 +323,7 @@ class BagelRunFlow(BagelOperation):
         if step.action == 'unlock':
             return BagelUnlockSafe(self.ctx, phase='unlock')
         if step.action == 'store':
-            return BagelStoreSafe(self.ctx)
+            return BagelStoreSafe(self.ctx, blueprint_priority=self.blueprint_priority)
         if step.action == 'close':
             return BagelCloseSearch(self.ctx)
         return BagelExit(self.ctx) if step.action == 'exit' else None

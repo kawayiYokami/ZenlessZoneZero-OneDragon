@@ -32,6 +32,7 @@ from qfluentwidgets.components.widgets.card_widget import CardSeparator
 
 from one_dragon_qt.services.app_setting.app_setting_provider import GroupIdMixin
 from one_dragon_qt.utils.config_utils import get_prop_adapter
+from one_dragon_qt.widgets.setting_card.switch_setting_card import SwitchSettingCard
 from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
 from zzz_od.application.bagel import bagel_usage
 from zzz_od.application.bagel.bagel_const import (
@@ -66,7 +67,7 @@ class _UsageDialog(MessageBoxBase):
         intro.setWordWrap(True)
         self.viewLayout.addWidget(intro)
         terms = CaptionLabel(
-            '入仓：将携带物存入研究站仓库。\n空箱：结算开始时安全箱为空。', self
+            '入箱：将物品装入局内安全箱。\n入仓：将携带物存入研究站仓库。\n空箱：结算开始时安全箱为空。', self
         )
         terms.setWordWrap(True)
         self.viewLayout.addWidget(terms)
@@ -125,7 +126,7 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         self.clean_step_cards: list[CleanStepCard] = []
 
     def get_content_widget(self) -> QWidget:
-        """显示结束条件与自动出售，首次清空提示放入使用说明。"""
+        """显示结束条件、入箱优先级与自动出售，首次清空提示放入使用说明。"""
         widget = QWidget(self)
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -142,6 +143,14 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         layout.addLayout(header)
 
         layout.addWidget(self._make_end_conditions(widget))
+        self.blueprint_priority: SwitchSettingCard = SwitchSettingCard(
+            icon=FluentIcon.DOCUMENT,
+            title='蓝图优先',
+            content='开启时优先拾取蓝图。建议开启',
+            parent=widget,
+        )
+        self.blueprint_priority.setFixedHeight(88)
+        layout.addWidget(self.blueprint_priority)
         layout.addWidget(self._make_sale_group(widget))
         layout.addStretch(1)
         self._refresh_clean_options()
@@ -396,6 +405,9 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
             app_id=APP_ID,
             instance_idx=self.ctx.current_instance_idx,
             group_id=self.group_id,
+        )
+        self.blueprint_priority.init_with_adapter(
+            get_prop_adapter(self.config, 'blueprint_priority'),
         )
         for control, field in (
             (self.success_count, 'max_success_rounds'),

@@ -25,7 +25,7 @@ class BagelCleanStep:
 
 
 class BagelConfig(ApplicationConfig):
-    """贝果运行上限和仓库清理设置；按账号、应用组隔离。"""
+    """贝果运行上限、入箱和仓库清理设置；按账号、应用组隔离。"""
 
     def __init__(self, instance_idx: int, group_id: str) -> None:
         """加载当前账号和应用组的配置。"""
@@ -54,6 +54,18 @@ class BagelConfig(ApplicationConfig):
         if type(value) is not int or not 0 <= value <= 100:
             raise ValueError('max_failure_retries 必须是 0 至 100 的整数')
         self.update('max_failure_retries', value)
+
+    @property
+    def blueprint_priority(self) -> bool:
+        """蓝图是否优先于全部非蓝图入箱；旧配置缺项也开启。"""
+        return self.get('blueprint_priority', True)
+
+    @blueprint_priority.setter
+    def blueprint_priority(self, value: bool) -> None:
+        """保存蓝图优先开关，不影响仓库出售。"""
+        if type(value) is not bool:
+            raise ValueError('blueprint_priority 必须是布尔值')
+        self.update('blueprint_priority', value)
 
     @property
     def auto_clean_warehouse(self) -> bool:
@@ -192,6 +204,8 @@ class BagelConfig(ApplicationConfig):
         retries = self.max_failure_retries
         if type(retries) is not int or not 0 <= retries <= 100:
             raise ValueError('max_failure_retries 必须是 0 至 100 的整数')
+        if type(self.blueprint_priority) is not bool:
+            raise ValueError('blueprint_priority 必须是布尔值')
         if type(self.auto_clean_warehouse) is not bool:
             raise ValueError('auto_clean_warehouse 必须是布尔值')
         if self.clean_mode not in (CLEAN_MODE_DEFAULT, CLEAN_MODE_CUSTOM):

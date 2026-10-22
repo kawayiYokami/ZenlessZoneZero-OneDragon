@@ -258,6 +258,7 @@ class BagelApp(ZApplication):
             map_snapshot=self._spawn_matcher().vision(self.matched_map_id).map,
             continuous_safe_unlock=True,
             on_location_wait=lambda: log.info(bagel_usage.LOCATION_WAIT_HINT),
+            blueprint_priority=self.config.blueprint_priority,
         )
         outcome = result.execute()
         if result.last_screenshot is not None:

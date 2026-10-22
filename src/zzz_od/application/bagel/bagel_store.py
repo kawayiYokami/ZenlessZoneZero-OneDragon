@@ -81,9 +81,10 @@ class BagelStoreSafe(BagelOperation):
     # 加载中（例如暗色图标始终不过 0x28）时预算不会回涨，不会拖长本步。
     LOADING_ROUNDS_LIMIT: int = 10
 
-    def __init__(self, ctx: ZContext) -> None:
-        """只收集当前容器，不关闭面板，也不补做交互。"""
+    def __init__(self, ctx: ZContext, blueprint_priority: bool = True) -> None:
+        """按传入的优先级收集当前容器，不关闭面板，也不补做交互。"""
         super().__init__(ctx, op_name='贝果-装入安全箱', timeout_seconds=90)
+        self.blueprint_priority: bool = blueprint_priority
         self.moved: int = 0
         self.acted: bool = False
         self._pending_before: MatLike | None = None
@@ -263,6 +264,7 @@ class BagelStoreSafe(BagelOperation):
             results,
             [mark for mark in inspect_occupied(screen, SAFE_SLOT_CENTERS) if mark.index in safe.occupied],
             safe.empty,
+            self.blueprint_priority,
         )
         if choice is None:
             # 安全箱满了、现有候选又都不比箱内的好，不等于没东西可拿：还有格子
