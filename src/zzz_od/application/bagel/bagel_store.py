@@ -155,6 +155,21 @@ class BagelStoreSafe(BagelOperation):
         self._clear_pending()
         return self._give_up('搜查面板状态持续不明')
 
+    def _wait_for_loading(self, states: list[str | None]) -> OperationRoundResult | None:
+        """还有格子处于加载中就先等一帧；没有或预算用完返回 None。
+
+        只在要下结论之前调用：判空、以及安全箱满了没得换这两处收尾。拖动本身
+        不等，可拖动的格子立刻拖。
+        """
+        loading = [index for index, state in enumerate(states) if state == SLOT_LOADING]
+        if not loading:
+            self._loading_rounds = 0
+            return None
+        if self._loading_rounds >= self.LOADING_ROUNDS_LIMIT:
+            return None
+        self._loading_rounds += 1
+        return self.round_wait('等待搜查结果加载完成', wait=0.3)
+
     def _wait_for_safe_slots(self) -> OperationRoundResult:
         """未知格最多额外复查三帧；等待期间保留拖拽基线，不发送输入。"""
         self._safe_unknown_rounds += 1
@@ -213,9 +228,9 @@ class BagelStoreSafe(BagelOperation):
         screen = self.last_screenshot
         states = slot_states(screen, RESULT_SLOT_CENTERS)
         # 三态按格各自判断：有可拖动的格子就立刻拖，不必等其它格子揭示完。
-        # 只有一件候选都没有、还剩格子处于加载中时才需要等，避免把没揭示完的
-        # 箱子判成「无可入箱物品」直接跳过。等待有上限，避免某个格子一直判成
-        # 加载中拖长本步。
+        # 但两处收尾（判空、安全箱满了没得换）之前要先确认没有格子还在加载，
+        # 否则会把还没揭示完的格子当成「没东西可拿」草率结束。等待有上限，
+        # 避免某个格子一直判成加载中拖长本步。
         # 金币不入安全箱：拾取后直接进携带货币、不占安全箱格子，所以从候选里直接去掉，
         # 它连拖都不会被拖；识别不稳（角标还没画出来）时由拖拽前复核兜底，见 _recheck_source。
         results = [
@@ -230,12 +245,9 @@ class BagelStoreSafe(BagelOperation):
         if not self._search_complete():
             results = self._stable_results(results)
         if not results:
-            loading = [index for index, state in enumerate(states) if state == SLOT_LOADING]
-            if not loading:
-                self._loading_rounds = 0
-            if loading and self._loading_rounds < self.LOADING_ROUNDS_LIMIT:
-                self._loading_rounds += 1
-                return self.round_wait('等待搜查结果加载完成', wait=0.3)
+            loading_wait = self._wait_for_loading(states)
+            if loading_wait is not None:
+                return loading_wait
             if not self._search_complete():
                 return self.round_wait('等待新的搜查结果', wait=0.3)
             if inspect_safe_slots(screen) is None:
@@ -253,6 +265,11 @@ class BagelStoreSafe(BagelOperation):
             safe.empty,
         )
         if choice is None:
+            # 安全箱满了、现有候选又都不比箱内的好，不等于没东西可拿：还有格子
+            # 在揭示时，下一帧可能冒出更好的物品。先等揭示完再收工。
+            loading_wait = self._wait_for_loading(states)
+            if loading_wait is not None:
+                return loading_wait
             if not self._search_complete():
                 return self.round_wait('等待新的搜查结果', wait=0.3)
             return self.round_success(self.STATUS_DONE, data={'moved': self.moved})
