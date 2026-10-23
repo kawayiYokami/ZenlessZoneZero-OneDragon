@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from one_dragon.base.controller.drag_timing import DragTiming
@@ -11,6 +12,7 @@ from zzz_od.application.bagel.bagel_item_vision import (
     ACTION_FILL,
     ACTION_SWAP,
     ITEM_TYPE_CURRENCY,
+    ITEM_TYPE_OTHER,
     BagelSlotMark,
     choose_store_action,
     identify_quality,
@@ -20,13 +22,12 @@ from zzz_od.application.bagel.bagel_item_vision import (
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_search_panel import SearchPanelGuard
 from zzz_od.application.bagel.bagel_slots import (
-    RESULT_SLOT_CENTERS,
     SAFE_SLOT_CENTERS,
     SLOT_ITEM,
     SLOT_LOADING,
     inspect_safe_slots,
-    slot_crop,
     slot_occupied,
+    slot_state,
     slot_states,
     swap_visually_ok,
     transfer_visually_ok,
@@ -80,6 +81,8 @@ class BagelStoreSafe(BagelOperation):
     # 清零后再出现说明游戏又在揭示新的格子，应该重新给足时间；而某个格子一直判成
     # 加载中（例如暗色图标始终不过 0x28）时预算不会回涨，不会拖长本步。
     LOADING_ROUNDS_LIMIT: int = 10
+    # 亮度和有效角标同时满足后，先留出揭示收尾时间，再用新截图复核。
+    ITEM_READY_DELAY: float = 0.1
 
     def __init__(self, ctx: ZContext, blueprint_priority: bool = True) -> None:
         """按传入的优先级收集当前容器，不关闭面板，也不补做交互。"""
@@ -97,7 +100,8 @@ class BagelStoreSafe(BagelOperation):
         self._consecutive_failures: int = 0
         self._drag_repeated: int = 0
         self._left_grid_waited: bool = False
-        self._search_frame: MatLike | None = None
+        self._badge_pending: set[int] = set()
+        self._result_centers: tuple[Point, ...] = ()
         self._panel_guard: SearchPanelGuard = SearchPanelGuard()
         self._panel_wait_rounds: int = 0
         self._safe_unknown_rounds: int = 0
@@ -118,7 +122,8 @@ class BagelStoreSafe(BagelOperation):
         self._consecutive_failures = 0
         self._drag_repeated = 0
         self._left_grid_waited = False
-        self._search_frame = None
+        self._badge_pending.clear()
+        self._result_centers = ()
         self._panel_guard.reset()
         self._panel_wait_rounds = 0
         self._safe_unknown_rounds = 0
@@ -147,9 +152,11 @@ class BagelStoreSafe(BagelOperation):
                 self._clear_pending()
                 return self.round_fail(self.STATUS_INTERRUPTED)
         elif self._panel_guard.observe(self.last_screenshot, self.last_screenshot_time):
+            centers = self._panel_guard.result_centers
+            assert centers is not None
+            self._result_centers = centers
             self._panel_wait_rounds = 0
             return None
-        self._search_frame = None
         self._panel_wait_rounds += 1
         if self._panel_wait_rounds < self.PANEL_WAIT_ROUNDS_LIMIT:
             return self.round_wait('等待搜查面板到位并稳定', wait=0.3)
@@ -201,22 +208,23 @@ class BagelStoreSafe(BagelOperation):
             self.last_screenshot, '贝果-局内', '搜查完成',
         ).is_success
 
-    def _stable_results(self, results: list[BagelSlotMark]) -> list[BagelSlotMark]:
-        """搜查进行中只处理连续两帧外观稳定的已揭示格。"""
-        previous = self._search_frame
-        current = self.last_screenshot
-        self._search_frame = current.copy()
-        if previous is None:
-            return []
-        stable: list[BagelSlotMark] = []
+    def _ready_results(self, results: list[BagelSlotMark]) -> list[BagelSlotMark]:
+        """只保留有效角标的非金币物品；角标未出现的格子继续等待。"""
+        ready: list[BagelSlotMark] = []
         for mark in results:
-            before = slot_crop(previous, mark.center)
-            after = slot_crop(current, mark.center)
-            if (before is not None and after is not None and before.shape == after.shape
-                    and slot_occupied(previous, mark.center)
-                    and float(abs(before.astype('float32') - after.astype('float32')).mean()) < 4):
-                stable.append(mark)
-        return stable
+            if mark.item_type == ITEM_TYPE_OTHER:
+                self._badge_pending.add(mark.index)
+                continue
+            self._badge_pending.discard(mark.index)
+            if mark.item_type != ITEM_TYPE_CURRENCY:
+                ready.append(mark)
+        return ready
+
+    def _wait_for_badges(self) -> OperationRoundResult | None:
+        """未确认角标时不能判空或收尾，等待沿用操作的总超时。"""
+        if not self._badge_pending:
+            return None
+        return self.round_wait('等待结果格有效角标', wait=0.3)
 
     @node_from(from_name='核对入箱变化', status=_STATUS_SKIP_SLOT)
     @node_from(from_name='核对入箱变化', status='继续装入')
@@ -227,25 +235,22 @@ class BagelStoreSafe(BagelOperation):
         if panel_result is not None:
             return panel_result
         screen = self.last_screenshot
-        states = slot_states(screen, RESULT_SLOT_CENTERS)
-        # 三态按格各自判断：有可拖动的格子就立刻拖，不必等其它格子揭示完。
-        # 但两处收尾（判空、安全箱满了没得换）之前要先确认没有格子还在加载，
-        # 否则会把还没揭示完的格子当成「没东西可拿」草率结束。等待有上限，
-        # 避免某个格子一直判成加载中拖长本步。
-        # 金币不入安全箱：拾取后直接进携带货币、不占安全箱格子，所以从候选里直接去掉，
-        # 它连拖都不会被拖；识别不稳（角标还没画出来）时由拖拽前复核兜底，见 _recheck_source。
+        states = slot_states(screen, self._result_centers)
+        # 底部文字在揭示闪光结束前就可能变亮，所有候选还必须匹配有效角标。
+        # 已确认格可以先处理；角标未确认的格子即使暂时掉回空档，也不能用于收尾。
         results = [
             mark for mark in inspect_occupied(
                 screen,
-                RESULT_SLOT_CENTERS,
+                self._result_centers,
                 [index for index, state in enumerate(states) if state == SLOT_ITEM],
             )
             if mark.index not in self._unstorable
-            and mark.item_type != ITEM_TYPE_CURRENCY
         ]
-        if not self._search_complete():
-            results = self._stable_results(results)
+        results = self._ready_results(results)
         if not results:
+            badge_wait = self._wait_for_badges()
+            if badge_wait is not None:
+                return badge_wait
             loading_wait = self._wait_for_loading(states)
             if loading_wait is not None:
                 return loading_wait
@@ -269,6 +274,9 @@ class BagelStoreSafe(BagelOperation):
         if choice is None:
             # 安全箱满了、现有候选又都不比箱内的好，不等于没东西可拿：还有格子
             # 在揭示时，下一帧可能冒出更好的物品。先等揭示完再收工。
+            badge_wait = self._wait_for_badges()
+            if badge_wait is not None:
+                return badge_wait
             loading_wait = self._wait_for_loading(states)
             if loading_wait is not None:
                 return loading_wait
@@ -279,21 +287,22 @@ class BagelStoreSafe(BagelOperation):
             if not self._search_complete():
                 return self.round_wait('等待搜索完成后核对对换', wait=0.3)
             if choice.source_index in self._swap_seen:
+                badge_wait = self._wait_for_badges()
+                if badge_wait is not None:
+                    return badge_wait
                 log.info(
                     '贝果入箱：结果格 %s 已对换，不再将换出的物品换回',
                     choice.source_index + 1,
                 )
                 return self.round_success(self.STATUS_DONE, data={'moved': self.moved})
-            self._swap_seen.add(choice.source_index)
-        source = RESULT_SLOT_CENTERS[choice.source_index]
+        source = self._result_centers[choice.source_index]
         destination = _DEST_CENTERS[choice.kind][choice.dest_index]
-        # 真正发出拖拽前用新一帧复核源格。卡片角标在面板揭示动画期间可能还没画出来，
-        # 那时金币会被读成「其他」，而「其他」在优先级里并不低（非材料 + 品质高），
-        # 于是金币会被选中；游戏又不接受金币入安全箱，拖多少次画面都不会变。
-        # 复核通过后，拖前基线改用这一帧，比选择用的那一帧更贴近拖拽时刻。
-        recheck = self._recheck_source(choice.source_index)
+        # 等待后重新截图，复核面板、亮度与角标；通过后才登记对换并发送拖拽。
+        recheck = self._recheck_source(choice.source_index, choice.mark.item_type)
         if recheck is not None:
             return recheck
+        if choice.kind == ACTION_SWAP:
+            self._swap_seen.add(choice.source_index)
         self._pending_before = self.last_screenshot.copy()
         self._pending_source = source
         self._pending_source_index = choice.source_index
@@ -312,17 +321,35 @@ class BagelStoreSafe(BagelOperation):
         self._drag_item(source, destination)
         return self.round_success('已拖拽一件', wait=0.7)
 
-    def _recheck_source(self, source_index: int) -> OperationRoundResult | None:
-        """拖拽前用新一帧复核源格；金币和已经不在的物品都不发拖拽。
+    def _recheck_source(self, source_index: int, expected_type: str) -> OperationRoundResult | None:
+        """亮度和角标达标后延迟 0.1 秒，复核仍可处理才发送拖拽。
 
-        复核只决定「这一格还要不要拖」，不重新排序：画面在这一帧里变了就说明原选择
-        已经过期，重新挑一次比拿着旧选择硬拖安全。返回 None 表示可以按原选择拖。
+        新截图须重新通过面板检查，底部仍须有物品且角标类型保持一致。
+        复核失效只等待或重新挑选，不消耗搬运重试次数。
         """
+        before_time = self.last_screenshot_time
+        before_center = self._result_centers[source_index]
+        time.sleep(self.ITEM_READY_DELAY)
         self.screenshot()
-        source = RESULT_SLOT_CENTERS[source_index]
-        if not slot_occupied(self.last_screenshot, source):
-            return self.round_wait('源格物品已不在，重新挑选', wait=0.2)
-        if identify_type(self.last_screenshot, source) != ITEM_TYPE_CURRENCY:
+        if self.last_screenshot_time <= before_time:
+            return self.round_wait('等待拖拽前的新截图', wait=self.ITEM_READY_DELAY)
+        panel_result = self._check_search_panel()
+        if panel_result is not None:
+            return panel_result
+        source = self._result_centers[source_index]
+        if source.tuple() != before_center.tuple():
+            return self.round_wait('结果格位置变化，重新挑选', wait=0.2)
+        if slot_state(self.last_screenshot, source) != SLOT_ITEM:
+            self._badge_pending.add(source_index)
+            return self.round_wait('源格亮度未达标，等待重新确认', wait=0.2)
+        item_type = identify_type(self.last_screenshot, source)
+        if item_type == ITEM_TYPE_OTHER:
+            self._badge_pending.add(source_index)
+            return self._wait_for_badges()
+        self._badge_pending.discard(source_index)
+        if item_type != ITEM_TYPE_CURRENCY:
+            if item_type != expected_type:
+                return self.round_wait('源格角标类型变化，重新挑选', wait=0.2)
             return None
         give_up = self._skip_source(source_index, '金币不占安全箱')
         if give_up is not None:
@@ -344,7 +371,8 @@ class BagelStoreSafe(BagelOperation):
         与 `核对入箱变化`）。
         """
         self._unstorable.add(source_index)
-        source = RESULT_SLOT_CENTERS[source_index]
+        self._badge_pending.discard(source_index)
+        source = self._result_centers[source_index]
         observed_type = identify_type(self.last_screenshot, source)
         log.info(
             '贝果入箱：结果格 %s 当场复核为 %s %s，%s；跳过该格继续',
@@ -406,6 +434,8 @@ class BagelStoreSafe(BagelOperation):
         if (before is None or source is None or source_index is None
                 or destination is None or kind is None):
             return self._give_up('缺少入箱前后对照数据')
+        if self._result_centers[source_index].tuple() != source.tuple():
+            return self._give_up('拖拽后结果格位置变化，无法核对原次搬运')
         safe = inspect_safe_slots(self.last_screenshot)
         if safe is None:
             return self._wait_for_safe_slots()

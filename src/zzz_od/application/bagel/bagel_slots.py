@@ -11,17 +11,13 @@ from one_dragon.base.geometry.point import Point
 if TYPE_CHECKING:
     from cv2.typing import MatLike
 
-# 开箱面板卡片实测（1080p 原生截图按边框亮脊量得，非估算）：
-# 卡片约 88x105 一格。结果面板为 5 列 2 排，左边界 x=1308/1409/1510/1611/1712，
-# 上边界 y=203 与 324，格心 x 从 1352 起每 101 一列，y 为 256 与 377；
-# 安全箱为一排 5 格，左边界 215/313/415/516/617，格心 x 从 260 起每 101 一格，
-# y 897。旧值（结果 y 254/380、安全箱 y 883）是估算值，纵向差 2–3 像素，
-# 安全箱差 14 像素；卡片上下边框亮度不同（上边框约 50，下边框约 34），
-# 靠边框定位时必须按上边框取。
-_RESULT_XS: tuple[int, ...] = (1352, 1453, 1554, 1655, 1756)
+# 古怪试炼的 1080p 标准图：结果卡片外框约 92x109，列距约 101、行距 121。
+# 两组已知结果格中心 y 为 245/366 与 256/377；基准坐标须经边框定位后使用。
+# 局内安全箱外框约 94x111，格心 y=898；仓库继续使用独立坐标。
+_RESULT_XS: tuple[int, ...] = (1353, 1453, 1554, 1655, 1756)
 _RESULT_YS: tuple[int, ...] = (256, 377)
-_SAFE_XS: tuple[int, ...] = (260, 360, 461, 562, 663)
-_SAFE_Y: int = 897
+_SAFE_XS: tuple[int, ...] = (259, 360, 461, 562, 663)
+_SAFE_Y: int = 898
 RESULT_SLOT_CENTERS: tuple[Point, ...] = tuple(
     Point(x, y) for y in _RESULT_YS for x in _RESULT_XS
 )
@@ -55,6 +51,53 @@ _ITEM_BOX_BOTTOM: int = 47
 _ITEM_MAX_CHANNEL: int = 240
 # 低于这个值算「加载中」：格子还没画出东西，整条方框接近纯黑。
 _LOADING_MAX_CHANNEL: int = 40
+
+
+def locate_result_centers(screen: MatLike) -> tuple[Point, ...] | None:
+    """在新赛季面板的有限范围内按两排外框确认格心。
+
+    每排至少三个不同列的完整外框须支持同一纵向偏移。只校正已知面板的
+    小幅上下位移，不搜索任意位置；旧赛季面板、遮挡或过渡不能回退到固定格心。
+    """
+    if screen is None or screen.shape != (1080, 1920, 3):
+        return None
+    gray = cv2.cvtColor(screen[170:445, 1290:1820], cv2.COLOR_RGB2GRAY)
+    contours, _ = cv2.findContours(cv2.Canny(gray, 40, 100), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    candidates: list[tuple[int, int, float, int]] = []
+    for contour in contours:
+        x, y, width, height = cv2.boundingRect(contour)
+        if not (88 <= width <= 98 and 105 <= height <= 115):
+            continue
+        cx = 1290 + x + (width - 1) / 2
+        cy = 170 + y + (height - 1) / 2
+        column = min(range(5), key=lambda index: abs(cx - _RESULT_XS[index]))
+        row = min(range(2), key=lambda index: abs(cy - _RESULT_YS[index]))
+        offset = cy - _RESULT_YS[row]
+        if abs(cx - _RESULT_XS[column]) <= 4 and -16 <= offset <= 4:
+            candidates.append((row, column, offset, abs(width - 92) + abs(height - 109)))
+    best: dict[tuple[int, int], tuple[float, int]] = {}
+    best_rank: tuple[int, int] = (0, 0)
+    for offset in range(-16, 5):
+        group: dict[tuple[int, int], tuple[float, int]] = {}
+        for row, column, observed, error in candidates:
+            if abs(observed - offset) > 1.5:
+                continue
+            key = (row, column)
+            if key not in group or error < group[key][1]:
+                group[key] = (observed, error)
+        if any(sum(key[0] == row for key in group) < 3 for row in range(2)):
+            continue
+        rank = (len(group), -sum(value[1] for value in group.values()))
+        if rank > best_rank:
+            best, best_rank = group, rank
+    if not best:
+        return None
+    observed = float(np.median([value[0] for value in best.values()]))
+    # 压缩、抗锯齿或高亮会使轮廓跳动一像素；只接受已量测的两种排布。
+    shift = min((-11, 0), key=lambda value: abs(value - observed))
+    if abs(shift - observed) > 2:
+        return None
+    return tuple(Point(x, y + shift) for y in _RESULT_YS for x in _RESULT_XS)
 
 
 @dataclass(frozen=True)

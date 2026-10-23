@@ -42,22 +42,20 @@ TYPE_RANK: dict[str, int] = {
 ACTION_FILL: str = 'fill'
 ACTION_SWAP: str = 'swap'
 
-# 角标在卡片左上角。新版卡片 90x112、格心到卡片左边 45、上边 56，
-# 实测品质角标中心约在格心左上 (-70,-78)、类型角标约在 (-70,-62)，
-# 因此搜索窗取放大后的左上角；实测该窗在结果格与安全箱格上都命中。
-_BADGE_OFFSET: int = 65
-_BADGE_SEARCH: int = 52
+# 相对已校准格心，36x36 搜索窗完整覆盖 24x24 / 24x26 模板并保留边缘余量。
+_BADGE_LEFT: int = 56
+_BADGE_TOP: int = 64
+_BADGE_SEARCH: int = 36
 _BADGE_MATCH_MIN: float = 0.75
 # OpenCV HSV：H 0–180。红=Z、金=S、紫=A、蓝=B、绿=C。
 _QUALITY_S_MIN: float = 40.0
 _QUALITY_V_MIN: float = 40.0
-# 品质底色的取法：卡内饱和度最高的这一比例像素。
-# 旧实现按固定左右色带取样，那是按旧版卡片的图标尺寸定的；新版图标变高变宽，
-# 固定色带会落到图标本体上，实测把金色读成 S=0。改为在全卡内找最饱和像素。
-_QUALITY_TOP_FRACTION: float = 0.25
-# 品质底色裁剪：卡片内缩一点，避免把卡片边框算进来。
-_QUALITY_HALF_W: int = 44
-_QUALITY_HALF_H: int = 54
+# 品质只读左右底色，避开中央图案、左上角标和下方数量/等级文字。
+# 每条 6x48；外侧内缩两像素，减少格心误差导致取到黑边的机会。
+_QUALITY_REGIONS: tuple[tuple[int, int, int, int], ...] = (
+    (-36, -28, -30, 20),
+    (30, -28, 36, 20),
+)
 
 _BADGE_FILES: tuple[tuple[str, str], ...] = (
     (ITEM_TYPE_BLUEPRINT, 'blueprint'),
@@ -126,24 +124,21 @@ def is_strictly_better(
 
 
 def identify_quality(screen: MatLike, center: Point) -> str:
-    """用卡片内最饱和像素的色相判断 Z/S/A/B/C；对不上则为未知。
+    """用左右底色色带的 HSV 中位数判断 Z/S/A/B/C；对不上则为未知。
 
     Args:
         screen: 整屏 RGB。
         center: 格子中心。
     """
-    x1 = max(0, int(center.x) - _QUALITY_HALF_W)
-    y1 = max(0, int(center.y) - _QUALITY_HALF_H)
-    x2 = min(screen.shape[1], int(center.x) + _QUALITY_HALF_W)
-    y2 = min(screen.shape[0], int(center.y) + _QUALITY_HALF_H)
-    if x2 <= x1 or y2 <= y1:
-        return QUALITY_UNKNOWN
-    hsv = cv2.cvtColor(screen[y1:y2, x1:x2], cv2.COLOR_RGB2HSV)
-    flat = hsv.reshape(-1, 3)
-    saturation = flat[:, 1].astype(np.float32)
-    keep = max(1, int(len(saturation) * _QUALITY_TOP_FRACTION))
-    picked = flat[np.argsort(saturation)[-keep:]]
-    hue, sat, value = (float(np.median(picked[:, index])) for index in range(3))
+    regions: list[MatLike] = []
+    for left, top, right, bottom in _QUALITY_REGIONS:
+        x1, y1 = int(center.x) + left, int(center.y) + top
+        x2, y2 = int(center.x) + right, int(center.y) + bottom
+        if x1 < 0 or y1 < 0 or x2 > screen.shape[1] or y2 > screen.shape[0]:
+            return QUALITY_UNKNOWN
+        regions.append(screen[y1:y2, x1:x2])
+    hsv = cv2.cvtColor(np.concatenate(regions, axis=1), cv2.COLOR_RGB2HSV)
+    hue, sat, value = (float(value) for value in np.median(hsv.reshape(-1, 3), axis=0))
     if sat < _QUALITY_S_MIN or value < _QUALITY_V_MIN:
         return QUALITY_UNKNOWN
     if hue <= 12 or hue >= 165:
@@ -241,8 +236,8 @@ def choose_store_action(
 
 def _badge_search_crop(screen: MatLike, center: Point) -> MatLike | None:
     """裁出格心左上的角标搜索窗。"""
-    x1 = int(center.x) - _BADGE_OFFSET
-    y1 = int(center.y) - _BADGE_OFFSET
+    x1 = int(center.x) - _BADGE_LEFT
+    y1 = int(center.y) - _BADGE_TOP
     x2 = x1 + _BADGE_SEARCH
     y2 = y1 + _BADGE_SEARCH
     if x1 < 0 or y1 < 0 or x2 > screen.shape[1] or y2 > screen.shape[0]:
