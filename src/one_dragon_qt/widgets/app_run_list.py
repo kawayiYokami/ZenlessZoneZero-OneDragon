@@ -115,13 +115,8 @@ class AppRunList(DraggableList):
                     )
                 except Exception as exc:  # noqa: BLE001 - 单个应用异常不能中断整个列表刷新
                     log.warning(f'应用 {app.app_id} 创建运行记录失败，使用空运行状态: {exc}')
-                    # 数据已经更新成新应用，必须同步切换绑定，否则卡片后续操作会拿旧 app_id
-                    card.set_app(
-                        app,
-                        None,
-                        is_migrated=app.app_id not in self.ctx.run_context.default_group_apps,
-                    )
-                    continue
+                    run_record = None
+
                 card.set_app(
                     app,
                     run_record,
