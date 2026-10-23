@@ -139,10 +139,54 @@ class ApplicationFactoryManager:
         non_default_factories: list[ApplicationFactory] = []
         default_factories: list[ApplicationFactory] = []
 
-        # 一次性扫描所有 .py 文件，按后缀分组
+        # 内置应用递归扫描；第三方插件只扫描每个真实插件根的第一层。
+        if source == PluginSource.THIRD_PARTY:
+            python_files: list[Path] = []
+            if directory.is_dir():
+                try:
+                    directory_resolved = directory.resolve(strict=True)
+                    plugin_dirs = sorted(
+                        directory.iterdir(),
+                        key=lambda path: (path.name.casefold(), path.name),
+                    )
+                except (OSError, RuntimeError) as e:
+                    self._scan_failures.append(
+                        (directory, f"{type(e).__name__}: {e}")
+                    )
+                    return non_default_factories, default_factories
+
+                for plugin_dir in plugin_dirs:
+                    try:
+                        if plugin_dir.is_symlink() or not plugin_dir.is_dir():
+                            continue
+                        plugin_dir_resolved = plugin_dir.resolve(strict=True)
+                        if plugin_dir_resolved != directory_resolved / plugin_dir.name:
+                            continue
+                        python_files_in_plugin = sorted(
+                            plugin_dir.glob("*.py"),
+                            key=lambda path: (path.name.casefold(), path.name),
+                        )
+                    except (OSError, RuntimeError) as e:
+                        self._scan_failures.append(
+                            (plugin_dir, f"{type(e).__name__}: {e}")
+                        )
+                        continue
+
+                    for python_file in python_files_in_plugin:
+                        if python_file.is_symlink():
+                            continue
+                        try:
+                            python_file_resolved = python_file.resolve(strict=True)
+                        except (OSError, RuntimeError):
+                            continue
+                        if python_file_resolved != plugin_dir_resolved / python_file.name:
+                            continue
+                        python_files.append(python_file)
+        else:
+            python_files = list(directory.rglob("*.py"))
         factory_files: list[Path] = []
         const_files: list[Path] = []
-        for f in directory.rglob("*.py"):
+        for f in python_files:
             if f.stem.endswith(self._factory_module_suffix):
                 factory_files.append(f)
             elif f.stem.endswith(self._const_module_suffix):

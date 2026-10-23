@@ -108,7 +108,7 @@ if not getattr(sys, 'frozen', False):
     from logging.handlers import TimedRotatingFileHandler
     from math import atan2, degrees, hypot, isfinite
     from packaging import version
-    from pathlib import Path
+    from pathlib import Path, PurePosixPath, PureWindowsPath
     from pyautogui import screenshot
     from pygetwindow import Win32Window
     from pygit2 import Blob, Commit, Oid, Remote, RemoteCallbacks, Repository, Walker, discover_repository, init_repository, settings
@@ -136,7 +136,7 @@ if not getattr(sys, 'frozen', False):
     from soundcard.mediafoundation import SoundcardRuntimeWarning
     from threading import Event, Lock, RLock
     from time import perf_counter
-    from types import MappingProxyType, ModuleType
+    from types import MappingProxyType, ModuleType, TracebackType
     from typing import Any, Callable, ClassVar, Dict, IO, Iterable, List, Literal, NamedTuple, Optional, Protocol, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast
     from urllib.parse import urlencode, urlparse
     from uuid import NAMESPACE_URL, uuid4, uuid5
