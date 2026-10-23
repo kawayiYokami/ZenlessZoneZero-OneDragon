@@ -92,14 +92,16 @@ class BagelSettleWarehouse(BagelOperation):
         if occupied:
             self.retry_deposit = True
         if not self.sell_due and not self.retry_deposit and pair[0] < pair[1]:
-            log.info('贝果结算：未到出售间隔，本局只入仓')
+            log.info('贝果结算：未到出售间隔，本局只入仓；安全箱已空，仓库=%s/%s', pair[0], pair[1])
             return self.round_success(self.deposit_status)
         if not self.filter_groups or any(not areas for areas in self.filter_groups):
             return self.round_fail('自定义清理每一步都要同时选择类型和品质')
         reason = '残留物资' if self.retry_deposit else '仓库已满' if pair[0] >= pair[1] else '到期或正常结束'
-        log.info('贝果结算：%s，按所选方案顺序出售 %s 步', reason, len(self.filter_groups))
+        log.info('贝果结算：出售原因=%s，步骤=%s；安全箱占用=%s，仓库=%s/%s，需重试入仓=%s',
+                 reason, len(self.filter_groups), occupied, pair[0], pair[1], self.retry_deposit)
         for index, areas in enumerate(self.filter_groups, start=1):
-            log.info('贝果结算：开始第 %s/%s 步出售', index, len(self.filter_groups))
+            log.info('贝果出售步骤：%s/%s，筛选=%s', index, len(self.filter_groups),
+                     '、'.join(name.removeprefix('筛选-') for name in areas))
             result = BagelCleanWarehouse(
                 self.ctx, areas, allow_safe_items=self.retry_deposit,
             ).execute()

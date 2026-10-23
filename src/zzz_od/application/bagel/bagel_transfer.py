@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import cv2
 import numpy as np
 
+from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_slots import slot_crop
 
@@ -132,6 +133,8 @@ class BagelTransferOperation(BagelOperation):
         self.pending_checks = 0
         self.pending_started = time.monotonic()
         self._stable_image = None
+        log.info('贝果启动转存：开始双击%s，坐标=%s；已转存=%s格；%s',
+                 label, center.tuple(), self.moved, self.observation)
         if not self.ctx.controller.click(center, press_time=0.08):
             return self.transfer_fail('双击物品的第一次点击失败')
         time.sleep(0.11)
@@ -145,6 +148,8 @@ class BagelTransferOperation(BagelOperation):
     def finish_transfer(self) -> None:
         """仅在子操作确认物品去向后推进进度。"""
         self.moved += 1
+        log.info('贝果启动转存确认：%s，累计=%s格；%s',
+                 self.source_label, self.moved, self.observation)
         self.pending = False
         self.read_misses = 0
         self._stable_image = None

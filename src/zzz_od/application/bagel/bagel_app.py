@@ -13,6 +13,7 @@ from zzz_od.application.bagel.bagel_deposit import BagelDeposit
 from zzz_od.application.bagel.bagel_enter import BagelEnter
 from zzz_od.application.bagel.bagel_exit import BagelExit
 from zzz_od.application.bagel.bagel_flow import BagelFlow, load_published_flow
+from zzz_od.application.bagel.bagel_log import BagelRoundLog
 from zzz_od.application.bagel.bagel_operation import (
     BagelOperation,
     BagelRecoverableFailure,
@@ -70,9 +71,28 @@ class BagelApp(ZApplication):
         self.flow_snapshot: dict[str, BagelFlow] = {}
         self.initial_clear_pending: bool = True
         self.last_return_status: str | None = None
+        self._round_log: BagelRoundLog = BagelRoundLog(self.display_name)
+
+    def _log_round_result(
+        self,
+        from_node_name: str,
+        node_name: str,
+        status_text: str,
+        result: OperationRoundResult | None,
+    ) -> None:
+        """正式应用与子操作使用相同的等待汇总规则。"""
+        if result is None:
+            self._round_log.flush()
+            super()._log_round_result(from_node_name, node_name, status_text, result)
+            return
+        self._round_log.record(
+            from_node_name, node_name, status_text, result,
+            self.node_retry_times, self.node_max_retry_times,
+        )
 
     def execute(self) -> OperationResult:
         """正式应用返回前完成本次运行的事件收尾。"""
+        self._round_log = BagelRoundLog(self.display_name)
         with bagel_run_events(self):
             try:
                 result = super().execute()
@@ -85,19 +105,25 @@ class BagelApp(ZApplication):
                         'stop_reason': result.status,
                         'stop_detail': str(result.data) if result.data is not None else None,
                     })
-                log.info('贝果任务结束：%s；整体重试已用 %s/%s',
-                         result.status, self.failure_retries_used, self.config.max_failure_retries)
+                log.info(
+                    '贝果任务结束：%s；入场=%s，成功=%s，失败结算=%s，连续空箱=%s；'
+                    '整体重试=%s/%s；最近正常结算返回=%s；耗时=%.1f秒',
+                    result.status, self.attempts, self.success_rounds, self.defeat_rounds,
+                    self.empty_rounds, self.failure_retries_used, self.config.max_failure_retries,
+                    self.last_return_status or '未记录', self.operation_usage_time,
+                )
                 return result
             finally:
+                self._round_log.flush()
                 release_flow_inputs(self.ctx)
 
     def after_operation_done(self, result: OperationResult) -> None:
         """正式任务停止也保存现场，程序错误或收尾失败不能只留下旧的局内截图。"""
+        self._round_log.flush()
         try:
             if not result.success and self.last_screenshot is not None:
                 self.screenshot()
                 path = self.save_screenshot()
-                log.error('贝果任务停止：%s；原因：%s', result.status, result.data)
                 bagel_usage.log_screenshot(path)
             elif not result.success:
                 log.warning('没有可保存的现场截图。请查看相关日志。')
@@ -224,9 +250,8 @@ class BagelApp(ZApplication):
         if map_id == 'janus_high_b':
             log.info('第 %s 次抽到白鸽工地地铁站复活点，开始收集', self.attempts)
             return self.round_success(self.STATUS_B)
-        log.info('第 %s 次非支持出生点，退出重开', self.attempts)
-        log.info('当前出生点不支持收集，正在退出重开。本次不计成功，不清理仓库，也不消耗整体重试次数。出生点重选没有次数上限。')
-        log.info('抽到录像店或白鸽工地地铁站出生点后，程序开始收集。如需结束任务，请使用程序的停止操作。')
+        log.info('贝果出生识别：第 %s 次入场，非支持出生点，退出重选；不计成功、不清理、不消耗整体重试',
+                 self.attempts)
         return self.round_success(self.STATUS_SKIP)
 
     @node_from(from_name='识别出生点', status=STATUS_SKIP)
@@ -285,15 +310,17 @@ class BagelApp(ZApplication):
                 self.empty_rounds = 0
             elif result.status == BagelDeposit.STATUS_EMPTY:
                 self.empty_rounds += 1
-            log.info('贝果单局结算：%s；已入仓 %s 局，连续空箱 %s 局',
-                     result.status, self.success_rounds, self.empty_rounds)
+            log.info('贝果单局结算：第 %s 次入场，出生点=%s，结果=%s；成功=%s，连续空箱=%s，出售累计=%s/%s',
+                     self.attempts, self.matched_map_id, result.status,
+                     self.success_rounds, self.empty_rounds, self.rounds_since_sell, self.config.sell_interval)
         return self.round_by_op_result(result)
 
     def _settle_warehouse(self, finishing: bool = False) -> OperationResult:
         """应用持有本任务出售计数，结算成功后再更新；失败局也复用。"""
         due = self.rounds_since_sell + 1 >= self.config.sell_interval
-        log.info('贝果出售计划：累计入仓 %s/%s；正常结束补卖=%s',
-                 self.rounds_since_sell, self.config.sell_interval, finishing)
+        log.info('贝果出售计划：自动清理=%s，累计入仓=%s/%s，本局非空入仓后到期=%s，正常结束补卖=%s',
+                 self.config.auto_clean_warehouse, self.rounds_since_sell,
+                 self.config.sell_interval, due, finishing)
         result = BagelSettleWarehouse(
             self.ctx, self.config.auto_clean_warehouse,
             filter_groups=self.config.clean_filter_groups(),
@@ -374,8 +401,9 @@ class BagelApp(ZApplication):
         result = self._settle_warehouse()
         if result.success:
             self.defeat_rounds += 1
-            log.info('贝果失败局结算：%s；累计失败 %s 局，未计成功',
-                     result.status, self.defeat_rounds)
+            log.info('贝果失败局结算：第 %s 次入场，结果=%s；累计失败结算=%s，不计成功；出售累计=%s/%s',
+                     self.attempts, result.status, self.defeat_rounds,
+                     self.rounds_since_sell, self.config.sell_interval)
         return self._finish_failed_round(result, '入仓或清理')
 
     @node_from(from_name='失败局结算仓库')

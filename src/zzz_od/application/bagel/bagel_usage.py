@@ -198,6 +198,10 @@ def log_start(config: BagelConfig) -> None:
         '后续各局正常返回贝果主界面时，不重复传送。'
     )
     log.info('%s随后核对零携带和零投资。', LOADOUT_HINT)
+    log.info(
+        '出生点重选规则：只收集录像店或白鸽工地地铁站；其他出生点退出重选，'
+        '不计成功、不清理仓库、不消耗整体重试，重选次数不限；如需结束请手动停止。'
+    )
 
 
 def stop_guidance(status: str | None) -> str:

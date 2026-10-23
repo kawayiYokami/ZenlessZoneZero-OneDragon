@@ -9,6 +9,7 @@ from one_dragon.base.operation.operation import Operation
 from one_dragon.utils import str_utils
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
+from zzz_od.application.bagel.bagel_log import BagelRoundLog
 from zzz_od.operation.zzz_operation import ZOperation
 
 if TYPE_CHECKING:
@@ -92,6 +93,8 @@ class BagelRecoverableFailure:
 class BagelOperation(ZOperation):
     """贝果操作失败时保存最后画面，便于核对停在哪一步。"""
 
+    _round_log: BagelRoundLog
+
     STATUS_DEFEATED: str = '贝果撤离失败'
     STATUS_INTERRUPTED: str = '贝果搜查或解锁被打断'
     STATUS_CLEANUP_FAILED: str = '贝果收尾失败'
@@ -135,10 +138,31 @@ class BagelOperation(ZOperation):
             return True
         return self._has('前往备战', '贝果-选图')
 
+    def _log_round_result(
+        self,
+        from_node_name: str,
+        node_name: str,
+        status_text: str,
+        result: OperationRoundResult | None,
+    ) -> None:
+        """贝果合并相同等待，调试事件仍由框架逐轮发送。"""
+        if result is None:
+            self._round_log.flush()
+            super()._log_round_result(from_node_name, node_name, status_text, result)
+            return
+        self._round_log.record(
+            from_node_name, node_name, status_text, result,
+            self.node_retry_times, self.node_max_retry_times,
+        )
+
     def execute(self) -> OperationResult:
-        """操作返回前完成贝果本次执行的事件清理。"""
-        with bagel_run_events(self):
-            return super().execute()
+        """操作返回前完成事件清理，并输出最后一段重复等待。"""
+        self._round_log = BagelRoundLog(self.display_name)
+        try:
+            with bagel_run_events(self):
+                return super().execute()
+        finally:
+            self._round_log.flush()
 
     def is_bagel_result(self) -> bool:
         """识别 DEFEAT，不以地图名称或单角色零血量判断失败结算。"""
@@ -146,6 +170,7 @@ class BagelOperation(ZOperation):
 
     def after_operation_done(self, result: OperationResult) -> None:
         """保存失败现场；截图写入异常不能阻止框架释放事件监听。"""
+        self._round_log.flush()
         try:
             if not result.success and self.last_screenshot is not None:
                 path = self.save_screenshot()

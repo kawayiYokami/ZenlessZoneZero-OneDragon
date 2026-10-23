@@ -176,7 +176,8 @@ class BagelNavigate(BagelOperation):
             self.recovery = ContainerRecovery(lambda: self.operation_usage_time)
         self._invalidate_heading()
         self.turn_compensator.reset()
-        log.info('贝果导航路线快照：%s', self.vision.route.to_dict())
+        log.info('贝果导航：目标=%s，重新靠近=%s；路线快照=%s',
+                 self.destination, self.recovering, self.vision.route.to_dict())
 
     def minimap(self) -> MatLike:
         """按原生区域裁图，并将框架 RGB 截图转为定位模块的 BGR。"""

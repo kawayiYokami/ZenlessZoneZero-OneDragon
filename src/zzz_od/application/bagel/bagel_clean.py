@@ -215,7 +215,9 @@ class BagelCleanWarehouse(BagelOperation):
         if count is None:
             return self.round_fail(f'无法读取筛选数量（{text}），停止并保留现场')
         self._filter_count = count
-        log.info('贝果仓库清理：筛选命中 %s 件', count)
+        log.info('贝果出售筛选：条件=%s；命中=%s件，允许安全箱参与=%s；仓库基线=%s，安全箱基线=%s',
+                 '、'.join(name.removeprefix('筛选-') for name in sorted(self.filter_areas)),
+                 count, self.allow_safe_items, self._warehouse_before, self._safe_before)
         if count <= 0:
             return self.round_success('无需出售')
         return self.round_success('有待出售')
@@ -297,6 +299,9 @@ class BagelCleanWarehouse(BagelOperation):
                 return self.round_fail(
                     f'出售后仓库未腾位（{self._warehouse_before} -> {warehouse_after}），停止并保留现场',
                 )
+            log.info('贝果出售核验：筛选命中=%s件；仓库占用=%s -> %s，安全箱占用=%s -> %s；已回到仓库',
+                     self._filter_count, self._warehouse_before, warehouse_after,
+                     self._safe_before, safe_after)
             return self.round_success(self.STATUS_DONE)
         if self._has_area('出售获得标题') and self._has_area('出售获得货币'):
             if self.node_clicked:

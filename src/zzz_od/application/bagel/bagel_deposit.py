@@ -144,8 +144,8 @@ class BagelDeposit(BagelOperation):
             if pair[0] >= pair[1] and not self.return_on_remaining:
                 return self.round_fail('满仓后安全箱清空但仓库占用未变，不能证明物资已入仓')
         log.info(
-            '贝果入仓确认：安全箱已空，仓库 %s -> %s',
-            self.warehouse_before, warehouse_after,
+            '贝果入仓确认：安全箱 %s -> 0 格，仓库占用 %s -> %s',
+            self.safe_before, self.warehouse_before, warehouse_after,
         )
         return self.round_success(
             self.STATUS_DONE,

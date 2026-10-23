@@ -12,6 +12,7 @@ from pynput import mouse
 from one_dragon.base.controller.pc_button import pc_button_utils
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils import cv2_utils
+from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
 from zzz_od.application.bagel.bagel_container import ContainerRecovery, container_state
 from zzz_od.application.bagel.bagel_exit import BagelExit
@@ -111,6 +112,7 @@ class BagelRunFlow(BagelOperation):
         self.continuous_safe_unlock: bool = continuous_safe_unlock
         self.on_location_wait: Callable[[], None] | None = on_location_wait
         self._step_started_at: float = 0
+        self._logged_step_start: tuple[str, str] | None = None
 
     def handle_init(self) -> None:
         """每次执行从首个勾选步骤开始，提前校验画面资源。"""
@@ -124,6 +126,7 @@ class BagelRunFlow(BagelOperation):
         self._approach_step = None
         self._reapproach_pending = False
         self._step_started_at = 0
+        self._logged_step_start = None
         if self.ctx.screen_loader.get_area('战斗画面', '按键-普通攻击') is None:
             raise ValueError('缺少画面区域：战斗画面/按键-普通攻击')
         for area in (
@@ -145,7 +148,25 @@ class BagelRunFlow(BagelOperation):
         self.emit('snapshot', flow=self.flow.to_dict(), step_ids=self.step_ids, map_snapshot_id=self.vision.map.snapshot_id)
 
     def emit(self, kind: str, **details: object) -> None:
-        """同一事件用于界面与持久化记录。"""
+        """事件原样发送；文本日志补充步骤归属，重复前置检查只记一次开始。"""
+        step = self.flow.steps[self.index]
+        status = str(details.get('status') or '')
+        if kind == 'snapshot':
+            log.debug('贝果流程快照：%s', details)
+        elif kind == 'start':
+            key = (step.id, status)
+            if key != self._logged_step_start:
+                self._round_log.flush()
+                log.info('贝果步骤开始：流程=%s，步骤=%s/%s %s（%s），动作=%s，目标=%s；%s',
+                         self.flow.name, self.cursor + 1, len(self.indices), step.name,
+                         step.id, step.action, step.target, status)
+                self._logged_step_start = key
+        elif kind in ('done', 'failed'):
+            writer = log.info if kind == 'done' else log.error
+            writer('贝果步骤结束：流程=%s，步骤=%s/%s %s（%s），结果=%s；状态=%s，耗时=%.2f秒',
+                   self.flow.name, self.cursor + 1, len(self.indices), step.name, step.id,
+                   '通过' if kind == 'done' else '失败', status, details.get('elapsed', 0.0))
+            self._logged_step_start = None
         if self.on_event is not None:
             self.on_event(
                 {

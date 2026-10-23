@@ -102,6 +102,7 @@ class BagelStoreSafe(BagelOperation):
         self._left_grid_waited: bool = False
         self._badge_pending: set[int] = set()
         self._result_centers: tuple[Point, ...] = ()
+        self._logged_items: dict[str, tuple[tuple[int, str, str], ...]] = {}
         self._panel_guard: SearchPanelGuard = SearchPanelGuard()
         self._panel_wait_rounds: int = 0
         self._safe_unknown_rounds: int = 0
@@ -124,6 +125,7 @@ class BagelStoreSafe(BagelOperation):
         self._left_grid_waited = False
         self._badge_pending.clear()
         self._result_centers = ()
+        self._logged_items.clear()
         self._panel_guard.reset()
         self._panel_wait_rounds = 0
         self._safe_unknown_rounds = 0
@@ -208,6 +210,25 @@ class BagelStoreSafe(BagelOperation):
             self.last_screenshot, '贝果-局内', '搜查完成',
         ).is_success
 
+    def _log_recognized_items(self, area: str, marks: list[BagelSlotMark]) -> None:
+        """首次识别或格号、种类、品质变化时记录，避免等待期间重复打印。"""
+        items = tuple((mark.index, mark.item_type, mark.quality) for mark in marks)
+        if self._logged_items.get(area) == items:
+            return
+        previous = {index: (kind, quality) for index, kind, quality in self._logged_items.get(area, ())}
+        current = {index: (kind, quality) for index, kind, quality in items}
+        details: list[str] = []
+        for index, (kind, quality) in current.items():
+            if previous.get(index) == (kind, quality):
+                continue
+            before = previous.get(index)
+            change = f'（原种类={before[0]}，品质={before[1]}）' if before else ''
+            details.append(f'格 {index + 1}：种类={kind}，品质={quality}{change}')
+        for index in sorted(previous.keys() - current.keys()):
+            details.append(f'格 {index + 1}：不再进入本轮物品识别')
+        self._logged_items[area] = items
+        log.info('贝果物品识别：%s，当前 %s 格；%s', area, len(items), '；'.join(details) or '无已识别物品')
+
     def _ready_results(self, results: list[BagelSlotMark]) -> list[BagelSlotMark]:
         """只保留有效角标的非金币物品；角标未出现的格子继续等待。"""
         ready: list[BagelSlotMark] = []
@@ -238,15 +259,15 @@ class BagelStoreSafe(BagelOperation):
         states = slot_states(screen, self._result_centers)
         # 底部文字在揭示闪光结束前就可能变亮，所有候选还必须匹配有效角标。
         # 已确认格可以先处理；角标未确认的格子即使暂时掉回空档，也不能用于收尾。
-        results = [
-            mark for mark in inspect_occupied(
-                screen,
-                self._result_centers,
-                [index for index, state in enumerate(states) if state == SLOT_ITEM],
-            )
-            if mark.index not in self._unstorable
-        ]
-        results = self._ready_results(results)
+        results = inspect_occupied(
+            screen,
+            self._result_centers,
+            [index for index, state in enumerate(states) if state == SLOT_ITEM],
+        )
+        self._log_recognized_items('结果区', results)
+        results = self._ready_results([
+            mark for mark in results if mark.index not in self._unstorable
+        ])
         if not results:
             badge_wait = self._wait_for_badges()
             if badge_wait is not None:
@@ -265,9 +286,13 @@ class BagelStoreSafe(BagelOperation):
         if safe is None:
             return self._wait_for_safe_slots()
         self._safe_unknown_rounds = 0
+        safes = [
+            mark for mark in inspect_occupied(screen, SAFE_SLOT_CENTERS) if mark.index in safe.occupied
+        ]
+        self._log_recognized_items('安全箱', safes)
         choice = choose_store_action(
             results,
-            [mark for mark in inspect_occupied(screen, SAFE_SLOT_CENTERS) if mark.index in safe.occupied],
+            safes,
             safe.empty,
             self.blueprint_priority,
         )
@@ -310,13 +335,15 @@ class BagelStoreSafe(BagelOperation):
         self._pending_kind = choice.kind
         self._drag_repeated = 0
         self._left_grid_waited = False
+        previous_item = next((mark for mark in safes if mark.index == choice.dest_index), None)
+        destination_item = (
+            f'{previous_item.quality} {previous_item.item_type}' if previous_item is not None else '空格'
+        )
         log.info(
-            '贝果入箱：%s %s 结果格 %s -> %s格 %s',
-            choice.mark.quality,
-            choice.mark.item_type,
-            choice.source_index + 1,
-            _DEST_LABEL[choice.kind],
-            choice.dest_index + 1,
+            '贝果入箱：%s %s 结果格 %s %s -> %s格 %s %s；选择时目标=%s，蓝图优先=%s',
+            choice.mark.quality, choice.mark.item_type, choice.source_index + 1, source.tuple(),
+            _DEST_LABEL[choice.kind], choice.dest_index + 1, destination.tuple(),
+            destination_item, self.blueprint_priority,
         )
         self._drag_item(source, destination)
         return self.round_success('已拖拽一件', wait=0.7)
