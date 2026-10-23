@@ -334,6 +334,10 @@ class PluginDetailDialog(MaskDialogBase):
     # ------------------------------------------------------------------
 
     def _trigger(self, action: str) -> None:
-        """动作发出后立即关闭弹窗，具体处理交给页面。"""
-        self.action_triggered.emit(action)
+        """先关闭弹窗再发出动作，具体处理交给页面。
+
+        信号是同步连接的，先关再发才能保证处理函数（可能弹确认框、重建卡片）
+        运行时详情弹窗已经不在前台。
+        """
         self.close()
+        self.action_triggered.emit(action)

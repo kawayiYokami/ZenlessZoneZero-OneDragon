@@ -11,6 +11,7 @@ import contextlib
 import hashlib
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -210,11 +211,16 @@ class PluginOperationMixin:
         runner.deleteLater()
 
     def wait_for_market_load(self) -> None:
-        """等待市场线程结束，避免界面销毁时线程仍在运行。"""
+        """等待市场线程结束，避免界面销毁时线程仍在运行。
+
+        最多等 MARKET_WAIT_SECONDS 秒：下载卡住时也要能退出程序，宁可让线程
+        随进程结束，也不让界面无限挂住。
+        """
         runner = self._market_runner
         if runner is None or not runner.isRunning():
             return
-        while runner.isRunning():
+        deadline = time.monotonic() + self.MARKET_WAIT_SECONDS
+        while runner.isRunning() and time.monotonic() < deadline:
             runner.wait(50)
             QApplication.processEvents()
 
@@ -856,6 +862,9 @@ class PluginOperationMixin:
 
     CARD_SPACING = 12
     """卡片之间的间距，与 PluginCardGrid 保持一致。"""
+
+    MARKET_WAIT_SECONDS = 10.0
+    """关闭界面时等待市场线程的上限，超时后不再阻塞退出。"""
 
     def init_paging(self, grid: PluginCardGrid, pager: PluginPager) -> None:
         """接管卡片网格的分页。"""

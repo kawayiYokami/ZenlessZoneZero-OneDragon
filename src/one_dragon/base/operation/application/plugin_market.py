@@ -20,6 +20,9 @@ MARKET_URL = 'https://onedragon-anyone.github.io/plugin-registry/plugins.json'
 CACHE_TTL_SECONDS = 600
 """市场数据的本地缓存有效期，过期后重新拉取。"""
 
+MIN_BYTES_PER_SECOND = 1024
+"""市场数据下载的最低持续速度，低于该值即中止，避免服务端慢速滴流时线程长期不结束。"""
+
 
 @dataclass(frozen=True)
 class MarketRelease:
@@ -204,7 +207,11 @@ class PluginMarketService:
         from one_dragon.utils import http_utils
 
         target = Path(os_utils.get_path_under_work_dir('config', 'temp')) / 'plugin_market.json'
-        ok = http_utils.download_file(MARKET_URL, str(target))
+        ok = http_utils.download_file(
+            MARKET_URL,
+            str(target),
+            min_bytes_per_second=MIN_BYTES_PER_SECOND,
+        )
         if not ok or not target.exists():
             raise RuntimeError('插件市场数据下载失败')
         payload = json.loads(target.read_text(encoding='utf-8'))

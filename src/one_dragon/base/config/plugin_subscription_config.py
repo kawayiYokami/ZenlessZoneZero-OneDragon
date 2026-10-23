@@ -101,9 +101,10 @@ class PluginSubscriptionConfig(YamlConfig):
             命中的市场条目 id，未命中返回 None。
         """
         records = self.records
-        for registry_id, record in records.items():
-            if str(record.get('plugin_dir_name') or '') == plugin_dir_name:
-                return registry_id
+        if plugin_dir_name:
+            for registry_id, record in records.items():
+                if str(record.get('plugin_dir_name') or '') == plugin_dir_name:
+                    return registry_id
         if app_id:
             for registry_id, record in records.items():
                 if str(record.get('app_id') or '') == app_id:
