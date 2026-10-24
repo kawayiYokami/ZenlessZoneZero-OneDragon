@@ -342,6 +342,9 @@ class PluginOperationMixin:
             changelog_version=entry.latest_version,
             status_text=status_text,
             status_kind=status_kind,
+            warning_text=(
+                gt('插件仓库长期无法访问，可能已停止维护') if entry.stale else ''
+            ),
             homepage=entry.repo,
             actions=actions,
         )
@@ -872,16 +875,34 @@ class PluginOperationMixin:
         self._pager: PluginPager = pager
         self._all_cards: list[PluginCard] = []
         self._filtered_cards: list[PluginCard] = []
+        self._fixed_cards: list[PluginCard] = []
         self._keyword: str = ''
         self._page_index: int = 0
         self._page_size: int = self.PAGE_ROWS
         pager.page_changed.connect(self._on_page_index_changed)
+        grid.resized.connect(self._on_grid_resized)
+
+    def _on_grid_resized(self) -> None:
+        """网格宽度变化后按新宽度重算每页数量。"""
+        if self._calc_page_size() != self._page_size:
+            self.update_paging()
 
     def set_cards(self, cards: list[PluginCard]) -> None:
         """用一批新卡片替换当前列表，保留当前搜索词。"""
         self._all_cards = list(cards)
         self._page_index = 0
         self.set_card_filter(self._keyword)
+
+    def set_fixed_cards(self, cards: list[PluginCard]) -> None:
+        """设置不参与分页的固定卡片，例如单独一行展示的推荐插件。"""
+        self._fixed_cards = list(cards)
+        self._apply_fixed_visibility()
+
+    def _apply_fixed_visibility(self) -> None:
+        """按当前搜索词控制固定卡片的可见性。"""
+        text = self._keyword.casefold()
+        for card in self._fixed_cards:
+            card.setVisible(not text or text in card.title.casefold())
 
     def set_card_filter(self, keyword: str) -> None:
         """按关键字过滤卡片并回到第一页。"""
@@ -894,6 +915,7 @@ class PluginOperationMixin:
                 card for card in self._all_cards if text in card.title.casefold()
             ]
         self._page_index = 0
+        self._apply_fixed_visibility()
         self.update_paging()
 
     def update_paging(self) -> None:

@@ -15,7 +15,12 @@ from pathlib import Path
 from one_dragon.utils import os_utils
 from one_dragon.utils.log_utils import log
 
-MARKET_URL = 'https://onedragon-anyone.github.io/plugin-registry/plugins.json'
+MARKET_URL = 'https://onedragon-anyone.github.io/plugin-data/api/v1/plugins.json'
+"""插件市场索引地址。
+
+数据仓（OneDragon-Anyone/plugin-data）提供审核配置，构建产物发布到
+plugin-data 站点的 api/v1/ 下；旧地址 plugin-registry/plugins.json 已废弃。
+"""
 
 CACHE_TTL_SECONDS = 600
 """市场数据的本地缓存有效期，过期后重新拉取。"""
@@ -51,6 +56,10 @@ class MarketPlugin:
     latest: MarketRelease | None
     releases: list[MarketRelease]
     cover_url: str = ''
+    pinned: bool = False
+    """运营置顶，列表排序时排在前面。"""
+    stale: bool = False
+    """插件仓库长期无法访问，维护状态存疑。"""
 
     @property
     def is_listed(self) -> bool:
@@ -123,6 +132,8 @@ def _parse_plugin(raw: dict) -> MarketPlugin | None:
         latest=_parse_release(latest) if isinstance(latest, dict) else None,
         releases=releases,
         cover_url=str(raw.get('cover') or ''),
+        pinned=bool(raw.get('pinned')),
+        stale=bool(raw.get('stale')),
     )
 
 
@@ -251,6 +262,8 @@ class PluginMarketService:
                     'status': plugin.status,
                     'readmeHtml': plugin.readme_html,
                     'cover': plugin.cover_url,
+                    'pinned': plugin.pinned,
+                    'stale': plugin.stale,
                     'latest': _release_to_raw(plugin.latest),
                     'releases': [_release_to_raw(release) for release in plugin.releases],
                 }

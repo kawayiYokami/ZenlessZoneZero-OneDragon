@@ -20,6 +20,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPixmap,
     QRadialGradient,
+    QResizeEvent,
 )
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
@@ -115,10 +116,15 @@ class PluginCard(QWidget):
             'CaptionLabel { color: rgba(255, 255, 255, 0.80); background: transparent; }',
         )
 
+        self.warning_label: CaptionLabel = CaptionLabel(self)
+        self.warning_label.setVisible(False)
+        self.warning_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
         badge_row = QHBoxLayout()
         badge_row.setContentsMargins(0, 0, 0, 0)
         badge_row.addWidget(self.badge_label)
         badge_row.addStretch(1)
+        badge_row.addWidget(self.warning_label)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 12)
@@ -185,6 +191,35 @@ class PluginCard(QWidget):
         self.setEnabled(enabled)
         self.setCursor(
             Qt.CursorShape.PointingHandCursor if enabled else Qt.CursorShape.ArrowCursor
+        )
+
+    def set_warning(self, text: str) -> None:
+        """设置右上角的警示标签，空字符串表示隐藏。"""
+        self.warning_label.setText(text)
+        self.warning_label.setVisible(bool(text))
+        if not text:
+            return
+
+        self.warning_label.adjustSize()
+        self.warning_label.setFixedHeight(20)
+        self.warning_label.setMinimumWidth(self.warning_label.width() + 16)
+        self.warning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        setCustomStyleSheet(
+            self.warning_label,
+            'CaptionLabel {'
+            '  background-color: #8a6d00;'
+            '  color: #ffffff;'
+            '  border-radius: 10px;'
+            '  padding: 0 8px;'
+            '  font-size: 11px;'
+            '}',
+            'CaptionLabel {'
+            '  background-color: #8a6d00;'
+            '  color: #ffffff;'
+            '  border-radius: 10px;'
+            '  padding: 0 8px;'
+            '  font-size: 11px;'
+            '}',
         )
 
     def set_cover(self, cover: QPixmap | None) -> None:
@@ -385,6 +420,9 @@ class PluginPager(QWidget):
 class PluginCardGrid(QWidget):
     """卡片网格容器。"""
 
+    resized = Signal()
+    """网格尺寸变化信号，供分页按新的宽度重算每页数量。"""
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._cards: list[PluginCard] = []
@@ -392,6 +430,10 @@ class PluginCardGrid(QWidget):
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setHorizontalSpacing(12)
         self._layout.setVerticalSpacing(12)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self.resized.emit()
 
     @property
     def cards(self) -> list[PluginCard]:

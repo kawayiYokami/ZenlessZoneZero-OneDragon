@@ -57,6 +57,8 @@ class PluginDetailData:
     changelog_version: str = ''
     status_text: str = ''
     status_kind: str = ''
+    warning_text: str = ''
+    """灰色警示，用于仓库失联这类维护状态提示。"""
     homepage: str = ''
     actions: list[tuple[str, str]] = field(default_factory=list)
     """可执行操作，元素为 (动作标识, 按钮文字)；第一个动作按主要按钮绘制。"""
@@ -240,6 +242,12 @@ class PluginDetailDialog(MaskDialogBase):
             tags.setText(' · '.join(self._data.tags))
             tags.setTextColor('#8a8a8a', '#9a9a9a')
             text_box.addWidget(tags)
+
+        if self._data.warning_text:
+            warning = CaptionLabel(header)
+            warning.setText(self._data.warning_text)
+            warning.setTextColor('#8a6d00', '#e0b000')
+            text_box.addWidget(warning)
 
         layout.addLayout(text_box, 1)
 

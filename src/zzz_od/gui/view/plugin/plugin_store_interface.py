@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from functools import partial
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QResizeEvent
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
@@ -16,8 +16,10 @@ from qfluentwidgets import (
     FluentIcon,
     LineEdit,
     PushButton,
+    StrongBodyLabel,
 )
 
+from one_dragon.base.operation.application.plugin_info import PluginInfo
 from one_dragon.base.operation.application.plugin_market import (
     MarketPlugin,
     MarketSnapshot,
@@ -89,6 +91,14 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
         self.status_label.setVisible(False)
         layout.addWidget(self.status_label)
 
+        self.featured_label = StrongBodyLabel(gt('本期推荐'), content)
+        self.featured_label.setVisible(False)
+        layout.addWidget(self.featured_label)
+
+        self.featured_grid = PluginCardGrid(content)
+        self.featured_grid.setVisible(False)
+        layout.addWidget(self.featured_grid)
+
         self.card_grid = PluginCardGrid(content)
         layout.addWidget(self.card_grid)
 
@@ -97,6 +107,7 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
 
         layout.addStretch(1)
         self.init_paging(self.card_grid, self.pager)
+        self._content_layout = layout
         return content
 
     # ------------------------------------------------------------------
@@ -129,51 +140,32 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
         snapshot = self.market_snapshot
         if snapshot is None:
             return []
-        return [entry for entry in snapshot.plugins if entry.is_listed]
+        entries = [entry for entry in snapshot.plugins if entry.is_listed]
+        # 运营置顶的单独一行展示，这里保持置顶在前便于分组
+        return sorted(entries, key=lambda entry: not entry.pinned)
 
     def refresh_cards(self) -> None:
-        """重建商店卡片。"""
+        """重建商店卡片。置顶插件单独一行，其余按分页显示。"""
         self.card_grid.clear()
+        self.featured_grid.clear()
         self.reset_card_registry()
 
         entries = self._listed_entries()
         installed_map = self.installed_market_map()
-        cards: list[PluginCard] = []
-        for entry in entries:
-            plugin_info = installed_map.get(entry.plugin_id)
-            update_version = (
-                self.pending_update_version(plugin_info, entry)
-                if plugin_info is not None else ''
-            )
-            if plugin_info is None:
-                badge_text = gt('未订阅')
-                badge_kind = BADGE_NONE
-            elif update_version:
-                badge_text = gt('可更新 v{version}').format(version=update_version)
-                badge_kind = BADGE_UPDATE
-            else:
-                badge_text = gt('已订阅')
-                badge_kind = BADGE_SUBSCRIBED
 
-            meta_parts = []
-            if entry.latest_version:
-                meta_parts.append(f'v{entry.latest_version}')
-            if entry.author_name:
-                meta_parts.append(entry.author_name)
+        featured_cards = [
+            self._make_card(entry, self.featured_grid, installed_map)
+            for entry in entries if entry.pinned
+        ]
+        self.set_fixed_cards(featured_cards)
+        has_featured = bool(featured_cards)
+        self.featured_label.setVisible(has_featured)
+        self.featured_grid.setVisible(has_featured)
 
-            card = self.make_card(
-                title=entry.name,
-                meta_text=' · '.join(meta_parts),
-                seed=entry.plugin_id,
-                cover=self.cover_for(entry.plugin_id, entry.cover_url, plugin_info),
-                badge_text=badge_text,
-                badge_kind=badge_kind,
-                on_click=partial(self.open_market_detail, entry),
-                parent=self.card_grid,
-            )
-            self.remember_card(card, entry.plugin_id, entry.cover_url)
-            self.card_grid.add_card(card)
-            cards.append(card)
+        cards = [
+            self._make_card(entry, self.card_grid, installed_map)
+            for entry in entries if not entry.pinned
+        ]
 
         if entries:
             snapshot = self.market_snapshot
@@ -182,10 +174,62 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
                 text += gt('（来自缓存）')
             self._set_status(text)
         self.set_cards(cards)
+        # 推荐区显示或隐藏后必须让父布局重排，否则会保留 0 高度不显示卡片
+        self._content_layout.invalidate()
+        QTimer.singleShot(0, self._reflow_after_featured)
+
+    def _make_card(
+        self,
+        entry: MarketPlugin,
+        parent: QWidget,
+        installed_map: dict[str, PluginInfo],
+    ) -> PluginCard:
+        """按市场条目造一张卡片，订阅状态、封面与失联标记一并处理。"""
+        plugin_info = installed_map.get(entry.plugin_id)
+        update_version = (
+            self.pending_update_version(plugin_info, entry)
+            if plugin_info is not None else ''
+        )
+        if plugin_info is None:
+            badge_text = gt('未订阅')
+            badge_kind = BADGE_NONE
+        elif update_version:
+            badge_text = gt('可更新 v{version}').format(version=update_version)
+            badge_kind = BADGE_UPDATE
+        else:
+            badge_text = gt('已订阅')
+            badge_kind = BADGE_SUBSCRIBED
+
+        meta_parts = []
+        if entry.latest_version:
+            meta_parts.append(f'v{entry.latest_version}')
+        if entry.author_name:
+            meta_parts.append(entry.author_name)
+
+        card = self.make_card(
+            title=entry.name,
+            meta_text=' · '.join(meta_parts),
+            seed=entry.plugin_id,
+            cover=self.cover_for(entry.plugin_id, entry.cover_url, plugin_info),
+            badge_text=badge_text,
+            badge_kind=badge_kind,
+            on_click=partial(self.open_market_detail, entry),
+            parent=parent,
+        )
+        self.remember_card(card, entry.plugin_id, entry.cover_url)
+        if entry.stale:
+            card.set_warning(gt('仓库失联'))
+        parent.add_card(card)
+        return card
+
+    def _reflow_after_featured(self) -> None:
+        """推荐区显示状态变化后，等一轮事件再把父布局重排一次。"""
+        self.featured_grid.updateGeometry()
+        self._content_layout.invalidate()
 
     def set_controls_enabled(self, enabled: bool) -> None:
         self.refresh_btn.setEnabled(enabled)
-        for card in self._all_cards:
+        for card in self._all_cards + self._fixed_cards:
             card.set_enabled_state(enabled)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
