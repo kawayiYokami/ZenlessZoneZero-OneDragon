@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING
 
 from one_dragon.utils import debug_utils
 from one_dragon.utils.log_utils import log
+from zzz_od.application.bagel.bagel_const import (
+    CLEAN_MODE_CUSTOM,
+    CLEAN_QUALITIES,
+    CLEAN_TYPES,
+)
 
 if TYPE_CHECKING:
     from zzz_od.application.bagel.bagel_config import BagelConfig
@@ -69,7 +74,7 @@ HELP_SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ('特殊奖励', '特殊奖励指菲林、零号业绩。同品质时高于贵重物品，但不跨品质优先；开启本开关时仍低于蓝图。'),
             ('关闭开关', '先比非材料，再比品质和类型。同品质时，特殊奖励 > 贵重物品 > 蓝图 > 门禁卡 > 战术棱镜 > 装备 > 战术道具 > 其他。'),
             ('识别限制', '只看物品格角标，不按名称或解锁状态判断。角标未识别时按其他处理，无法保证蓝图优先。'),
-            ('仅影响局内入箱', '不改变收集范围，不因获得蓝图停止，也不提供仓库防出售保护。'),
+            ('仅影响局内入箱', '不改变收集范围，不因获得蓝图停止。仓库是否出售取决于自动出售开关和出售方案。'),
         ),
     ),
     (
@@ -78,13 +83,14 @@ HELP_SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ('出售风险', '范围包含已有库存。安全箱内符合条件的物品也可能被出售。'),
             (
                 '默认方案',
-                '出售贵重物品、战术棱镜、其他物品中的 C/B/A/S 品质。'
-                '不出售 Z 品质、装备、战术道具和门禁卡。',
+                '先出售贵重物品、战术棱镜的 C/B/A/S 品质，再出售其他物品的 C/B/A 品质。'
+                'S 品质其他物品保留，包括金色蓝图和材料；同时保留全部 Z 品质、装备、战术道具和门禁卡。',
             ),
             (
                 '自定义方案',
                 '每步至少选一种类型和一种品质。物品同时符合两项才出售。'
-                '选择 Z 品质或装备时，也按此规则出售。步骤按从上到下的顺序执行。',
+                '选择 Z 品质或装备时，也按此规则出售。步骤按从上到下的顺序执行。'
+                '选择其他类型和 S 品质时，金色蓝图和 S 品质材料也会出售。切换方案不清空自定义步骤。',
             ),
             (
                 '选项不完整',
@@ -165,7 +171,7 @@ def log_start(config: BagelConfig) -> None:
         config.max_failure_retries,
     )
     log.info(
-        '蓝图优先：%s。仅影响局内安全箱，不提供仓库防出售保护。',
+        '蓝图优先：%s。仅影响局内入箱，仓库出售按当前方案执行。',
         '开启' if config.blueprint_priority else '关闭',
     )
     if config.auto_clean_warehouse:
@@ -174,20 +180,20 @@ def log_start(config: BagelConfig) -> None:
             config.sell_interval,
         )
         log.info(
-            '满仓或入仓后残留时，最多出售一次；有残留再入仓一次，仍残留或状态不明则停止。安全箱物品也在筛选范围内。'
+            '满仓或入仓后残留时，最多出售一轮，一轮包含方案的全部步骤；有残留再入仓一次，仍残留或状态不明则停止。安全箱物品也在筛选范围内。'
         )
         groups = config.clean_filter_groups()
-        parts = [
-            '、'.join(name.removeprefix('筛选-') for name in areas) or '未选择'
-            for areas in groups
-        ]
-        log.info(
-            '清理仓库已开启。按顺序出售 %s 步：%s。同一步内类型和品质须同时符合。已有库存也会出售。',
-            len(groups),
-            '；'.join(
-                f'第{index}步 {text}' for index, text in enumerate(parts, start=1)
-            ),
-        )
+        custom = config.clean_mode == CLEAN_MODE_CUSTOM
+        log.info('自动出售已开启，使用%s方案，共 %s 步：', '自定义' if custom else '默认', len(groups))
+        for index, areas in enumerate(groups, start=1):
+            types = '、'.join(name for name in CLEAN_TYPES if f'筛选-{name}' in areas)
+            qualities = '/'.join(name for name in CLEAN_QUALITIES if f'筛选-{name}' in areas)
+            log.info('第 %s 步：类型「%s」；品质「%s」。', index, types, qualities)
+        if not custom:
+            log.info('默认保留 S 品质其他物品，包括金色蓝图和材料；同时保留全部 Z 品质、装备、战术道具和门禁卡。')
+        elif any('筛选-其他' in areas and '筛选-S' in areas for areas in groups):
+            log.info('当前自定义方案包含 S 品质其他物品，金色蓝图和 S 品质材料也会出售。')
+        log.info('同一步内类型和品质须同时符合。已有库存也会出售。')
     else:
         log.info('清理仓库已关闭。程序只入仓，不出售物品。')
     log.info(

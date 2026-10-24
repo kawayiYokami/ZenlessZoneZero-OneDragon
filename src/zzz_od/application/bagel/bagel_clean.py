@@ -7,10 +7,7 @@ import numpy as np
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.log_utils import log
-from zzz_od.application.bagel.bagel_const import (
-    DEFAULT_CLEAN_QUALITIES,
-    DEFAULT_CLEAN_TYPES,
-)
+from zzz_od.application.bagel.bagel_const import CLEAN_QUALITIES, CLEAN_TYPES
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_screen import (
     parse_capacity_pair,
@@ -23,11 +20,9 @@ if TYPE_CHECKING:
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
     from zzz_od.context.zzz_context import ZContext
 
-FILTER_TICKS: tuple[str, ...] = tuple(
-    f'筛选-{name}' for name in (*DEFAULT_CLEAN_TYPES, *DEFAULT_CLEAN_QUALITIES)
-)
-FILTER_EXCLUDED: tuple[str, ...] = (
-    '筛选-全部', '筛选-Z', '筛选-装备', '筛选-战术道具', '筛选-门禁卡',
+# 所有按钮都须核对，不能随默认方案缩小，否则会漏掉上一步留下的选中项。
+FILTER_AREAS: tuple[str, ...] = tuple(
+    f'筛选-{name}' for name in ('全部', *CLEAN_TYPES, *CLEAN_QUALITIES)
 )
 # 选中底色覆盖大片按钮；未选中的彩色图标（门禁卡实测约 0.025）不能当成过渡态。
 _FILTER_SELECTED_MIN: float = 0.2
@@ -35,20 +30,22 @@ _FILTER_UNSELECTED_MAX: float = 0.08
 
 
 class BagelCleanWarehouse(BagelOperation):
-    """用仓库快速选择卖掉贵重物品、战术棱镜、其他的 C–S，只留 Z。"""
+    """执行显式指定的一步出售，逐项核对快速选择并确认出售结果。"""
 
     STATUS_SKIPPED: str = '没有可出售物品'
     STATUS_DONE: str = '确认出售已完成'
 
     def __init__(
-        self, ctx: ZContext, filter_areas: tuple[str, ...] = FILTER_TICKS,
+        self, ctx: ZContext, filter_areas: tuple[str, ...],
         *, allow_safe_items: bool = False,
     ) -> None:
         """入仓后调用；不点整理，不点自动转化货币。"""
         super().__init__(ctx, op_name='贝果-仓库清理', timeout_seconds=90)
-        all_areas = (*FILTER_EXCLUDED, *FILTER_TICKS)
-        if len(set(filter_areas)) != len(filter_areas) or any(name not in all_areas or name == '筛选-全部' for name in filter_areas):
+        if len(set(filter_areas)) != len(filter_areas) or any(name not in FILTER_AREAS or name == '筛选-全部' for name in filter_areas):
             raise ValueError('清理筛选包含重复或未知区域')
+        if (not any(f'筛选-{name}' in filter_areas for name in CLEAN_TYPES)
+                or not any(f'筛选-{name}' in filter_areas for name in CLEAN_QUALITIES)):
+            raise ValueError('清理每一步都要同时选择类型和品质')
         self.filter_areas: frozenset[str] = frozenset(filter_areas)
         self._filter_count: int | None = None
         self._safe_was_clear: bool = False
@@ -110,7 +107,7 @@ class BagelCleanWarehouse(BagelOperation):
     def _filter_states(self) -> dict[str, bool] | None:
         """读取全部筛选按钮的蓝底选中态；过渡色或区域缺失时不作判断。"""
         states: dict[str, bool] = {}
-        for name in (*FILTER_EXCLUDED, *FILTER_TICKS):
+        for name in FILTER_AREAS:
             area = self.ctx.screen_loader.get_area('贝果-仓库', name)
             if area is None:
                 return None
@@ -186,7 +183,10 @@ class BagelCleanWarehouse(BagelOperation):
                 return self.round_wait('等待筛选状态更新', wait=0.25)
         if states is None:
             return self.round_retry('筛选状态不清晰', wait=0.5)
-        for name, selected in states.items():
+        # 先取消范围外的选项，避免切换步骤时暂时扩大类型与品质的组合。
+        ordered = sorted(states, key=lambda name: name in self.filter_areas)
+        for name in ordered:
+            selected = states[name]
             if selected == (name in self.filter_areas):
                 continue
             result = self.round_by_find_and_click_area(

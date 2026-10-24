@@ -11,8 +11,7 @@ from zzz_od.application.bagel.bagel_const import (
     CLEAN_MODE_DEFAULT,
     CLEAN_QUALITIES,
     CLEAN_TYPES,
-    DEFAULT_CLEAN_QUALITIES,
-    DEFAULT_CLEAN_TYPES,
+    DEFAULT_CLEAN_FILTER_GROUPS,
 )
 
 
@@ -69,7 +68,7 @@ class BagelConfig(ApplicationConfig):
 
     @property
     def auto_clean_warehouse(self) -> bool:
-        """入仓后是否用快速选择卖掉 C–S 的贵重物品、战术棱镜和其他。"""
+        """是否按当前出售方案清理仓库。"""
         return self.get('auto_clean_warehouse', True)
 
     @auto_clean_warehouse.setter
@@ -93,7 +92,7 @@ class BagelConfig(ApplicationConfig):
 
     @property
     def clean_mode(self) -> str:
-        """default 用固定类型和品质；custom 按 clean_steps 顺序多次出售。"""
+        """default 用两步默认方案；custom 按 clean_steps 顺序多次出售。"""
         return self._text_mode('clean_mode', CLEAN_MODE_DEFAULT)
 
     @clean_mode.setter
@@ -150,10 +149,9 @@ class BagelConfig(ApplicationConfig):
         self.clean_steps = steps
 
     def clean_filter_groups(self) -> tuple[tuple[str, ...], ...]:
-        """每步快速选择要点中的区域名。默认只有固定的一步。"""
+        """每步快速选择要点中的区域名，默认与自定义都保留步骤边界。"""
         if self.clean_mode != CLEAN_MODE_CUSTOM:
-            names = (*DEFAULT_CLEAN_TYPES, *DEFAULT_CLEAN_QUALITIES)
-            return (tuple(f'筛选-{name}' for name in names),)
+            return DEFAULT_CLEAN_FILTER_GROUPS
         return tuple(
             tuple(f'筛选-{name}' for name in (*step.types, *step.qualities))
             for step in self.clean_steps
@@ -227,9 +225,9 @@ class BagelConfig(ApplicationConfig):
 
 
 class BagelCleanMode(Enum):
-    """清理方案。默认用固定组合，自定义用勾选。"""
+    """清理方案。默认分两步保留金色蓝图，自定义按已保存的步骤出售。"""
 
-    DEFAULT = ConfigItem('默认', CLEAN_MODE_DEFAULT, '默认出售贵重物品、战术棱镜和其他物品的 C–S 品质')
+    DEFAULT = ConfigItem('默认', CLEAN_MODE_DEFAULT, '贵重物品、战术棱镜卖 C/B/A/S；其他只卖 C/B/A')
     CUSTOM = ConfigItem('自定义', CLEAN_MODE_CUSTOM, '按勾选的类型和品质出售')
 
 

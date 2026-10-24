@@ -38,8 +38,7 @@ from zzz_od.application.bagel import bagel_usage
 from zzz_od.application.bagel.bagel_const import (
     APP_ID,
     CLEAN_MODE_CUSTOM,
-    DEFAULT_CLEAN_QUALITIES,
-    DEFAULT_CLEAN_TYPES,
+    DEFAULT_CLEAN_STEPS,
 )
 from zzz_od.gui.app_setting.bagel_setting_widgets import (
     AutoSaleSwitch,
@@ -146,7 +145,7 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         self.blueprint_priority: SwitchSettingCard = SwitchSettingCard(
             icon=FluentIcon.DOCUMENT,
             title='蓝图优先',
-            content='开启时优先拾取蓝图。建议开启',
+            content='优先拾取蓝图。仅影响局内入箱。',
             parent=widget,
         )
         self.blueprint_priority.setFixedHeight(88)
@@ -251,21 +250,39 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         return card
 
     def _make_default_scope(self, parent: QWidget) -> QWidget:
-        """默认范围以标签显示，数据使用业务常量。"""
+        """每一步同排显示类型和品质，默认步骤与实际出售共用业务常量。"""
         widget = QWidget(parent)
-        layout = QGridLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(16)
-        layout.setVerticalSpacing(12)
-        layout.setColumnStretch(1, 1)
-        layout.addWidget(CaptionLabel('物品类型', widget), 0, 0)
-        layout.addWidget(tag_row(DEFAULT_CLEAN_TYPES, widget), 0, 1)
-        layout.addWidget(CaptionLabel('品质', widget), 1, 0)
-        layout.addWidget(tag_row(DEFAULT_CLEAN_QUALITIES, widget), 1, 1)
-        layout.addWidget(CardSeparator(widget), 2, 0, 1, 2)
-        label = CaptionLabel('默认不出售 Z 品质、装备、战术道具和门禁卡。', widget)
+        column = QVBoxLayout(widget)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(12)
+        hint = CaptionLabel('按以下顺序出售，每一步都需同时符合物品类型和品质。', widget)
+        hint.setWordWrap(True)
+        column.addWidget(hint)
+        table = QGridLayout()
+        table.setHorizontalSpacing(16)
+        table.setVerticalSpacing(12)
+        table.setColumnStretch(1, 1)
+        table.setColumnStretch(2, 1)
+        for index, title in enumerate(('执行顺序', '物品类型', '品质')):
+            table.addWidget(CaptionLabel(title, widget), 0, index)
+        for row, (types, qualities) in enumerate(DEFAULT_CLEAN_STEPS, start=1):
+            table.addWidget(CaptionLabel(f'第 {row} 步', widget), row, 0)
+            table.addWidget(tag_row(types, widget), row, 1)
+            table.addWidget(tag_row(qualities, widget), row, 2)
+        column.addLayout(table)
+        keep_hint = QLabel('金色蓝图默认保留', widget)
+        keep_hint.setObjectName('blueprintKeepHint')
+        FluentStyleSheet.LABEL.apply(keep_hint)
+        setFont(keep_hint, 13)
+        setCustomStyleSheet(
+            keep_hint,
+            'QLabel#blueprintKeepHint { color: #236344; background: #edf7f0; border: 1px solid #b6d8c2; border-radius: 5px; padding: 10px 12px; }',
+            'QLabel#blueprintKeepHint { color: #a6dfbe; background: #29322e; border: 1px solid #455a4d; border-radius: 5px; padding: 10px 12px; }',
+        )
+        column.addWidget(keep_hint)
+        label = CaptionLabel('同时保留全部 Z 品质，以及装备、战术道具和门禁卡。', widget)
         label.setWordWrap(True)
-        layout.addWidget(label, 3, 0, 1, 2)
+        column.addWidget(label)
         return widget
 
     def _make_custom_scope(self, parent: QWidget) -> QWidget:
@@ -308,6 +325,19 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
             'QLabel#zWarning { color: #e9c986; background: #342b23; border: 1px solid #67503b; border-radius: 5px; padding: 10px 12px; }',
         )
         layout.addWidget(self.z_warning)
+        self.blueprint_sale_warning: QLabel = QLabel(
+            '自定义范围包含 S 品质「其他」，金色蓝图和 S 品质材料也会出售。', widget
+        )
+        self.blueprint_sale_warning.setWordWrap(True)
+        self.blueprint_sale_warning.setObjectName('blueprintSaleWarning')
+        FluentStyleSheet.LABEL.apply(self.blueprint_sale_warning)
+        setFont(self.blueprint_sale_warning, 13)
+        setCustomStyleSheet(
+            self.blueprint_sale_warning,
+            'QLabel#blueprintSaleWarning { color: #805000; background: #fff8eb; border: 1px solid #e8d3a7; border-radius: 5px; padding: 10px 12px; }',
+            'QLabel#blueprintSaleWarning { color: #e9c986; background: #342b23; border: 1px solid #67503b; border-radius: 5px; padding: 10px 12px; }',
+        )
+        layout.addWidget(self.blueprint_sale_warning)
         self.total_preview: SaleScopePreview = SaleScopePreview(widget)
         layout.addWidget(self.total_preview)
         return widget
@@ -336,6 +366,9 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         self.sale_validation.setText(validation)
         self.sale_validation.setVisible(bool(validation))
         self.z_warning.setVisible(any('Z' in step.qualities for step in steps))
+        self.blueprint_sale_warning.setVisible(any(
+            '其他' in step.types and 'S' in step.qualities for step in steps
+        ))
         self.total_preview.set_steps(steps)
 
     def _rebuild_clean_steps(self) -> None:

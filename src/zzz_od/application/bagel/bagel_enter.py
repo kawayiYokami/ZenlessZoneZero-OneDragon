@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.log_utils import log
-from zzz_od.application.bagel.bagel_clean import FILTER_TICKS
 from zzz_od.application.bagel.bagel_clear_loadout import BagelClearLoadout
-from zzz_od.application.bagel.bagel_const import RECOMMENDED_VALUE
+from zzz_od.application.bagel.bagel_const import (
+    DEFAULT_CLEAN_FILTER_GROUPS,
+    RECOMMENDED_VALUE,
+)
 from zzz_od.application.bagel.bagel_exit import BagelExit
 from zzz_od.application.bagel.bagel_investment import read_investment
 from zzz_od.application.bagel.bagel_open_compendium import BagelOpenCompendium
@@ -42,13 +44,17 @@ class BagelEnter(BagelOperation):
     def __init__(
         self, ctx: ZContext, *, allow_clear_loadout: bool = False,
         allow_world_recovery: bool = False, prepare_shortcut_entry: bool = False,
-        recovery_auto_clean: bool = False, recovery_filter_areas: tuple[str, ...] = FILTER_TICKS,
+        recovery_auto_clean: bool = False, recovery_filter_areas: tuple[str, ...] | None = None,
         recovery_filter_groups: tuple[tuple[str, ...], ...] | None = None,
     ) -> None:
         """正式应用首次入场允许清空并重建快捷手册入口；独立工具默认复用现有贝果页。"""
         super().__init__(ctx, op_name='贝果-零携带入场', timeout_seconds=660 if allow_clear_loadout else 240)
         self.recovery_auto_clean: bool = recovery_auto_clean
-        self.recovery_filter_groups: tuple[tuple[str, ...], ...] = recovery_filter_groups or (recovery_filter_areas,)
+        self.recovery_filter_groups: tuple[tuple[str, ...], ...] = (
+            recovery_filter_groups if recovery_filter_groups is not None
+            else (recovery_filter_areas,) if recovery_filter_areas is not None
+            else DEFAULT_CLEAN_FILTER_GROUPS
+        )
         self.allow_clear_loadout: bool = allow_clear_loadout
         self.allow_world_recovery: bool = allow_world_recovery
         self.prepare_shortcut_entry: bool = prepare_shortcut_entry

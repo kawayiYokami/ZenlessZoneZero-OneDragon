@@ -6,7 +6,8 @@ from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel import bagel_screen
-from zzz_od.application.bagel.bagel_clean import FILTER_TICKS, BagelCleanWarehouse
+from zzz_od.application.bagel.bagel_clean import BagelCleanWarehouse
+from zzz_od.application.bagel.bagel_const import DEFAULT_CLEAN_FILTER_GROUPS
 from zzz_od.application.bagel.bagel_deposit import BagelDeposit
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_slots import safe_occupied_indices
@@ -24,15 +25,19 @@ class BagelSettleWarehouse(BagelOperation):
     STATUS_DONE: str = BagelDeposit.STATUS_DONE
 
     def __init__(
-        self, ctx: ZContext, auto_clean: bool, filter_areas: tuple[str, ...] = FILTER_TICKS,
+        self, ctx: ZContext, auto_clean: bool, filter_areas: tuple[str, ...] | None = None,
         *, sell_due: bool = True, starting: bool = False,
         filter_groups: tuple[tuple[str, ...], ...] | None = None,
     ) -> None:
-        """应用决定本次是否到期；满仓或残留允许提前出售。自定义多步按顺序各卖一次。"""
+        """应用决定本次是否到期；满仓或残留允许提前出售。未指定范围时使用两步默认方案。"""
         super().__init__(ctx, op_name='贝果-结算仓库', timeout_seconds=180)
         self.starting: bool = starting
         self.auto_clean: bool = auto_clean
-        self.filter_groups: tuple[tuple[str, ...], ...] = filter_groups or (filter_areas,)
+        self.filter_groups: tuple[tuple[str, ...], ...] = (
+            filter_groups if filter_groups is not None
+            else (filter_areas,) if filter_areas is not None
+            else DEFAULT_CLEAN_FILTER_GROUPS
+        )
         self.sell_due: bool = sell_due
         self.deposit_status: str = BagelDeposit.STATUS_EMPTY
         self.sale_completed: bool = False
