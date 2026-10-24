@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from one_dragon.base.geometry.point import Point
+from one_dragon.utils import cv2_utils, os_utils
 
 if TYPE_CHECKING:
     from cv2.typing import MatLike
@@ -30,9 +33,14 @@ _SLOT_HALF: int = 32
 # 有图标时 58.37–67.50。阈值取在两者中间，既不会把空槽当占用，
 # 也不会漏掉图标面积小的物品。
 _OCCUPIED_STD_MIN: float = 20.0
-# 空槽还有一层上限，避免把高亮过渡、遮挡或异常画面当成可用的空槽。
+# 空槽保留暗色纹理与时钟图标；纯黑、纯色遮挡和高亮过渡不作为可用空格。
+_EMPTY_MIN_STD: float = 1.0
 _EMPTY_MAX_STD: float = 12.0
+_EMPTY_MIN_MEAN: float = 12.0
 _EMPTY_MAX_MEAN: float = 45.0
+_LOCK_MATCH_MIN: float = 0.9
+# 接近挂锁但未达到确认阈值时保留未知，不能继续按低方差判空。
+_LOCK_UNCERTAIN_MIN: float = 0.75
 _APPEARANCE_MEAN_DIFF_MIN: float = 12.0
 
 # 结果格的三种状态。
@@ -102,14 +110,29 @@ def locate_result_centers(screen: MatLike) -> tuple[Point, ...] | None:
 
 @dataclass(frozen=True)
 class SafeSlotIndices:
-    """安全箱按原显示位置编号的占用格与可用空格。
-
-    安全箱五个格子全部可用：格内的时钟图标表示该格闲置，不是锁定，
-    因此这里只区分「已占用」和「可以放东西」。
-    """
+    """安全箱按原显示位置编号；挂锁不可用，时钟图标仍表示可用空格。"""
 
     occupied: tuple[int, ...]
     empty: tuple[int, ...]
+    locked: tuple[int, ...]
+
+    @property
+    def capacity(self) -> int:
+        """实际可用容量不包含锁定格。"""
+        return len(self.occupied) + len(self.empty)
+
+
+@lru_cache(maxsize=1)
+def _safe_lock_template() -> MatLike | None:
+    """读取已有挂锁模板；缺失或无有效纹理时不能继续判空。"""
+    path = Path(os_utils.get_work_dir()) / 'assets/template/bagel/safe_slot_locked/raw.png'
+    image = cv2_utils.read_image(str(path)) if path.is_file() else None
+    if image is None:
+        return None
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    if gray.shape != (56, 48) or float(np.std(gray)) < 1:
+        return None
+    return gray
 
 
 def inspect_safe_slots(
@@ -120,28 +143,37 @@ def inspect_safe_slots(
 
     Args:
         screen: 框架截图，RGB。
-        centers: 安全箱格心。
+        centers: 非空的安全箱格心序列，数量不限定为五格。
     """
-    if screen is None or screen.shape != (1080, 1920, 3) or len(centers) != 5:
+    if screen is None or screen.shape != (1080, 1920, 3) or not centers:
+        return None
+    template = _safe_lock_template()
+    if template is None:
         return None
     gray = cv2.cvtColor(screen, cv2.COLOR_RGB2GRAY)
     occupied: list[int] = []
     empty: list[int] = []
+    locked: list[int] = []
     for index, center in enumerate(centers):
+        search = slot_crop(gray, center, half=48)
         crop = slot_crop(gray, center)
-        if crop is None or crop.shape != (64, 64):
+        if search is None or search.shape != (96, 96) or crop is None or crop.shape != (64, 64):
+            return None
+        score = float(cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED).max())
+        if score >= _LOCK_MATCH_MIN:
+            locked.append(index)
+            continue
+        if score >= _LOCK_UNCERTAIN_MIN:
             return None
         deviation = float(np.std(crop))
         if deviation >= _OCCUPIED_STD_MIN:
             occupied.append(index)
-        elif deviation <= _EMPTY_MAX_STD and float(np.mean(crop)) <= _EMPTY_MAX_MEAN:
-            # 闲置槽里有暗色时钟图标，整体依然很暗、很平，按可用空格处理。
+        elif (_EMPTY_MIN_STD <= deviation <= _EMPTY_MAX_STD
+                and _EMPTY_MIN_MEAN <= float(np.mean(crop)) <= _EMPTY_MAX_MEAN):
             empty.append(index)
         else:
             return None
-    if len(occupied) + len(empty) < 2:
-        return None
-    return SafeSlotIndices(tuple(occupied), tuple(empty))
+    return SafeSlotIndices(tuple(occupied), tuple(empty), tuple(locked))
 
 
 def safe_occupied_indices(screen: MatLike) -> tuple[int, ...] | None:

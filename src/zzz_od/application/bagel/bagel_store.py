@@ -186,7 +186,7 @@ class BagelStoreSafe(BagelOperation):
         if self._safe_unknown_rounds <= 3:
             return self.round_wait('安全箱格子暂不明确，等待下一帧', wait=0.3)
         self._clear_pending()
-        return self._give_up('安全箱格子状态不明')
+        return self.round_fail('安全箱格子状态不明，停止并保留现场')
 
     def _search_ready(self) -> bool:
         """搜查面板与安全箱同时可见才允许拖拽；武备箱与电子保险箱标题均可。"""
@@ -285,10 +285,7 @@ class BagelStoreSafe(BagelOperation):
         safe = inspect_safe_slots(screen)
         if safe is None:
             return self._wait_for_safe_slots()
-        self._safe_unknown_rounds = 0
-        safes = [
-            mark for mark in inspect_occupied(screen, SAFE_SLOT_CENTERS) if mark.index in safe.occupied
-        ]
+        safes = inspect_occupied(screen, SAFE_SLOT_CENTERS, safe.occupied)
         self._log_recognized_items('安全箱', safes)
         choice = choose_store_action(
             results,
@@ -297,6 +294,7 @@ class BagelStoreSafe(BagelOperation):
             self.blueprint_priority,
         )
         if choice is None:
+            self._safe_unknown_rounds = 0
             # 安全箱满了、现有候选又都不比箱内的好，不等于没东西可拿：还有格子
             # 在揭示时，下一帧可能冒出更好的物品。先等揭示完再收工。
             badge_wait = self._wait_for_badges()
@@ -326,6 +324,15 @@ class BagelStoreSafe(BagelOperation):
         recheck = self._recheck_source(choice.source_index, choice.mark.item_type)
         if recheck is not None:
             return recheck
+        current_safe = inspect_safe_slots(self.last_screenshot)
+        if current_safe is None:
+            return self._wait_for_safe_slots()
+        self._safe_unknown_rounds = 0
+        if current_safe.locked != safe.locked:
+            return self.round_fail('拖拽前安全箱开放格变化，停止并保留现场')
+        eligible = current_safe.empty if choice.kind == ACTION_FILL else current_safe.occupied
+        if choice.dest_index not in eligible:
+            return self.round_wait('目标格状态变化，重新挑选', wait=0.2)
         if choice.kind == ACTION_SWAP:
             self._swap_seen.add(choice.source_index)
         self._pending_before = self.last_screenshot.copy()
@@ -467,7 +474,20 @@ class BagelStoreSafe(BagelOperation):
         if safe is None:
             return self._wait_for_safe_slots()
         self._safe_unknown_rounds = 0
-        if self._drag_visually_ok(kind, before, source, destination):
+        safe_before = inspect_safe_slots(before)
+        destination_index = next(
+            (index for index, center in enumerate(SAFE_SLOT_CENTERS)
+             if center.tuple() == destination.tuple()), None,
+        )
+        if (safe_before is None or destination_index is None
+                or safe.locked != safe_before.locked or destination_index in safe.locked):
+            return self.round_fail('无法核对拖拽目标的开放状态，停止并保留现场')
+        eligible_before = safe_before.empty if kind == ACTION_FILL else safe_before.occupied
+        if destination_index not in eligible_before:
+            return self.round_fail('拖拽前目标格状态不符，停止并保留现场')
+        if kind == ACTION_SWAP and destination_index not in safe.occupied:
+            return self.round_fail('对换后安全箱目标格不再占用，停止并保留现场')
+        if destination_index in safe.occupied and self._drag_visually_ok(kind, before, source, destination):
             self._clear_pending()
             self._drag_repeated = 0
             self._left_grid_waited = False
@@ -478,7 +498,7 @@ class BagelStoreSafe(BagelOperation):
             return self.round_success('继续装入', wait=0.2)
         after = self.last_screenshot
         source_now = slot_occupied(after, source)
-        dest_now = slot_occupied(after, destination)
+        dest_now = destination_index in safe.occupied
         if (
             kind == ACTION_FILL
             and source_now
