@@ -14,7 +14,6 @@ from PySide6.QtGui import QColor, QDesktopServices, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +32,7 @@ from qfluentwidgets import (
 )
 
 from one_dragon.utils.i18_utils import gt
+from one_dragon_qt.widgets.fast_scroll_area import FastScrollArea
 
 ACTION_SUBSCRIBE = 'subscribe'
 ACTION_UNSUBSCRIBE = 'unsubscribe'
@@ -281,14 +281,7 @@ class PluginDetailDialog(MaskDialogBase):
         return row
 
     def _build_body(self) -> QWidget:
-        scroll = QScrollArea(self.widget)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
-            'QScrollArea { background-color: transparent; border: none; }'
-            'QScrollArea > QWidget > QWidget { background-color: transparent; }'
-        )
+        scroll = FastScrollArea(orient=Qt.Orientation.Vertical, parent=self.widget)
         scroll.viewport().setAutoFillBackground(False)
 
         content = QWidget(scroll)
