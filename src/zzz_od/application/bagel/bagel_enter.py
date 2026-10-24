@@ -351,7 +351,7 @@ class BagelEnter(BagelOperation):
         if not zero_loadout(values):
             if self.allow_clear_loadout and not self.clear_attempted:
                 return self.round_success('需要清空启动战备')
-            return self.round_fail('无法确认零携带，请先清空武备、装备、道具、背包和安全箱')
+            return self.round_fail(f'无法确认零携带，请先清空武备、装备、道具、背包和安全箱；五项读数 {values}')
         result = self.round_by_find_and_click_area(self.last_screenshot, '贝果-备战', '前往空洞')
         if result.is_success:
             self.zero_checked = True
