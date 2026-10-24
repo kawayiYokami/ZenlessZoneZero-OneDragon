@@ -99,6 +99,10 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
         self.featured_grid.setVisible(False)
         layout.addWidget(self.featured_grid)
 
+        self.list_label = StrongBodyLabel(gt('全部插件'), content)
+        self.list_label.setVisible(False)
+        layout.addWidget(self.list_label)
+
         self.card_grid = PluginCardGrid(content)
         layout.addWidget(self.card_grid)
 
@@ -166,6 +170,8 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
             self._make_card(entry, self.card_grid, installed_map)
             for entry in entries if not entry.pinned
         ]
+        # 只有推荐区和普通列表同时存在时才需要分区标注
+        self.list_label.setVisible(has_featured and bool(cards))
 
         if entries:
             snapshot = self.market_snapshot
