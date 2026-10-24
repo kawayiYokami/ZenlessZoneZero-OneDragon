@@ -8,6 +8,7 @@ from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_screen import parse_capacity_pair, read_area
 from zzz_od.application.bagel.bagel_slots import safe_occupied_indices
+from zzz_od.application.bagel.bagel_wait_warehouse import BagelWaitWarehouse
 
 if TYPE_CHECKING:
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
@@ -61,9 +62,24 @@ class BagelDeposit(BagelOperation):
         pair = self._warehouse_pair()
         return None if pair is None else pair[0]
 
+    def _close_mimic_notice(self) -> OperationRoundResult | None:
+        """节点交接时出现提示则复用仓库等待；已有入仓基线不在此覆盖。"""
+        if not self._has('标题', '贝果-拟态单质提示'):
+            return None
+        operation = BagelWaitWarehouse(self.ctx)
+        result = operation.execute()
+        self.last_screenshot = operation.last_screenshot
+        self.last_screenshot_time = operation.last_screenshot_time
+        if not result.success:
+            return self.round_by_op_result(result)
+        return self.round_wait('拟态单质提示已关闭，重新核对仓库', wait=0.5)
+
     @operation_node(name='核对安全箱并入仓', is_start_node=True, timeout_seconds=20)
     def prepare_and_click(self) -> OperationRoundResult:
         """空箱直接成功结束；有物则记录基线后点击放入仓库。"""
+        notice = self._close_mimic_notice()
+        if notice is not None:
+            return notice
         if not self._warehouse_ready():
             return self.round_retry('未到结算仓库', wait=1)
         safe_count = self._safe_count()
@@ -88,6 +104,10 @@ class BagelDeposit(BagelOperation):
     @operation_node(name='确认安全箱清空', timeout_seconds=20)
     def confirm_cleared(self) -> OperationRoundResult:
         """点击入仓后安全箱必须清空；堆叠可不增仓库格数，但不能减少。"""
+        notice = self._close_mimic_notice()
+        if notice is not None:
+            self._full_waits = 0
+            return notice
         if not self._warehouse_ready():
             self._full_waits = 0
             return self.round_wait('等待入仓后的仓库画面', wait=0.5)

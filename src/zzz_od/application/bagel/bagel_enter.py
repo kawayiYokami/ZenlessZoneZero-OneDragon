@@ -105,7 +105,8 @@ class BagelEnter(BagelOperation):
         """只在首次入场恢复遗留局，按当前画面正常退出。"""
         if not self.allow_clear_loadout:
             return self.round_success()
-        if self.is_bagel_result() or self._has('提示', '贝果-退出确认'):
+        if (self.is_bagel_result() or self._has('提示', '贝果-退出确认')
+                or self._has('标题', '贝果-拟态单质提示')):
             return self._exit_starting_game()
         if self._has('大地图图例'):
             result = self.round_by_click_area('贝果-局内', '大地图返回')
