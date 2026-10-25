@@ -27,6 +27,7 @@ from zzz_od.application.bagel.bagel_route_vision import BagelSpawnMatcher
 from zzz_od.application.bagel.bagel_run_flow import BagelRunFlow, release_flow_inputs
 from zzz_od.application.bagel.bagel_settle import BagelSettleWarehouse
 from zzz_od.application.bagel.bagel_slots import safe_occupied_indices
+from zzz_od.application.bagel.bagel_turn_compensation import BagelTurnCompensator
 from zzz_od.application.zzz_application import ZApplication
 
 if TYPE_CHECKING:
@@ -43,6 +44,7 @@ class BagelApp(ZApplication):
     STATUS_SKIP: str = '非支持出生点，退出重开'
     STATUS_A: str = '录像店复活点，开始收集'
     STATUS_B: str = '白鸽工地地铁站复活点，开始收集'
+    STATUS_C: str = '单廊双容器复活点，开始收集'
 
     def __init__(
         self, ctx: ZContext, config: BagelConfig, record: BagelRunRecord,
@@ -71,6 +73,7 @@ class BagelApp(ZApplication):
         self.flow_snapshot: dict[str, BagelFlow] = {}
         self.initial_clear_pending: bool = True
         self.last_return_status: str | None = None
+        self._turn_compensator: BagelTurnCompensator | None = None
         self._round_log: BagelRoundLog = BagelRoundLog(self.display_name)
 
     def _log_round_result(
@@ -164,6 +167,7 @@ class BagelApp(ZApplication):
         self.flow_snapshot = {}
         self.initial_clear_pending = True
         self.last_return_status = None
+        self._turn_compensator = None
 
     def _spawn_matcher(self) -> BagelSpawnMatcher:
         """延迟加载出生匹配，避免无资源环境构造失败。"""
@@ -250,6 +254,9 @@ class BagelApp(ZApplication):
         if map_id == 'janus_high_b':
             log.info('第 %s 次抽到白鸽工地地铁站复活点，开始收集', self.attempts)
             return self.round_success(self.STATUS_B)
+        if map_id == 'janus_high_c':
+            log.info('第 %s 次抽到单廊双容器复活点，开始收集', self.attempts)
+            return self.round_success(self.STATUS_C)
         log.info('贝果出生识别：第 %s 次入场，非支持出生点，退出重选；不计成功、不清理、不消耗整体重试',
                  self.attempts)
         return self.round_success(self.STATUS_SKIP)
@@ -273,17 +280,21 @@ class BagelApp(ZApplication):
 
     @node_from(from_name='识别出生点', status=STATUS_A)
     @node_from(from_name='识别出生点', status=STATUS_B)
+    @node_from(from_name='识别出生点', status=STATUS_C)
     @operation_node(name='执行局内流程', screenshot_before_round=False)
     def run_flow(self) -> OperationRoundResult:
         """按出生地执行发布流程；与开发工具共用同一执行器。"""
         if self.matched_map_id not in self.flow_snapshot:
             return self.round_fail('缺少已识别出生地的发布流程')
+        if self._turn_compensator is None:
+            self._turn_compensator = BagelTurnCompensator(self.ctx.controller)
         result = BagelRunFlow(
             self.ctx, self.flow_snapshot[self.matched_map_id],
             map_snapshot=self._spawn_matcher().vision(self.matched_map_id).map,
             continuous_safe_unlock=True,
             on_location_wait=lambda: log.info(bagel_usage.LOCATION_WAIT_HINT),
             blueprint_priority=self.config.blueprint_priority,
+            turn_compensator=self._turn_compensator,
         )
         outcome = result.execute()
         if result.last_screenshot is not None:

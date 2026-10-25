@@ -84,7 +84,7 @@ if TYPE_CHECKING:
 
 def route_color(stage: str) -> QColor:
     """普通移动使用统一蓝色，只有靠近目标才按容器区分。"""
-    return QColor({'move': '#006cba', 'box': '#a96100', 'safe': '#7851a9'}[stage])
+    return QColor({'move': '#006cba', 'box': '#a96100', 'safe': '#7851a9', 'mech': '#14876d'}[stage])
 
 
 class RoutePointItem(QtWidgets.QGraphicsEllipseItem):
@@ -318,7 +318,7 @@ class BagelRouteEditor(QDialog):
         self.trace_check.toggled.connect(self._draw)
         map_layout.addWidget(self.trace_check)
         map_layout.addWidget(self.view, 1)
-        legend = BodyLabel('蓝色：普通移动　橙色：靠近武备箱　紫色：靠近保险箱')
+        legend = BodyLabel('蓝色：普通移动　橙色：武备箱　紫色：电子保险箱　绿色：机械保险箱')
         legend.setWordWrap(True)
         map_layout.addWidget(legend)
         splitter.addWidget(map_panel)
@@ -379,6 +379,7 @@ class BagelRouteEditor(QDialog):
         self.target_combo: ComboBox = ComboBox(self)
         self.target_combo.addItem('武备箱', userData='box')
         self.target_combo.addItem('电子保险箱', userData='safe')
+        self.target_combo.addItem('机械保险箱', userData='mech')
         self.target_combo.currentIndexChanged.connect(self.edit_step)
         form.addRow('操作对象', self.target_combo)
         self.target_help: BodyLabel = BodyLabel(self)
@@ -445,6 +446,7 @@ class BagelRouteEditor(QDialog):
             '距离位置小于此数值就算到达。取消勾选可修改；范围越小，要求越精确。'
         )
         self.stop_check: CheckBox = CheckBox('到达这点先停步，再继续', self)
+        self.stop_check.setToolTip('取消勾选后，可连续通过与下一勾选移动步骤参数相同的路点；单独试跑仍会到点停步。')
         for spin in (self.x_input, self.y_input, self.tolerance_input):
             spin.editingFinished.connect(self.edit_point)
         self.tolerance_default.clicked.connect(self.edit_point)
@@ -595,9 +597,13 @@ class BagelRouteEditor(QDialog):
             self.name_edit.setText(step.name)
             if step.action not in ('move', 'approach'):
                 self.rules.setText(ACTION_RULES[step.action])
-            self.target_combo.setCurrentIndex(1 if step.target == 'safe' else 0)
+            target_index = self.target_combo.findData(step.target)
+            self.target_combo.setCurrentIndex(max(0, target_index))
             if step.action == 'interact':
-                panel = '电子保险箱的光圈解锁界面或已解锁的搜查界面' if step.target == 'safe' else '武备箱的搜查界面'
+                panel = (
+                    '电子保险箱的光圈解锁界面或已解锁的搜查界面'
+                    if step.target == 'safe' else f'{self.target_combo.currentText()}的搜查界面'
+                )
                 self.rules.setText(
                     f'先站在出现{self.target_combo.currentText()}交互提示的位置，再按交互键。\n'
                     f'完成条件：打开{panel}。解锁和收集由后续步骤完成。'
@@ -653,11 +659,12 @@ class BagelRouteEditor(QDialog):
             self.property_form.setRowVisible(widget, move)
         self.property_form.setRowVisible(self.interaction_input, approach)
         self.type_input.setEnabled(step is not None and not self.running)
-        self.property_form.setRowVisible(self.stop_check, False)
+        self.property_form.setRowVisible(self.stop_check, step is not None and step.action == 'move')
         if step is not None and step.action == 'move':
             point = step.waypoints[0]
+            behavior = '完成后松开移动键' if point.stop else '连续执行时可直接通过，单独执行时停步'
             self.rules.setText(
-                f'走向“{point.name}”，完成后松开移动键。\n'
+                f'走向“{point.name}”，{behavior}。\n'
                 f'完成条件：进入目的地 {point.arrival_radius:g} 地图像素以内；'
                 f'或已越过目的地，且仍在 {point.passed_radius:g} 地图像素以内。'
             )
@@ -711,7 +718,7 @@ class BagelRouteEditor(QDialog):
         if step.action == 'interact':
             return (
                 '打开电子保险箱的光圈解锁界面或已解锁的搜查界面后结束。'
-                if step.target == 'safe' else '打开武备箱的搜查界面后结束。'
+                if step.target == 'safe' else f'打开{self.target_combo.currentText()}的搜查界面后结束。'
             )
         return {
             'spawn': '确认当前位置符合所选出生点。',
@@ -1226,7 +1233,8 @@ class BagelRouteEditor(QDialog):
         if event['kind'] == 'observation':
             self.trace.append(event['position'])
             self.trial_info.setText(
-                f'实测位置：{event["position"]} · 朝向：{event["angle"]}'
+                f'实测位置：{event["position"]} · 角色朝向：{event["angle"]}'
+                f' · 镜头朝向：{event.get("camera_angle")}（{event.get("camera_reason", "未观测")}）'
             )
             self._draw()
         elif event['kind'] in ('start', 'done', 'failed', 'finished'):

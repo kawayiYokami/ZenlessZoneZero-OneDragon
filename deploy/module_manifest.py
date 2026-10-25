@@ -106,7 +106,7 @@ if not getattr(sys, 'frozen', False):
     from itertools import count
     from logging import DEBUG
     from logging.handlers import TimedRotatingFileHandler
-    from math import atan2, degrees, hypot, isfinite
+    from math import asin, atan2, degrees, hypot, isfinite
     from packaging import version
     from pathlib import Path, PurePosixPath, PureWindowsPath
     from pyautogui import screenshot
@@ -134,6 +134,7 @@ if not getattr(sys, 'frozen', False):
     from shapely.geometry import Polygon
     from sklearn.preprocessing import scale
     from soundcard.mediafoundation import SoundcardRuntimeWarning
+    from statistics import median
     from threading import Event, Lock, RLock
     from time import perf_counter
     from types import MappingProxyType, ModuleType, TracebackType

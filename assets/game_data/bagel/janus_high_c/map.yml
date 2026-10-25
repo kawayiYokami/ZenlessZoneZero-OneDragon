@@ -1,0 +1,110 @@
+format_version: 1
+coordinate_version: 1
+map_id: janus_high_c
+origin_xy:
+- -165
+- -140
+size_wh:
+- 370
+- 348
+coordinate_unit: reference_spawn_pixel
+anchor_xy:
+- 100
+- 100
+spawn_xy:
+- 100
+- 100
+mask:
+  center_xy:
+  - 100
+  - 100
+  outer_radius: 89
+  inner_radius: 23
+  maximum_saturation: 65
+  minimum_brightness: 65
+  edge_margin: 2
+player_arrow:
+  crop_radius: 20
+  hsv_lower:
+  - 14
+  - 90
+  - 175
+  hsv_upper:
+  - 34
+  - 255
+  - 255
+  area_range:
+  - 150
+  - 400
+  maximum_center_offset: 5
+  tip_percentile: 80
+  minimum_green_spread: 50
+  minimum_tip_offset: 3
+registration_blur_size: 3
+representations:
+- clahe_min_channel
+- highpass_min_channel
+feature_edge_margin: 4
+match_window_size: 201
+match_window_stride: 100
+reference_centers:
+- name: spawn
+  xy:
+  - 100.0
+  - 100.0
+- name: box
+  xy:
+  - -68.5
+  - -30.8
+- name: safe
+  xy:
+  - 36
+  - -9.1
+- name: mech
+  xy:
+  - -21.9
+  - 20.8
+- name: a_spawn
+  xy:
+  - -78.5
+  - -14.8
+- name: alley
+  xy:
+  - -67.5
+  - -14.8
+- name: safe_corner
+  xy:
+  - 23.4
+  - -9.1
+- name: safe_approach
+  xy:
+  - 33.6
+  - -9.1
+landmarks:
+- name: 武备箱交互区
+  xy:
+  - -68.5
+  - -30.8
+  note: 由A底图武备箱坐标按固定平移换算，仅供位置对应参考；交互仍须核对当前提示
+- name: 电子保险箱交互区
+  xy:
+  - 36
+  - -9.1
+  note: 交互站位参考，不是箱子本体；实际到达与交互以当前定位和提示为准
+- name: 转场终点
+  xy:
+  - -67.5
+  - -14.8
+  note: 与A路线巷口对应的参考地标；C路线执行自己的flow.yml，不接管A流程
+- name: A出生点在C坐标系
+  xy:
+  - -78.5
+  - -14.8
+  note: A 出生点 (100,100) 按 δ=(-178.47,-114.78) 换算所得；仅供换算参考，不作为路点
+build:
+  profile: min_channel_percentile_25
+  sources:
+  - 12-56-58.mp4（108+146 帧）
+  - 13-15-28.mp4（108 帧）
+  note: 既有建图记录使用bagel_build_lenient.py逐段建图，再按路线坐标叠加。原始输入和构建工具未完整归档，不能按此记录独立重建。
+  scale_correction: 既有记录包含1.0256倍缩放和原点平移，依据为31组匹配的尺度中位数由0.9751变为1.0017。对应原始匹配结果未完整归档，不作为当前定位准确率或通过率的依据。

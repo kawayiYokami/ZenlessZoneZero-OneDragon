@@ -645,6 +645,24 @@
     - 981
     - 696
     - 1010
+  - area_name: 机械保险箱交互
+    area_type: text
+    pc_rect:
+    - 1285
+    - 440
+    - 1660
+    - 740
+    text: 机械保险箱
+    lcs_percent: 1.0
+  - area_name: 机械保险箱标题
+    area_type: text
+    pc_rect:
+    - 1230
+    - 120
+    - 1565
+    - 180
+    text: 机械保险箱
+    lcs_percent: 1.0
 - screen_id: bagel_map
   screen_name: 贝果-选图
   app_id: bagel

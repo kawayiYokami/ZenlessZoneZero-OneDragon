@@ -5,6 +5,11 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from zzz_od.application.bagel.bagel_const import (
+    CONTAINER_PROMPT_AREAS,
+    CONTAINER_TITLE_AREAS,
+    MECH_HOLD_PRESS_TIME,
+)
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 
 if TYPE_CHECKING:
@@ -62,20 +67,23 @@ def container_state(operation: BagelOperation, target: str) -> str:
         """只读取当前截图。"""
         return operation._has(area, screen)
 
-    box = has('搜查容器标题')
-    safe = has('电子保险箱标题')
+    titles = {name: has(area) for name, area in CONTAINER_TITLE_AREAS.items()}
     unlocking = has('大保险解锁提示')
     slots = has('搜查安全箱')
     searching = has('搜查进行中') or has('搜查完成')
-    if target == 'safe' and unlocking and not box:
+    if target == 'safe' and unlocking and not titles['box'] and not titles['mech']:
         return 'ready'
-    if (box if target == 'box' else safe) and not (safe if target == 'box' else box) and slots and searching:
+    mine = titles.get(target, False)
+    others = any(hit for name, hit in titles.items() if name != target)
+    if mine and not others and slots and searching:
         return 'ready'
-    if box or safe or unlocking or slots or searching:
+    if any(titles.values()) or unlocking or slots or searching:
         return 'panel'
     if not has('按键-普通攻击', '战斗画面'):
         return 'unknown'
-    prompt = '武备箱交互' if target == 'box' else '电子保险箱交互'
+    prompt = CONTAINER_PROMPT_AREAS.get(target)
+    if prompt is None:
+        raise ValueError(f'未知容器目标：{target}')
     return 'prompt' if has(prompt) and has('交互F键') else 'missing'
 
 
@@ -140,7 +148,8 @@ class BagelContainerOperation(BagelOperation):
         self.recovery.interactions += 1
         self.recovery.last_interact_at = self.recovery.clock()
         self.recovery.last_input_frame = max(time.time(), self.last_screenshot_time)
-        self.ctx.controller.interact(press=True, press_time=0.2, release=True)
+        press_time = MECH_HOLD_PRESS_TIME if self.target == 'mech' else 0.2
+        self.ctx.controller.interact(press=True, press_time=press_time, release=True)
         self.recovery.last_interact_at = self.recovery.clock()
         self.recovery.last_input_frame = max(time.time(), self.last_screenshot_time)
         return self.round_success(sent_status, wait=wait_after_interact)
