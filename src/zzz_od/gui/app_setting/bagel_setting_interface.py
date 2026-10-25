@@ -18,6 +18,7 @@ from qfluentwidgets import (
     FluentIcon,
     FluentStyleSheet,
     IconWidget,
+    MessageBox,
     MessageBoxBase,
     PushButton,
     ScrollArea,
@@ -30,6 +31,8 @@ from qfluentwidgets import (
 )
 from qfluentwidgets.components.widgets.card_widget import CardSeparator
 
+from one_dragon.utils import os_utils
+from one_dragon.utils.log_utils import log
 from one_dragon_qt.services.app_setting.app_setting_provider import GroupIdMixin
 from one_dragon_qt.utils.config_utils import get_prop_adapter
 from one_dragon_qt.widgets.setting_card.switch_setting_card import SwitchSettingCard
@@ -139,6 +142,11 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         help_button = TransparentPushButton('使用说明', widget)
         help_button.clicked.connect(self._show_usage)
         header.addWidget(help_button, 0, Qt.AlignmentFlag.AlignTop)
+        # 路线编辑器依赖源码目录与网页资源，打包运行时没有这些文件，只在源码模式提供入口。
+        if not os_utils.run_in_exe():
+            editor_button = TransparentPushButton('打开路线编辑器', widget)
+            editor_button.clicked.connect(self._open_route_editor)
+            header.addWidget(editor_button, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
         layout.addWidget(self._make_end_conditions(widget))
@@ -426,6 +434,19 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         dialog = _UsageDialog(self.window())
         dialog.exec()
         dialog.deleteLater()
+
+    def _open_route_editor(self) -> None:
+        """打开网页版路线编辑器；录制与写盘由 Python 负责。"""
+        from zzz_od.gui.view.bagel.bagel_route_web_editor import BagelRouteEditor
+
+        try:
+            editor = BagelRouteEditor(self.ctx, self.window())
+        except (OSError, ValueError) as error:
+            log.error('打开贝果路线编辑器失败', exc_info=True)
+            MessageBox('无法打开路线编辑器', str(error), self.window()).exec()
+            return
+        editor.exec()
+        editor.deleteLater()
 
     def on_interface_shown(self) -> None:
         """进入页面后绑定当前账号和应用组。"""

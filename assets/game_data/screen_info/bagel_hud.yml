@@ -148,21 +148,28 @@ area_list:
   - 981
   - 696
   - 1010
-- area_name: 机械保险箱交互
-  area_type: text
+- area_name: 交互图标
   pc_rect:
-  - 1285
-  - 440
-  - 1660
-  - 740
-  text: 机械保险箱
-  lcs_percent: 1.0
-- area_name: 机械保险箱标题
-  area_type: text
+  - 1324
+  - 430
+  - 1640
+  - 760
+  template_sub_dir: bagel
+  template_id: interact_icon
+  template_match_threshold: 0.8
+- area_name: 刷卡图标
   pc_rect:
-  - 1230
-  - 120
-  - 1565
-  - 180
-  text: 机械保险箱
-  lcs_percent: 1.0
+  - 1324
+  - 430
+  - 1640
+  - 760
+  template_sub_dir: bagel
+  template_id: card_key_icon
+  template_match_threshold: 0.8
+- area_name: 交互条目文字
+  pc_rect:
+  - 1382
+  - 430
+  - 1640
+  - 760
+

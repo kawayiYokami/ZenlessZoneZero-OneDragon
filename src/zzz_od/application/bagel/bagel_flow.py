@@ -18,7 +18,7 @@ from zzz_od.application.bagel.bagel_const import (
     NAV_SAFE_BRAKE_DISTANCE,
 )
 from zzz_od.application.bagel.bagel_route import (
-    MAP_LABELS,
+    ROUTE_LABELS,
     BagelRoute,
     BagelWaypoint,
     _number,
@@ -216,7 +216,7 @@ class BagelFlow:
         if set(data) - {'version', 'id', 'name', 'map_id', 'steps'}:
             raise ValueError('流程包含未知字段')
         map_id = data.get('map_id')
-        if not isinstance(map_id, str) or map_id not in MAP_LABELS:
+        if not isinstance(map_id, str) or map_id not in ROUTE_LABELS:
             raise ValueError('流程包含未知地图')
         values = data.get('steps')
         if not isinstance(values, list) or len(values) > 300:
@@ -392,7 +392,7 @@ class BagelFlow:
         if set(data) - {'version', 'id', 'name', 'map_id', 'steps'}:
             raise ValueError('流程包含未知字段')
         map_id = data.get('map_id')
-        if not isinstance(map_id, str) or map_id not in MAP_LABELS:
+        if not isinstance(map_id, str) or map_id not in ROUTE_LABELS:
             raise ValueError('流程包含未知地图')
         values = data.get('steps')
         if not isinstance(values, list) or len(values) > 100:
@@ -581,7 +581,7 @@ def load_published_flow(map_id: str) -> BagelFlow:
 
 def draft_path(map_id: str) -> Path:
     """开发草稿与账号覆盖配置分开存储。"""
-    if map_id not in MAP_LABELS:
+    if map_id not in ROUTE_LABELS:
         raise ValueError('未知地图')
     return (
         Path(os_utils.get_work_dir())

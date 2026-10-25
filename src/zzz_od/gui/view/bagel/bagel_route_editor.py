@@ -6,7 +6,6 @@ import argparse
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-import PySide6.QtGui as QtGui
 import PySide6.QtWidgets as QtWidgets
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import (
@@ -60,11 +59,18 @@ from zzz_od.application.bagel.bagel_flow import (
 )
 from zzz_od.application.bagel.bagel_map_model import BagelMapModel
 from zzz_od.application.bagel.bagel_route import (
-    MAP_LABELS,
+    COORDINATE_LIMIT,
+    ROUTE_LABELS,
     BagelWaypoint,
     resource_root,
+    route_layer,
 )
 from zzz_od.gui.view.bagel.bagel_flow_trial import FlowTrialWorker
+from zzz_od.gui.view.bagel.bagel_light_theme import (
+    apply_light_palette,
+    enter_light_theme,
+    restore_theme,
+)
 from zzz_od.gui.view.bagel.bagel_step_editor import (
     MOVEMENT_MODES,
     BagelStepDialog,
@@ -80,6 +86,15 @@ if TYPE_CHECKING:
     from PySide6.QtGui import QCloseEvent, QWheelEvent
 
     from zzz_od.context.zzz_context import ZContext
+
+
+def _apply_light_palette(widget: QWidget) -> None:
+    """编辑器固定使用浅色，不跟随全局主题。
+
+    Args:
+        widget: 需要应用浅色配色的窗口。
+    """
+    apply_light_palette(widget)
 
 
 def route_color(stage: str) -> QColor:
@@ -194,36 +209,28 @@ class BagelRouteEditor(QDialog):
         """加载开发草稿；损坏文件直接报错，不回退到另一条路线。"""
         super().__init__(parent)
         self.setFont(QFont('Microsoft YaHei UI', 10))
-        palette = self.palette()
-        for role in (QtGui.QPalette.ColorRole.Window, QtGui.QPalette.ColorRole.Button):
-            palette.setColor(role, QColor(248, 249, 252))
-        palette.setColor(QtGui.QPalette.ColorRole.Base, QColor('#ffffff'))
-        for role in (
-            QtGui.QPalette.ColorRole.WindowText,
-            QtGui.QPalette.ColorRole.Text,
-            QtGui.QPalette.ColorRole.ButtonText,
-        ):
-            palette.setColor(role, QColor('#202020'))
-        self.setPalette(palette)
-        self.setAutoFillBackground(True)
+        # qfluentwidgets 的输入框、下拉框按全局主题绘制，只改调色板会白底配深色控件。
+        # 打开编辑器时临时切成浅色，关闭时还原；期间主窗口被模态框挡住，不受影响。
+        self._previous_theme: Theme = enter_light_theme()
+        _apply_light_palette(self)
         self.instance_idx: int = instance_idx
         self.ctx: ZContext | None = ctx
         self.owns_context: bool = ctx is None
         self.models: dict[str, BagelMapModel] = {
-            key: BagelMapModel.load(key) for key in MAP_LABELS
+            key: BagelMapModel.load(route_layer(key)) for key in ROUTE_LABELS
         }
         self.drafts: dict[str, BagelFlow] = {
             key: read_flow(draft_path(key))
             if draft_path(key).exists()
             else load_published_flow(key)
-            for key in MAP_LABELS
+            for key in ROUTE_LABELS
         }
         if any(flow.map_id != key for key, flow in self.drafts.items()):
             raise ValueError('草稿与文件地图标识不一致')
         self.saved: dict[str, BagelFlow] = dict(self.drafts)
-        self.undo_stack: dict[str, list[BagelFlow]] = {key: [] for key in MAP_LABELS}
-        self.redo_stack: dict[str, list[BagelFlow]] = {key: [] for key in MAP_LABELS}
-        self.checked_steps: dict[str, set[str]] = {key: set() for key in MAP_LABELS}
+        self.undo_stack: dict[str, list[BagelFlow]] = {key: [] for key in ROUTE_LABELS}
+        self.redo_stack: dict[str, list[BagelFlow]] = {key: [] for key in ROUTE_LABELS}
+        self.checked_steps: dict[str, set[str]] = {key: set() for key in ROUTE_LABELS}
         self.worker: FlowTrialWorker | None = None
         self.trace: list[tuple[float, float] | None] = []
         self._updating: bool = False
@@ -294,7 +301,7 @@ class BagelRouteEditor(QDialog):
         layout.addWidget(SubtitleLabel('贝果流程开发工具'))
         top = QHBoxLayout()
         self.map_combo: ComboBox = ComboBox(self)
-        for key, label in MAP_LABELS.items():
+        for key, label in ROUTE_LABELS.items():
             self.map_combo.addItem(label, userData=key)
         self.map_combo.currentIndexChanged.connect(self._switch_map)
         self.edit_widgets.append(self.map_combo)
@@ -392,8 +399,8 @@ class BagelRouteEditor(QDialog):
         self.point_name: LineEdit = LineEdit(self)
         self.point_name.editingFinished.connect(self.edit_point)
         form.addRow('位置名称', self.point_name)
-        self.x_input: DoubleSpinBox = self._spin(-1000, 1000)
-        self.y_input: DoubleSpinBox = self._spin(-1000, 1000)
+        self.x_input: DoubleSpinBox = self._spin(-COORDINATE_LIMIT, COORDINATE_LIMIT)
+        self.y_input: DoubleSpinBox = self._spin(-COORDINATE_LIMIT, COORDINATE_LIMIT)
         self.coordinate_row: QWidget = QWidget(self)
         coordinate_layout = QHBoxLayout(self.coordinate_row)
         coordinate_layout.setContentsMargins(0, 0, 0, 0)
@@ -721,7 +728,7 @@ class BagelRouteEditor(QDialog):
                 if step.target == 'safe' else f'打开{self.target_combo.currentText()}的搜查界面后结束。'
             )
         return {
-            'spawn': '确认当前位置符合所选出生点。',
+            'spawn': '确认当前坐标在路线起点 100 像素内。',
             'approach': '出现对应交互提示后完成；到点后等待两秒，仍无提示则停止并报错。',
             'unlock': '完成光圈解锁后结束；若已进入搜查界面，确认后直接完成。',
             'store': '处理物品并装入安全箱，保留搜查界面。',
@@ -886,7 +893,7 @@ class BagelRouteEditor(QDialog):
             self._select_step()
             self.status.setText('白鸽地图没有电子保险箱，请选择其他步骤类型。')
             return
-        xy = self.step.waypoints[-1].xy if self.step.waypoints else self.models[self.map_id].spawn
+        xy = self.step.waypoints[-1].xy if self.step.waypoints else self._fallback_xy()
         self._replace_step(change_action(self.step, action, xy))
 
     def edit_step(self) -> None:
@@ -975,7 +982,7 @@ class BagelRouteEditor(QDialog):
             s.waypoints[-1].xy
             for s in reversed(self.flow.steps[:self.step_list.currentRow() + 1])
             if s.waypoints
-        ), self.models[self.map_id].spawn)
+        ), self._fallback_xy())
         dialog = BagelStepDialog(self.map_id, previous, self)
         if dialog.exec() != QDialog.DialogCode.Accepted or dialog.step is None:
             dialog.deleteLater()
@@ -1050,8 +1057,33 @@ class BagelRouteEditor(QDialog):
             log.error('保存正式流程失败', exc_info=True)
             self.status.setText(f'保存正式流程失败：{error}')
 
+    def _first_waypoint(self) -> tuple[float, float] | None:
+        """取当前流程第一个路点，作为路线起点与新建步骤的参照。
+
+        Returns:
+            首个路点的全局坐标；流程里还没有路点时返回 None。
+        """
+        for step in self.flow.steps:
+            if step.waypoints:
+                return step.waypoints[0].xy
+        return None
+
+    def _fallback_xy(self) -> tuple[float, float]:
+        """新建步骤时没有可用参照点，就用该层底图中心附近的有效像素。
+
+        Returns:
+            可写入路点的全局坐标。
+
+        Raises:
+            ValueError: 分层底图没有任何有效像素。
+        """
+        first = self._first_waypoint()
+        if first is not None:
+            return first
+        return self.models[self.map_id].reference_xy()
+
     def _draw(self) -> None:
-        """绘制出生位置和移动目的地，选中时显示范围，实测轨迹保留断线。"""
+        """绘制路线与目的地，选中时显示范围，实测轨迹保留断线。"""
         scene = self.view.scene()
         scene.clear()
         model = self.models[self.map_id]
@@ -1090,40 +1122,17 @@ class BagelRouteEditor(QDialog):
                     )
                 )
         self.view.content_rect = bounds.adjusted(-8, -8, 8, 8)
-        spawn_selected = self.step is not None and self.step.action == 'spawn'
-        spawn_color = QColor('#176b57' if spawn_selected else '#657581')
-        spawn_index = next((i for i, step in enumerate(self.flow.steps) if step.action == 'spawn'), -1)
-        marker = FlowMarkerItem(
-            model.spawn, '出生位置',
-            lambda: self.step_list.setCurrentRow(spawn_index) if spawn_index >= 0 else None,
-            spawn_color,
-        )
-        marker.setBrush(spawn_color)
-        marker.setPen(QPen(spawn_color, 0.5))
-        marker.setToolTip('出生位置：地图固定参照，不可拖动。检查范围为 5 地图像素。')
-        marker.setData(0, 'spawn')
-        scene.addItem(marker)
-        label = scene.addSimpleText('出生位置')
-        label.setBrush(spawn_color)
-        label.setPos(model.spawn[0] + 3, model.spawn[1] + 2)
-        label.setFont(self.font())
-        label.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
-        if spawn_selected:
-            circle = scene.addEllipse(
-                model.spawn[0] - 5, model.spawn[1] - 5, 10, 10, QPen(spawn_color, 0.5),
-            )
-            circle.setData(0, 'spawn_range')
-        bounds = bounds.united(QRectF(model.spawn[0] - 6, model.spawn[1] - 6, 24, 14))
-        self.view.content_rect = bounds.adjusted(-8, -8, 8, 8)
-        last = model.spawn
+        first = self._first_waypoint()
+        last = first
         for step_index, step in enumerate(self.flow.steps):
             if step.action not in ('move', 'approach'):
                 continue
             selected = step_index == self.step_list.currentRow()
             destination = step.waypoints[-1]
             color = route_color(destination.stage)
-            # 路线从出生位置依次连接各步骤的唯一目的地。
-            scene.addLine(*last, *destination.xy, QPen(color, 0.7))
+            # 路线从首个路点依次连接各步骤的目的地；首个路点同时是路线匹配的起点。
+            if last is not None:
+                scene.addLine(*last, *destination.xy, QPen(color, 0.7))
             last = destination.xy
             if selected:
                 if step.action in ('move', 'approach'):
@@ -1200,7 +1209,7 @@ class BagelRouteEditor(QDialog):
             )
             if not selected:
                 raise ValueError('请先在步骤列表左侧勾选要执行的步骤。')
-            self.models[self.map_id] = BagelMapModel.load(self.map_id)
+            self.models[self.map_id] = BagelMapModel.load(route_layer(self.map_id))
         except (OSError, ValueError) as error:
             self.trial_info.setText(str(error))
             return
@@ -1212,7 +1221,7 @@ class BagelRouteEditor(QDialog):
             selected,
             self.ctx,
             self,
-            map_snapshot=self.models[self.map_id].snapshot,
+            map_snapshot=self.models[self.map_id],
         )
         self.worker.observed.connect(self._observe)
         self.worker.completed.connect(self.trial_info.setText)
@@ -1298,6 +1307,8 @@ class BagelRouteEditor(QDialog):
         ):
             event.ignore()
             return
+        if self._previous_theme != Theme.LIGHT:
+            restore_theme(self._previous_theme)
         if self.owns_context and self.ctx is not None:
             self.ctx.after_app_shutdown()
         event.accept()

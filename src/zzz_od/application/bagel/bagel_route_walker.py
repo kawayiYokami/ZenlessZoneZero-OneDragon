@@ -1,0 +1,1291 @@
+"""贝果路线执行状态机：按打点顺序走到最后。
+
+读取 ``bagel_routes`` 目录下的打点路线，入场后定位一次，在全部路线的
+灯塔点中找 100px 内最近者作为锚点；之后游标顺序推进：
+
+- 下一格是灯塔：正常导航，进入 5px 到达半径即算路过。
+- 下一格是箱类：小碎步靠近，出现 F 提示后按类型交互——电子保险箱走光圈
+  解锁，机械保险箱长按 F，普通箱子、门、电梯点按。
+- 一条路线走完：原地判断现场有无交互物，没有就切换到下一条最近路线；
+  全部走完后由应用层走既有退出结算链。
+
+导航与交互复用旧实现里与旧流程解耦的部分：分层定位、朝向识别、转向
+补偿、光圈解锁、逐件入箱、关闭面板。旧流程（flow.yml 步骤、写死的
+动作模板）不再参与。
+"""
+
+from __future__ import annotations
+
+import time
+from math import atan2, degrees, hypot
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+from one_dragon.base.geometry.rectangle import Rect
+from one_dragon.base.operation.operation_edge import node_from
+from one_dragon.base.operation.operation_node import operation_node
+from one_dragon.utils import cal_utils, cv2_utils, str_utils
+from one_dragon.utils.i18_utils import gt
+from one_dragon.utils.log_utils import log
+from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
+from zzz_od.application.bagel.bagel_operation import BagelOperation
+from zzz_od.application.bagel.bagel_route_recorder import (
+    BagelRoute,
+    BagelRoutePoint,
+    is_foreground,
+    list_routes,
+)
+from zzz_od.application.bagel.bagel_store import BagelStoreSafe
+from zzz_od.application.bagel.bagel_unlock_safe import BagelUnlockSafe
+from zzz_od.game_data.map_locator.map_locator import (
+    MultiMapLocator,
+    load_map_locators,
+)
+from zzz_od.game_data.map_locator.minimap_angle import analyze
+
+if TYPE_CHECKING:
+    from cv2.typing import MatLike
+
+    from one_dragon.base.operation.operation_base import OperationResult
+    from one_dragon.base.operation.operation_round_result import OperationRoundResult
+    from zzz_od.context.zzz_context import ZContext
+
+BEACON: str = 'beacon'
+"""灯塔点：纯路点，路过即可，不交互。"""
+
+ANCHOR_DISTANCE: float = 100.0
+"""锚点半径：初始定位后与灯塔点的最大距离（用户给定）。"""
+
+ARRIVE_RADIUS: float = 3.0
+"""到达半径：3px 内算到点（用户给定）。"""
+
+INTERACTION_TRUST_DISTANCE: float = 40.0
+"""交互采信距离：提示出现时距目标点超过此值不采信。"""
+
+SPRINT_DISTANCE: float = 40.0
+"""冲刺距离：距目标点超过它就冲刺（用户给定）。
+
+40px 外冲刺，40px 内松开；灯塔再进 10px（BEACON_SLOW_RADIUS）改慢步。
+"""
+
+SPRINT_STOP_SECONDS: float = 1.0
+"""退出冲刺需要松开方向键的时长（秒，用户给定）。
+
+绝区零的冲刺是「按住方向键 + 连点闪避」，松开闪避并不会退出冲刺，
+必须松开方向键满 1 秒才脱离冲刺惯性。
+所以冲刺过后要走路、慢步、碎步之前，先松键停满这个时长。
+"""
+
+BEACON_SLOW_RADIUS: float = 10.0
+"""灯塔慢步半径：进入它改用慢步走走停停，不再一路按住前进（用户给定）。"""
+
+BOX_SMALL_STEP_RADIUS: float = 3.0
+"""箱子碎步半径：进到它以内用碎步（用户给定 3px）。"""
+
+BOX_WAIT_RADIUS: float = 0.9
+"""箱子原地等待半径：距离小于 0.9px 就停步原地等提示（用户给定）。
+
+用户要求「0px 才停」，但坐标不一定正好落在目标点上：
+编辑器拖点会保留 1 位小数，定位又是整数像素，实际常停在 0.5px。
+按 <= 0 判定永远进不去原地等待，只能一路碎步撞到 75 秒兜底超时。
+所以用「小于 0.9」作判据，0.5px 这种就能正确进入等待。
+"""
+
+SMALL_STEP_TIMEOUT: float = 5.0
+"""碎步超时（秒）：3px 内碎步前进超过它还没贴到目标就判超时（用户给定）。
+
+碎步是不看角度硬迈的，方向偏了会一直贴着原地蹭。给一个短时限，
+免得它在这个距离上耗到 75 秒的单点兜底。
+"""
+
+SLOW_STEP_PRESS: float = 0.5
+"""慢步单次按压时长（秒）：比碎步长，一次走得多一点（用户给定 0.5）。"""
+
+SLOW_STEP_WAIT: float = 0.1
+"""慢步走完停一下的时长（秒），形成走走停停的节奏（用户给定 0.1）。"""
+
+TURN_FRACTION: float = 0.5
+"""每轮转向取偏差的几成（用户给定 1/2）。
+
+不分档，不管偏差多大都只转一半；向下取整，宁可少转不转过头。
+"""
+
+ALIGN_DEADBAND: float = 1.0
+"""对准死区：偏差在它以内就当已经对准，不再转向。
+
+取 1 度是因为小地图朝向的识别精度就在 1 度上下，
+比它更小的偏差分不清是真实偏差还是识别噪声。
+"""
+
+TURN_RATIO_SMOOTH: float = 0.3
+"""校准值的指数平滑系数：新样本占三成，避免单次抖动带偏。"""
+
+TURN_RATIO_MIN: float = 0.2
+TURN_RATIO_MAX: float = 20.0
+"""可信校准值范围；超出说明样本被别的动作污染，直接丢弃。
+
+上限放到 20：日志里真实比例到过 5.36，原来卡在 5.0 会把真样本
+全丢掉，校准值再也修不回来。
+"""
+
+TURN_RATIO_RESET_STREAK: int = 3
+"""连续这么多个样本都在可信范围外，就认定校准值本身错了，重置回 1.0。"""
+
+TURN_RATIO_MIN_ANGLE: float = 3.0
+"""下发转角小于它就不采样：角度太小，实际转角的量化误差占比过大。
+
+这个门槛按「实际转到的角度」判断，而不是下发角：校准值偏大时下发角
+会被压得很小，若按下发角判断就会永久停止采样，校准值再也修不回来。
+"""
+
+TURN_RATIO_MIN_DELTA: float = 0.5
+"""实际转角小于它视为画面还没跟上，样本留到下一轮再算。"""
+
+WALK_TURN_ANGLE: float = 15.0
+"""边走边转的上限：偏差在它以内不松前进键，行进中调整。
+
+超过它就停车转向：同时下发转向和前进会互相干扰，
+偏差大时表现为原地乱转，所以大偏差必须先停下转。
+"""
+
+TURN_INTERVAL: float = 0.1
+"""每轮转向后的等待时间（秒），给游戏一点时间把新朝向画到小地图上。"""
+
+SMALL_STEP_PRESS: float = 0.08
+"""碎步单次按压时长（秒）。"""
+
+LOCATE_FAIL_SECONDS: float = 10.0
+"""连续定位失败超过这个时长才判失败（用户给定 10 秒）。
+
+给 MultiMapLocator 的最后一档降级留足时间：它要丢失满 1 秒
+才开始搜索全部层，全层搜索本身也慢。
+"""
+
+STUCK_SECONDS: float = 3.0
+STUCK_DISTANCE: float = 2.0
+"""按住前进时判卡位：窗口内位移不足此值即失败。"""
+
+POINT_TIMEOUT: dict[str, float] = {BEACON: 45.0, 'default': 75.0}
+"""单点超时（秒）：灯塔 45，箱类 75。"""
+
+ACTION_LIMIT: int = 100
+"""单个点允许的输入次数上限。"""
+
+BOX_PROMPT_SECONDS: float = 1.0
+"""箱子点贴到 0px 后原地等提示的上限（用户给定 1 秒）。
+
+箱子一定会刷出交互提示，所以到 0px 还读不到，只可能是这个点本身
+没东西，直接跳到下一个点，不判失败、也不原地死等。
+"""
+
+SURROUND_CHECK_SECONDS: float = 2.0
+"""走完路线后原地观察交互物的时长。"""
+
+MECHANICAL_HOLD_SECONDS: float = 5.0
+"""机械保险箱长按 F 的最长时间（秒）。"""
+
+ICON_THRESHOLD: float = 0.8
+"""交互图标与刷卡图标的模板匹配阈值；实测同类 1.0、异类 0.33。"""
+
+ENTRY_TEXT_MARGIN: int = 6
+"""读取条目文字时，纵向向上下各留的像素。"""
+
+PICKUP_WORDS: tuple[str, ...] = ('药粉', '拾取')
+"""可拾取物而非容器的提示词；按 F 会捡起地上的东西，不能当箱子处理。"""
+
+KIND_PANEL_AREA: dict[str, str] = {
+    'box': '搜查容器标题',
+    'electronic_safe': '电子保险箱标题',
+    'mechanical_safe': '搜查安全箱',
+}
+"""点类型到开箱后面板标题区域的映射；门、刷卡处、电梯没有面板。
+
+机械箱长按 F 在提示出现时进行，打开后面板与普通箱走同一套收集；
+它的专有标题未建档，这里复用底部共用的安全箱标记。
+"""
+
+
+class AnchorMissError(Exception):
+    """锚点半径内没有灯塔，无法开始执行。"""
+
+
+def route_map_id(route: BagelRoute) -> str:
+    """路线首个点所在层的地图标识。"""
+    if not route.points:
+        return ''
+    return route.points[0].layer.split('/')[0]
+
+
+def anchor_index(
+    routes: list[BagelRoute], position: tuple[float, float], map_id: str,
+) -> tuple[int, int]:
+    """在全部路线的灯塔点中找锚点半径内最近者。
+
+    Args:
+        routes: 参与选择的路线列表。
+        position: 当前全局坐标。
+        map_id: 当前所在地图标识，只比较同地图的路线。
+
+    Returns:
+        (路线下标, 该路线内灯塔点下标)。
+
+    Raises:
+        AnchorMissError: 没有任何灯塔在锚点半径内。
+    """
+    nearest: tuple[float, int, int] | None = None
+    for route_index, route in enumerate(routes):
+        if route_map_id(route) != map_id:
+            continue
+        for point_index, point in enumerate(route.points):
+            if point.kind != BEACON:
+                continue
+            distance = hypot(point.x - position[0], point.y - position[1])
+            if distance > ANCHOR_DISTANCE:
+                continue
+            if nearest is None or distance < nearest[0]:
+                nearest = (distance, route_index, point_index)
+    if nearest is None:
+        raise AnchorMissError(f'距离最近灯塔超过 {ANCHOR_DISTANCE:.0f}px')
+    return nearest[1], nearest[2]
+
+
+class BagelRouteWalker(BagelOperation):
+    """按打点顺序执行路线，箱类按类型交互。"""
+
+    STATUS_ANCHOR_MISS: str = '附近没有灯塔，退出重开'
+    STATUS_NOT_FOREGROUND: str = '游戏不在前台，已停止'
+    STATUS_DONE: str = '全部路线走完'
+
+    def __init__(
+        self, ctx: ZContext, blueprint_priority: bool = True,
+        route_id: str | None = None,
+    ) -> None:
+        """加载路线并准备定位。
+
+        Args:
+            ctx: 运行上下文。
+            blueprint_priority: 入箱时蓝图是否优先。
+            route_id: 只跑这一条路线；None 表示跑全部。
+
+        Raises:
+            ValueError: 一条路线都没有，或指定路线不存在时构造失败。
+        """
+        super().__init__(ctx, op_name='贝果-路线执行', timeout_seconds=-1)
+        all_routes = list_routes()
+        if route_id is not None:
+            # 指定路线用于试跑：关闭的路线不执行，直接说明原因。
+            routes = [route for route in all_routes if route.route_id == route_id]
+            if not routes:
+                raise ValueError(f'路线不存在：{route_id}')
+            if not routes[0].enabled:
+                raise ValueError(f'路线 {route_id} 已关闭，先在编辑器里打开开关')
+        else:
+            routes = [route for route in all_routes if route.enabled]
+            if not routes:
+                raise ValueError('没有启用中的贝果路线，先在编辑器里打开路线开关')
+        self.routes: list[BagelRoute] = routes
+        self.blueprint_priority: bool = blueprint_priority
+        self.locator: MultiMapLocator = MultiMapLocator(load_map_locators())
+        self.route_index: int = 0
+        self.cursor: int = 0
+        self.finished_routes: set[str] = set()
+        self.current_kind: str | None = None
+        self.f_pressed: bool = False
+        self.mechanical_hold_until: float | None = None
+        self.mechanical_retried: bool = False
+        self.position: tuple[float, float] | None = None
+        self.last_map_id: str | None = None
+        self.locate_misses: int = 0
+        self.locate_miss_since: float | None = None
+        """连续定位失败的起始时刻，恢复定位后清空。"""
+        self.last_position: tuple[float, float] | None = None
+        self.steps: int = 0
+        self.stuck_since: tuple[tuple[float, float], float] | None = None
+        self.target_wait_since: float | None = None
+        self.small_step_since: float | None = None
+        """进入 3px 碎步段的起始时刻，用于碎步超时判定。"""
+        self.point_started_at: float | None = None
+        self.last_input_frame: float | None = None
+        self.decision: str = '准备开始'
+        """最近一轮的决策文字，供执行态悬浮窗显示。"""
+        self.sprinting: bool = False
+        """当前是否在冲刺。"""
+        self.sprint_stop_since: float | None = None
+        """退出冲刺后开始松键停稳的时刻；停满 1 秒才允许走路。"""
+        self.turn_ratio: float = 1.0
+        """转向校准值：名义转角乘它就是实际转角，1.0 表示还没校准过。"""
+        self.pending_turn: float | None = None
+        """上一轮真正下发的转角，等下一轮读到新朝向后用来算校准值。"""
+        self.turn_samples: int = 0
+        """已累积的校准样本数，用于日志观察。"""
+        self.turn_bad_streak: int = 0
+        """连续被丢弃的异常样本数，用于判断校准值本身是否已经错了。"""
+        self.turn_small_streak: int = 0
+        """连续转不动的次数，用于发现校准值偏大把下发角压死的情况。"""
+        self.turn_still_streak: int = 0
+        """连续读到画面没变化的次数，同上，但发生在更小幅度上。"""
+        self.last_turn_angle: float | None = None
+        """上一轮下发转向时读到的镜头朝向，用来和这一轮的朝向求实际转角。"""
+
+    def state_snapshot(self) -> dict[str, object]:
+        """给悬浮窗用的执行状态快照。
+
+        每次调用都按当前游标现算，不维护第二份真值，避免两边对不上。
+
+        Returns:
+            含决策、路线进度、点位与当前位置的字典。
+        """
+        route = self.routes[self.route_index] if self.routes else None
+        point = self._current_point()
+        distance: float | None = None
+        if point is not None and self.position is not None:
+            distance = hypot(point.x - self.position[0], point.y - self.position[1])
+        return {
+            'decision': self.decision,
+            'route_id': route.route_id if route is not None else '',
+            'route_index': self.route_index,
+            'route_count': len(self.routes),
+            'cursor': self.cursor,
+            'total': len(route.points) if route is not None else 0,
+            'points': [(point.kind, (point.x, point.y)) for point in route.points]
+                      if route is not None else [],
+            'layer': route.points[0].layer if route is not None and route.points else '',
+            'position': self.position,
+            'map_id': self.last_map_id,
+            'distance': distance,
+        }
+
+    def _execute_one_round(self) -> OperationRoundResult:
+        """每轮前先确认游戏在前台，结束后更新决策文字。
+
+        用户切出游戏时，按键会打进别的窗口，必须先松键并停下，
+        否则会在后台一直空转。
+        """
+        if not self._game_in_foreground():
+            self._release_forward()
+            self.decision = '游戏不在前台 · 已停止'
+            return self.round_fail(self.STATUS_NOT_FOREGROUND)
+        result = super()._execute_one_round()
+        node_name = '未知' if self._current_node is None else self._current_node.cn
+        status = result.status or result.status_display or ''
+        self.decision = f'{node_name} · {status}' if status else node_name
+        self._log_decision(node_name, status)
+        return result
+
+    def _log_decision(self, node_name: str, status: str) -> None:
+        """每轮打一条决策日志，带点位、距离与角度，便于核对停在哪一步。
+
+        同样的文字连续重复时也照打：卡住的表现正是同一条反复出现，
+        静默掉就看不到「一直短步」「一直转圈」这类症状。
+        """
+        point = self._current_point()
+        parts = [f'[{node_name}]']
+        if status:
+            parts.append(status)
+        if point is not None:
+            parts.append(f'第{self.cursor + 1}点 {point.kind}')
+        if point is not None and self.position is not None:
+            distance = hypot(point.x - self.position[0], point.y - self.position[1])
+            parts.append(f'距 {distance:.1f}px')
+        if self.position is not None:
+            parts.append(f'位置 ({self.position[0]:.0f},{self.position[1]:.0f})')
+        if self.current_kind is not None:
+            parts.append(f'提示 {self.current_kind}')
+        log.info('贝果执行 %s', ' · '.join(parts))
+
+    def _game_in_foreground(self) -> bool:
+        """游戏窗口是否在前台；拿不到窗口句柄时按前台处理，避免误停。"""
+        game_win = self.ctx.controller.game_win
+        hwnd = game_win.get_hwnd()
+        if hwnd is None:
+            return True
+        return is_foreground(hwnd)
+
+    # ---------- 定位 ----------
+
+    def minimap(self) -> MatLike:
+        """按原生区域裁出小地图；框架截图为 RGB，定位与朝向直接使用。"""
+        area = self.ctx.screen_loader.get_area('贝果-局内', '定位小地图')
+        if area is None:
+            raise ValueError('缺少贝果定位小地图区域')
+        crop = cv2_utils.crop_image_only(self.last_screenshot, area.pc_rect)
+        if crop is None or crop.size == 0:
+            raise ValueError('小地图裁剪为空')
+        if crop.ndim == 2:
+            crop = np.stack([crop] * 3, axis=-1)
+        return crop
+
+    def locate(self) -> tuple[float, float] | None:
+        """定位一次并更新所在地图。"""
+        result = self.locator.locate(self.minimap())
+        if result is None:
+            return None
+        locator, _score, center = result
+        self.last_map_id = locator.map_id
+        self.position = (float(center[0]), float(center[1]))
+        return self.position
+
+    def player_angle(self) -> float | None:
+        """识别镜头朝向角，正右为 0、逆时针增加。
+
+        必须取 ``analyze`` 的第二个返回值（扇形方向 = 镜头朝向），
+        不能用第一个（菱形尖端 = 角色朝向）。角色站着不动时，
+        鼠标转动只改变镜头，角色朝向几乎不变，取错就会出现
+        「不管怎么转，角度完全没更新」。
+        """
+        _marker, sector, _radius, _center = analyze(self.minimap())
+        return sector
+
+    # ---------- 节点 ----------
+
+    @operation_node(name='锚点定位', is_start_node=True)
+    def anchor(self) -> OperationRoundResult:
+        """定位一次，找锚点半径内最近灯塔作为起点。"""
+        position = self.locate()
+        if position is None:
+            return self.round_retry('定位失败，重试', wait=0.3)
+        try:
+            route_index, point_index = anchor_index(
+                self.routes, position, self.last_map_id or '',
+            )
+        except AnchorMissError as error:
+            log.info('贝果锚点：%s', error)
+            return self.round_fail(self.STATUS_ANCHOR_MISS)
+        self._enter_point(route_index, point_index)
+        log.info(
+            '贝果锚点：路线 %s 第 %s 点，共 %s 点',
+            self.routes[route_index].route_id, point_index + 1,
+            len(self.routes[route_index].points),
+        )
+        return self.round_success('已锚定')
+
+    @node_from(from_name='游标推进', status='已推进')
+    @node_from(from_name='导航移动', status='跳过此点')
+    @node_from(from_name='碎步移动', status='跳过此点')
+    @operation_node(name='点调度', mute=True)
+    def dispatch(self) -> OperationRoundResult:
+        """按游标当前点分派到导航、碎步或现场判断。"""
+        point = self._current_point()
+        if point is None:
+            return self.round_success('路线走完')
+        if point.kind == BEACON:
+            return self.round_success('下一格是灯塔')
+        return self.round_success('下一格是箱类')
+
+    @node_from(from_name='点调度', status='路线走完')
+    @node_from(from_name='导航移动', status='路线走完')
+    @node_from(from_name='碎步移动', status='路线走完')
+    @operation_node(name='现场交互判断')
+    def check_surroundings(self) -> OperationRoundResult:
+        """原地扫 2 秒：识别到已知提示就按提示交互，否则换路线。"""
+        if self._nearby_kind() is not None:
+            self.target_wait_since = None
+            return self.round_success('现场有交互物')
+        if self.target_wait_since is None:
+            self.target_wait_since = time.monotonic()
+        elif time.monotonic() - self.target_wait_since >= SURROUND_CHECK_SECONDS:
+            self.target_wait_since = None
+            return self.round_success('现场无交互物')
+        return self.round_wait('原地观察交互提示', wait=0.25)
+
+    def _nearby_kind(self) -> str | None:
+        """右侧最上面一条交互提示的类型，识别不到时返回 None。
+
+        先模板匹配交互图标或刷卡图标定位条目，再对该条右侧文字分类：
+        含「保险箱」按电子/机械分，含「门」按门，其余都是可搜查容器。
+        """
+        entry = self._top_entry()
+        if entry is None:
+            return None
+        return self._classify(entry[0], entry[1])
+
+    def _top_entry(self) -> tuple[str, str] | None:
+        """取最上面一条提示，返回（图标类型, 条目文字）。
+
+        多条提示同时出现时，最上面那条才是按 F 生效的目标。
+        只在提示区矩形内匹配，避免全屏误命中。
+        """
+        area = self.ctx.screen_loader.get_area('贝果-局内', '交互图标')
+        if area is None:
+            return None
+        crop = cv2_utils.crop_image_only(self.last_screenshot, area.pc_rect)
+        if crop is None or crop.size == 0:
+            return None
+        best: tuple[int, str, str] | None = None
+        for icon, kind in (('interact_icon', 'interact'), ('card_key_icon', 'card')):
+            result = self.ctx.tm.match_template(
+                crop, 'bagel', icon, threshold=ICON_THRESHOLD, only_best=False,
+            )
+            for match in result:
+                if best is None or match.center.y < best[0]:
+                    best = (match.center.y, kind, self._entry_text(match, area.pc_rect.x1))
+        if best is None:
+            return None
+        return best[1], best[2]
+
+    def _entry_text(self, match, offset_x: int) -> str:
+        """读取一条提示右侧的文字，去掉空白。
+
+        只裁这一条的高度：整块提示区一起识别会漏读，按条裁剪才能稳定读出。
+
+        Args:
+            match: 提示区裁剪内的图标匹配结果。
+            offset_x: 提示区裁剪相对整屏的左边距，用于换算回整屏坐标。
+        """
+        area = self.ctx.screen_loader.get_area('贝果-局内', '交互条目文字')
+        if area is None:
+            return ''
+        left = max(area.pc_rect.x1, offset_x + match.x + match.w)
+        right = area.pc_rect.x2
+        top = area.pc_rect.y1 + match.y - ENTRY_TEXT_MARGIN
+        bottom = area.pc_rect.y1 + match.y + match.h + ENTRY_TEXT_MARGIN
+        if right <= left or bottom <= top:
+            return ''
+        texts = self.ctx.ocr_service.get_ocr_result_list(
+            image=self.last_screenshot, rect=Rect(left, top, right, bottom),
+        )
+        return ''.join(str_utils.remove_whitespace(item.data) for item in texts)
+
+    def _classify(self, icon_kind: str, text: str) -> str | None:
+        """按图标与条目文字判断交互类型。
+
+        特殊分支只有两类保险箱：电子保险箱要解锁，机械保险箱要长按。
+        其余「箱 / 包 / 柜」都是按一下 F 开始搜宝；门和刷卡处按 F 直接开门。
+        """
+        if icon_kind == 'card':
+            return 'card_reader'
+        if gt('电子保险箱', 'game') in text:
+            return 'electronic_safe'
+        if gt('机械保险箱', 'game') in text:
+            return 'mechanical_safe'
+        if gt('门', 'game') in text:
+            return 'door'
+        if any(name in text for name in PICKUP_WORDS):
+            return None
+        if text:
+            return 'box'
+        return None
+
+    @node_from(from_name='现场交互判断', status='现场有交互物')
+    @operation_node(name='现场交互')
+    def interact_nearby(self) -> OperationRoundResult:
+        """按提示识别到的类型分派交互，不依赖打点类型。"""
+        kind = self._nearby_kind()
+        if kind is None:
+            return self.round_retry('提示消失，再看一帧', wait=0.2)
+        self.current_kind = kind
+        return self._interact_by_kind(kind)
+
+    @node_from(from_name='现场交互判断', status='现场无交互物')
+    @operation_node(name='切换路线')
+    def switch_route(self) -> OperationRoundResult:
+        """取剩余路线中最近的灯塔切换过去；没有剩余则结束。"""
+        self.finished_routes.add(self.routes[self.route_index].route_id)
+        remaining = [
+            route for route in self.routes
+            if route.route_id not in self.finished_routes
+        ]
+        if not remaining:
+            log.info('贝果路线执行：%s 条路线全部走完', len(self.routes))
+            return self.round_success(self.STATUS_DONE)
+        position = self.locate() or self.position
+        if position is None:
+            return self.round_retry('切换路线前定位失败', wait=0.3)
+        nearest: tuple[float, int, int] | None = None
+        for route_index, route in enumerate(self.routes):
+            if route.route_id in self.finished_routes:
+                continue
+            if route_map_id(route) != self.last_map_id:
+                continue
+            for point_index, point in enumerate(route.points):
+                if point.kind != BEACON:
+                    continue
+                distance = hypot(point.x - position[0], point.y - position[1])
+                if nearest is None or distance < nearest[0]:
+                    nearest = (distance, route_index, point_index)
+        if nearest is None:
+            return self.round_fail('剩余路线没有可达灯塔，无法切换')
+        self._enter_point(nearest[1], nearest[2])
+        return self.round_success('切换路线')
+
+    # ---------- 导航 ----------
+
+    @node_from(from_name='锚点定位', status='已锚定')
+    @node_from(from_name='点调度', status='下一格是灯塔')
+    @node_from(from_name='导航移动', status='已到点')
+    @node_from(from_name='导航移动', status='提示已出现')
+    @node_from(from_name='切换路线', status='切换路线')
+    @operation_node(name='导航移动', mute=True)
+    def navigate(self) -> OperationRoundResult:
+        """朝当前点移动；灯塔 3px 到达，箱类见到提示就停。"""
+        return self._move_toward()
+
+    @node_from(from_name='点调度', status='下一格是箱类')
+    @operation_node(name='碎步移动', mute=True)
+    def small_step(self) -> OperationRoundResult:
+        """小碎步逼近箱类点，等待 F 提示。"""
+        point = self._current_point()
+        if point is None:
+            return self.round_success('路线走完')
+        kind = self._nearby_kind()
+        if kind is not None:
+            position = self.locate() or self.position
+            if position is None:
+                return self.round_retry('提示出现但定位失败', wait=0.2)
+            if hypot(point.x - position[0], point.y - position[1]) > INTERACTION_TRUST_DISTANCE:
+                return self.round_wait('提示过早，继续碎步', wait=0.15)
+            self._release_forward()
+            self.current_kind = kind
+            return self.round_success('出现交互提示')
+        return self._move_toward()
+
+    # ---------- 交互 ----------
+
+    @node_from(from_name='碎步移动', status='出现交互提示')
+    @node_from(from_name='导航移动', status='提示已出现')
+    @operation_node(name='按类型交互')
+    def interact(self) -> OperationRoundResult:
+        """按当前点类型执行交互。"""
+        if self.current_kind is None:
+            return self.round_retry('未知交互类型', wait=0.2)
+        return self._interact_by_kind(self.current_kind)
+
+    def _interact_by_kind(self, kind: str) -> OperationRoundResult:
+        """分派交互动作。"""
+        if kind == 'electronic_safe':
+            return self._run_unlock_safe()
+        if kind == 'mechanical_safe':
+            return self._hold_mechanical()
+        return self._press_f(kind)
+
+    def _run_unlock_safe(self) -> OperationRoundResult:
+        """电子保险箱：光圈解锁子操作。"""
+        self._release_forward()
+        op = BagelUnlockSafe(self.ctx, phase='full')
+        result = op.execute()
+        self._adopt_screenshot(op)
+        if result.success:
+            return self.round_success('电子保险箱已解锁')
+        return self.round_recoverable_fail(f'电子保险箱解锁失败：{result.status}')
+
+    def _hold_mechanical(self) -> OperationRoundResult:
+        """机械保险箱：提示出现时长按 F，直到搜查面板出现。
+
+        长按发生在提示出现时，不是面板打开后；面板一出就松手，
+        后面与普通箱走同一套收集入箱。面板用底部共用的安全箱标记确认，
+        不依赖专有标题。
+        """
+        if self.mechanical_hold_until is None:
+            self._release_forward()
+            self.mechanical_hold_until = time.monotonic() + MECHANICAL_HOLD_SECONDS
+            self.ctx.controller.interact(press=True)
+            return self.round_wait('长按F中')
+        if self._has('搜查安全箱'):
+            self.ctx.controller.interact(release=True)
+            self._reset_point_state()
+            return self.round_success('机械保险箱已打开')
+        if time.monotonic() >= self.mechanical_hold_until:
+            self.ctx.controller.interact(release=True)
+            if self.mechanical_retried:
+                self._reset_point_state()
+                return self.round_recoverable_fail('机械保险箱长按F超时')
+            self.mechanical_retried = True
+            self.mechanical_hold_until = None
+            return self.round_wait('长按F超时，释放后重试', wait=0.3)
+        return self.round_wait('长按F等待面板', wait=0.3)
+
+    def _press_f(self, kind: str) -> OperationRoundResult:
+        """点按 F：普通容器、门、刷卡处、电梯。
+
+        容器类以搜查面板出现为完成；门、刷卡处、电梯以提示消失为完成。
+        按 F 前先松前进键，避免按住前行漂移。
+        """
+        self._release_forward()
+        panel_area = KIND_PANEL_AREA.get(kind, '')
+        if panel_area and self._has(panel_area):
+            self._reset_point_state()
+            return self.round_success('面板已打开')
+        if self.f_pressed and self._top_entry() is None:
+            self._reset_point_state()
+            return self.round_success('已完成')
+        self.ctx.controller.interact(press=True, press_time=0.2, release=True)
+        self.f_pressed = True
+        return self.round_wait('已点按F，等待结果', wait=0.4)
+
+    @node_from(from_name='按类型交互', status='电子保险箱已解锁')
+    @node_from(from_name='按类型交互', status='机械保险箱已打开')
+    @node_from(from_name='按类型交互', status='面板已打开')
+    @node_from(from_name='现场交互', status='电子保险箱已解锁')
+    @node_from(from_name='现场交互', status='机械保险箱已打开')
+    @node_from(from_name='现场交互', status='面板已打开')
+    @operation_node(name='收集入箱')
+    def collect(self) -> OperationRoundResult:
+        """逐件装入安全箱。"""
+        op = BagelStoreSafe(self.ctx, blueprint_priority=self.blueprint_priority)
+        result = op.execute()
+        self._adopt_screenshot(op)
+        if result.success:
+            return self.round_success('已入箱')
+        return self.round_recoverable_fail(f'入箱失败：{result.status}')
+
+    @node_from(from_name='收集入箱', status='已入箱')
+    @operation_node(name='关闭面板')
+    def close_panel(self) -> OperationRoundResult:
+        """关闭搜查面板并确认回到局内。"""
+        op = BagelCloseSearch(self.ctx)
+        result = op.execute()
+        self._adopt_screenshot(op)
+        if result.success:
+            return self.round_success('已关闭面板')
+        return self.round_recoverable_fail(f'关闭面板失败：{result.status}')
+
+    @node_from(from_name='按类型交互', status='已完成')
+    @node_from(from_name='现场交互', status='已完成')
+    @node_from(from_name='关闭面板', status='已关闭面板')
+    @operation_node(name='游标推进')
+    def advance(self) -> OperationRoundResult:
+        """游标加一并回点调度。"""
+        self._enter_point(self.route_index, self.cursor + 1)
+        return self.round_success('已推进')
+
+    # ---------- 移动核心 ----------
+
+    def _move_toward(self) -> OperationRoundResult:
+        """朝当前游标点移动一轮。"""
+        point = self._current_point()
+        if point is None:
+            return self.round_success('路线走完')
+        timeout = self._check_timeout(point)
+        if timeout is not None:
+            return timeout
+        hud = self._check_hud()
+        if hud is not None:
+            return hud
+        position = self.locate()
+        if position is None:
+            # 定位丢失立刻停步：继续按着前进会走到不知道哪里去，
+            # 恢复定位后再接着走。判失败要等满 10 秒，给降级搜索留时间。
+            self._release_forward()
+            if self.last_position is None:
+                return self.round_retry('起步定位失败，重试', wait=0.3)
+            if self.locate_miss_since is None:
+                self.locate_miss_since = time.monotonic()
+            if time.monotonic() - self.locate_miss_since < LOCATE_FAIL_SECONDS:
+                self.locate_misses += 1
+                return self.round_wait('定位丢失，停下等待', wait=0.1)
+            return self.round_recoverable_fail(
+                f'连续 {LOCATE_FAIL_SECONDS:.0f}s 定位失败，停止移动',
+            )
+        self.locate_misses = 0
+        self.locate_miss_since = None
+        self.last_position = position
+        if self.last_input_frame is not None and self.last_screenshot_time <= self.last_input_frame:
+            return self.round_wait('等待动作后的新截图', wait=0.05)
+        distance = hypot(point.x - position[0], point.y - position[1])
+        if distance <= SPRINT_DISTANCE:
+            # 已经进到不冲刺的范围：刚冲过就先松方向键停满 1 秒再走，
+            # 否则角色还带着冲刺惯性，一按方向键就又冲出去。
+            if self.sprinting:
+                self._exit_sprint()
+            hold = self._hold_for_sprint_stop()
+            if hold is not None:
+                return hold
+        if point.kind == BEACON:
+            # 灯塔是纯路点：3px 内算到点，10px 内慢步逼近。
+            if distance <= ARRIVE_RADIUS:
+                self._release_forward()
+                self._enter_point(self.route_index, self.cursor + 1)
+                return self.round_success('已到点')
+            if distance <= BEACON_SLOW_RADIUS:
+                return self._slow_step(point, position)
+            return self._cruise(point, position)
+        # 箱类：3px 外慢步，3px 内碎步，0.9px 内原地等提示。
+        # 碎步阶段边走边检测提示，提示一出现就转入交互。
+        prompt = self._prompt_stop(point, distance)
+        if prompt is not None:
+            return prompt
+        if distance < BOX_WAIT_RADIUS:
+            self.small_step_since = None
+            return self._wait_here(point)
+        if distance <= BOX_SMALL_STEP_RADIUS:
+            timeout = self._check_small_step_timeout()
+            if timeout is not None:
+                return timeout
+            return self._short_step()
+        self.small_step_since = None
+        return self._slow_step(point, position)
+
+    def _wait_here(self, point: BagelRoutePoint) -> OperationRoundResult:
+        """已站在箱子上：原地不动，等提示出现或超时跳到下一个点。
+
+        箱子一定会刷出交互提示，所以到时间还没提示，只可能是这个点
+        本身没有东西（或站位被挡住），直接跳过，不判失败、也不死等。
+
+        Args:
+            point: 当前游标点。
+        """
+        self._release_forward()
+        kind = self._nearby_kind()
+        if kind is not None:
+            self.current_kind = kind
+            self.target_wait_since = None
+            return self.round_success('提示已出现')
+        if self.target_wait_since is None:
+            self.target_wait_since = time.monotonic()
+            return self.round_wait('原地等待交互提示', wait=0.2)
+        if time.monotonic() - self.target_wait_since >= BOX_PROMPT_SECONDS:
+            self.target_wait_since = None
+            log.info(
+                '贝果第 %s 点（%s）原地等 %ss 无提示，跳到下一个点',
+                self.cursor + 1, point.kind, f'{BOX_PROMPT_SECONDS:.0f}',
+            )
+            self._enter_point(self.route_index, self.cursor + 1)
+            return self.round_success('跳过此点')
+        return self.round_wait('原地等待交互提示', wait=0.2)
+
+    def _prompt_stop(self, point: BagelRoutePoint, distance: float) -> OperationRoundResult | None:
+        """移动中发现交互提示就立刻停步，转入交互。
+
+        Args:
+            point: 当前游标点。
+            distance: 距目标点距离，用于判断提示是否可信。
+
+        Returns:
+            停步结果；没有提示时返回 None 让调用方继续移动。
+        """
+        kind = self._nearby_kind()
+        if kind is None:
+            return None
+        self._release_forward()
+        if distance > INTERACTION_TRUST_DISTANCE:
+            log.info(
+                '贝果提示出现在 %.0fpx 外，不采信：%s', distance, self.decision,
+            )
+            return None
+        self.current_kind = kind
+        self.target_wait_since = None
+        return self.round_success('提示已出现')
+
+    def _cruise(
+        self, point: BagelRoutePoint, position: tuple[float, float],
+    ) -> OperationRoundResult:
+        """远距离移动：偏差小就边走边修，偏差大就停车转。
+
+        分界是 WALK_TURN_ANGLE：15 度以内保持前进键按住，同时小幅转，
+        走起来是连续的一条线；超过 15 度先松键停下转，转到位再走。
+        同时下发大角度转向和前进会互相干扰，表现为原地乱转。
+        """
+        angle = self.player_angle()
+        if angle is None:
+            self._release_forward()
+            return self.round_recoverable_fail('无法识别角色箭头，停止移动')
+        self._sample_turn_ratio(angle)
+        target_angle = self._target_angle(position, point)
+        controller_angle = angle % 360
+        angle_diff = cal_utils.angle_delta(controller_angle, target_angle)
+        turn = self._turn_step(angle_diff)
+        if turn is not None and abs(angle_diff) > WALK_TURN_ANGLE:
+            # 大偏差：停车转，转到位再走。
+            self._release_forward()
+            effective = turn if angle_diff > 0 else -turn
+            self._send_turn(effective)
+            return self.round_wait(
+                f'停车转向 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
+                wait=TURN_INTERVAL,
+            )
+        stuck = self._check_stuck(position)
+        if stuck is not None:
+            return stuck
+        self._record_input()
+        self.ctx.controller.start_moving_forward()
+        self._set_sprint(hypot(point.x - position[0], point.y - position[1]))
+        if turn is None:
+            return self.round_wait('冲刺前进' if self.sprinting else '按住前进')
+        # 小偏差：不松前进键，边走边微调。
+        effective = turn if angle_diff > 0 else -turn
+        self._send_turn(effective)
+        return self.round_wait(
+            f'行进微调 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
+            wait=TURN_INTERVAL,
+        )
+
+    def _send_turn(self, nominal: float) -> None:
+        """按校准值换算后下发转向，并记下真正下发的角度。
+
+        校准值 = 实际转角 / 下发转角。若下发 15 度、画面实际转了 30 度，
+        校准值就是 2，这轮要转 15 度只需下发 7.5 度。
+
+        记的是换算后的下发角而不是名义角：采样时用实际转角除以下发角，
+        才能稳定收敛到真实比例。若除以名义角，校准一旦接近正确，
+        实际转角就会接近名义角，比值回落成 1，把校准值自己拉回去。
+
+        Args:
+            nominal: 名义上想转的度数，带符号（逆时针为正）。
+        """
+        actual = nominal / self.turn_ratio if self.turn_ratio else nominal
+        self.pending_turn = actual
+        self.ctx.controller.turn_by_angle_diff(actual)
+        self._record_input()
+
+    def _sample_turn_ratio(self, angle: float) -> None:
+        """用这一轮读到的朝向，反推上一轮转向的真实比例并平滑校准。
+
+        基准角每轮都跟着更新，这样相邻两轮的差值就是这一轮真实转过的角度。
+        只有上一轮确实下发过转向时才采信：若两轮之间夹了别的镜头动作，
+        实际转角里会混进别人的贡献，样本就废了。
+
+        画面还没反映出这次转向时（差值接近 0），保留待验证的转向，
+        下一轮接着看，不拿一个偏小的差值去污染校准值。
+
+        Args:
+            angle: 这一轮读到的镜头朝向（度）。
+        """
+        current = angle % 360
+        pending = self.pending_turn
+        if pending is None:
+            # 上一轮没转向：只对齐基准，不采样。
+            self.last_turn_angle = current
+            return
+        if self.last_turn_angle is None:
+            self.last_turn_angle = current
+            return
+        delta = cal_utils.angle_delta(self.last_turn_angle, current)
+        if abs(delta) < TURN_RATIO_MIN_DELTA:
+            # 画面还没跟上这次转向，留到下一轮再算。
+            # 但连续多轮都读不到变化，说明是校准值把下发角压没了，
+            # 不是延迟 —— 这时必须重置，否则会永久卡死。
+            self.turn_still_streak += 1
+            if self.turn_still_streak >= TURN_RATIO_RESET_STREAK:
+                log.info(
+                    '贝果转向校准连续 %s 轮画面没变化，重置为 1.0（原值 %.3f）',
+                    self.turn_still_streak, self.turn_ratio,
+                )
+                self.turn_ratio = 1.0
+                self.turn_still_streak = 0
+                self.turn_small_streak = 0
+                self.turn_bad_streak = 0
+                self.turn_samples = 0
+            return
+        self.turn_still_streak = 0
+        self.pending_turn = None
+        self.last_turn_angle = current
+        if abs(delta) < TURN_RATIO_MIN_ANGLE:
+            # 实际转到的角度太小，量化误差占比过大，这个样本不可信。
+            # 但若校准值明显偏大，下发角会被压得越来越小，永远走不到
+            # 可采样的幅度 —— 所以连续攒够几次小样本，就把校准值重置。
+            self.turn_small_streak += 1
+            if self.turn_small_streak >= TURN_RATIO_RESET_STREAK:
+                log.info(
+                    '贝果转向校准连续 %s 次转不动，重置为 1.0（原值 %.3f）',
+                    self.turn_small_streak, self.turn_ratio,
+                )
+                self.turn_ratio = 1.0
+                self.turn_small_streak = 0
+                self.turn_bad_streak = 0
+                self.turn_samples = 0
+            return
+        self.turn_small_streak = 0
+        if delta * pending <= 0:
+            # 转向和名义角反向，说明这期间被别的动作带偏了。
+            return
+        sample = abs(delta) / abs(pending)
+        if not (TURN_RATIO_MIN <= sample <= TURN_RATIO_MAX):
+            self.turn_bad_streak += 1
+            log.info('贝果转向校准样本异常，忽略：%.2f（名义 %.1f 实际 %.1f，连续 %s 次）',
+                     sample, pending, delta, self.turn_bad_streak)
+            if self.turn_bad_streak >= TURN_RATIO_RESET_STREAK:
+                # 连续异常说明不是偶发污染，而是校准值本身错了。
+                # 继续用它只会把下发角放大得更离谱，重置回 1.0 重新学。
+                log.info('贝果转向校准连续异常，重置为 1.0（原值 %.3f）', self.turn_ratio)
+                self.turn_ratio = 1.0
+                self.turn_bad_streak = 0
+                self.turn_samples = 0
+            return
+        self.turn_bad_streak = 0
+        self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + sample * TURN_RATIO_SMOOTH
+        self.turn_samples += 1
+        log.info('贝果转向校准 %.3f（样本 %.2f，名义 %.1f 实际 %.1f，共 %s 次）',
+                 self.turn_ratio, sample, pending, delta, self.turn_samples)
+
+    def _set_sprint(self, distance: float) -> None:
+        """按距离决定是否冲刺。
+
+        绝区零里冲刺是「按住方向键 + 连点闪避」，所以冲刺时持续点闪避，
+        不需要按住闪避键。
+
+        Args:
+            distance: 距当前目标点的距离。
+        """
+        want = distance > SPRINT_DISTANCE
+        if want:
+            self.sprinting = True
+            self.sprint_stop_since = None
+            self._dodge_tap()
+        elif self.sprinting:
+            self._exit_sprint()
+
+    def _dodge_tap(self) -> None:
+        """点一下闪避：冲刺期间每轮都点，维持冲刺状态。"""
+        self.ctx.controller.dodge()
+
+    def _exit_sprint(self) -> None:
+        """退出冲刺：松开方向键，标记等停稳。
+
+        闪避松开并不脱离冲刺，必须松开方向键满 SPRINT_STOP_SECONDS。
+        这里只标记，由 _hold_for_sprint_stop 在需要走路前等满时长。
+        """
+        self.sprinting = False
+        self.sprint_stop_since = time.monotonic()
+        self.ctx.controller.stop_moving_forward()
+
+    def _stop_sprint(self) -> None:
+        """立刻松键；刚冲过就标记需要停稳，别带着惯性继续走。"""
+        if self.sprinting:
+            self.sprinting = False
+            self.sprint_stop_since = time.monotonic()
+        self.ctx.controller.stop_moving_forward()
+
+    def _hold_for_sprint_stop(self) -> OperationRoundResult | None:
+        """冲刺过就松键停满 1 秒再走，否则角色还带着冲刺惯性。
+
+        Returns:
+            仍在等待时返回等待结果；已经停稳或没冲刺过返回 None。
+        """
+        if self.sprint_stop_since is None:
+            return None
+        left = SPRINT_STOP_SECONDS - (time.monotonic() - self.sprint_stop_since)
+        if left <= 0:
+            self.sprint_stop_since = None
+            return None
+        self.ctx.controller.stop_moving_forward()
+        return self.round_wait(f'冲刺后停稳 {left:.1f}s', wait=min(left, 0.1))
+
+    @staticmethod
+    def _turn_step(angle_diff: float) -> float | None:
+        """这一轮转多少度：偏差的一半向下取整，但至少 1 度。
+
+        不分档，不管偏差是 180 度还是 3 度，都只转一半（用户给定）。
+        每轮都重新读取偏差、重新算一半，转不准就下一轮接着转，没有终点。
+
+        向下取整是刻意的：宁可少转一点也不转过头。
+        但取整后不足 1 度时补到 1 度（用户给定）：否则偏差一两度时
+        每轮都取整成 0，这点偏差永远修不掉，方向会一直差着。
+
+        Args:
+            angle_diff: 目标角减当前朝向角，落在 [-180, 180]。
+
+        Returns:
+            本轮要转的度数（恒为正）；已经对准时返回 None。
+        """
+        magnitude = abs(angle_diff)
+        if magnitude <= ALIGN_DEADBAND:
+            return None
+        return float(max(int(magnitude * TURN_FRACTION), 1))
+
+    def _short_step(self) -> OperationRoundResult:
+        """近距离移动：不停下来对准，直接短按前进。
+
+        3px 内不再转向：这么近的距离，目标方向完全由 1px 级的坐标抖动
+        决定，算出来的角度没有意义。一旦按角度判停，就会出现「每轮都在
+        转向、一步也不走」的原地打摆。
+
+        方向真的偏了也不怕：走一步后距离变大，自然回到慢步分支去对准。
+        超时由调用方 _check_small_step_timeout 管，这里只负责迈步。
+        """
+        limited = self._fail_if_action_limit()
+        if limited is not None:
+            return limited
+        self._release_forward()
+        self.ctx.controller.move_w(press=True, press_time=SMALL_STEP_PRESS, release=True)
+        self._record_input()
+        return self.round_wait('短步前进')
+
+    def _check_small_step_timeout(self) -> OperationRoundResult | None:
+        """碎步段超时检查：3px 内迈步超过 5 秒还没贴到就跳过这个点。
+
+        碎步不看角度硬迈，方向偏了会一直原地蹭，靠单点 75 秒兜底太慢，
+        所以这一小段单独计时。超时说明这个点贴不上（站位被挡、坐标偏），
+        直接推进到下一个点，不判失败、也不死等。
+
+        Returns:
+            跳过结果；未超时返回 None。
+        """
+        if self.small_step_since is None:
+            self.small_step_since = time.monotonic()
+            return None
+        if time.monotonic() - self.small_step_since < SMALL_STEP_TIMEOUT:
+            return None
+        self.small_step_since = None
+        self._release_forward()
+        log.info(
+            '贝果第 %s 点（%s）碎步 %ss 没贴上，跳到下一个点',
+            self.cursor + 1, self._current_kind_name(), f'{SMALL_STEP_TIMEOUT:.0f}',
+        )
+        self._enter_point(self.route_index, self.cursor + 1)
+        return self.round_success('跳过此点')
+
+    def _current_kind_name(self) -> str:
+        """当前游标点的类型名，只用于日志。"""
+        point = self._current_point()
+        return point.kind if point is not None else '无'
+
+    def _slow_step(
+        self, point: BagelRoutePoint, position: tuple[float, float],
+    ) -> OperationRoundResult:
+        """慢步移动：按得比碎步久一点，走一段停一下。
+
+        用于两类场合：灯塔最后 10px 内，以及箱子 5px 外。
+        比碎步快、比巡航稳，靠近目标时不会一冲而过。
+
+        转向同样按 15 度分界（WALK_TURN_ANGLE）：超过就停车转，
+        15 度以内边走边修，不为对准而放弃这一步。
+        """
+        angle = self.player_angle()
+        if angle is None:
+            self._release_forward()
+            return self.round_recoverable_fail('无法识别角色箭头，停止移动')
+        self._sample_turn_ratio(angle)
+        target_angle = self._target_angle(position, point)
+        controller_angle = angle % 360
+        angle_diff = cal_utils.angle_delta(controller_angle, target_angle)
+        turn = self._turn_step(angle_diff)
+        if turn is not None and abs(angle_diff) > WALK_TURN_ANGLE:
+            # 大偏差：停车转，转到位再走。
+            self._release_forward()
+            effective = turn if angle_diff > 0 else -turn
+            self._send_turn(effective)
+            return self.round_wait(
+                f'慢步停车转向 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
+                wait=TURN_INTERVAL,
+            )
+        limited = self._fail_if_action_limit()
+        if limited is not None:
+            return limited
+        self._release_forward()
+        self.ctx.controller.move_w(press=True, press_time=SLOW_STEP_PRESS, release=True)
+        self._record_input()
+        if turn is None:
+            return self.round_wait('慢步前进', wait=SLOW_STEP_WAIT)
+        # 小偏差：先迈这一步，再顺手修一下角度。
+        effective = turn if angle_diff > 0 else -turn
+        self._send_turn(effective)
+        return self.round_wait(
+            f'慢步前进并微调 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
+            wait=SLOW_STEP_WAIT,
+        )
+
+    @staticmethod
+    def _target_angle(
+        position: tuple[float, float], point: BagelRoutePoint,
+    ) -> float:
+        """当前位置指向目标点的角度。
+
+        与朝向识别（analyze）同一套坐标系：屏幕上方为正、逆时针增加，
+        所以纵向取负号；符号写反会让角色一直原地打转。
+        """
+        return degrees(atan2(-(point.y - position[1]), point.x - position[0])) % 360
+
+    def _check_stuck(self, position: tuple[float, float]) -> OperationRoundResult | None:
+        """按住前进判卡位：窗口内位移不足即失败。"""
+        if self.stuck_since is None:
+            self.stuck_since = (position, time.monotonic())
+            return None
+        origin, started = self.stuck_since
+        if hypot(position[0] - origin[0], position[1] - origin[1]) >= STUCK_DISTANCE:
+            self.stuck_since = (position, time.monotonic())
+            return None
+        if time.monotonic() - started < STUCK_SECONDS:
+            return None
+        self._release_forward()
+        return self.round_recoverable_fail('持续前进但位置未变化，停止移动')
+
+    def _check_timeout(self, point: BagelRoutePoint) -> OperationRoundResult | None:
+        """单点超时检查。"""
+        if self.point_started_at is None:
+            self.point_started_at = time.monotonic()
+            return None
+        limit = POINT_TIMEOUT.get(point.kind, POINT_TIMEOUT['default'])
+        if time.monotonic() - self.point_started_at >= limit:
+            self._release_forward()
+            return self.round_recoverable_fail(
+                f'第 {self.cursor + 1} 点（{point.kind}）超时 {limit:.0f}s',
+            )
+        return None
+
+    def _check_hud(self) -> OperationRoundResult | None:
+        """局内 HUD 检查：暂停菜单直接失败。
+
+        这里不能因为没识别到普通攻击按钮就松前进键。长距离行进时
+        只要某一帧模板没命中，前进键就被松开，表现就是走两步停一下。
+        只有确认打开了暂停菜单才停。
+        """
+        if self.round_by_find_area(
+            self.last_screenshot, '战斗-菜单', '按钮-退出战斗',
+        ).is_success:
+            self._release_forward()
+            return self.round_recoverable_fail('移动中打开了暂停菜单')
+        return None
+
+    def _fail_if_action_limit(self) -> OperationRoundResult | None:
+        """单点输入次数上限。"""
+        if self.steps < ACTION_LIMIT:
+            return None
+        self._release_forward()
+        return self.round_recoverable_fail('单点输入达到上限')
+
+    def _current_point(self) -> BagelRoutePoint | None:
+        """当前路线游标处的点。"""
+        route = self.routes[self.route_index]
+        if self.cursor >= len(route.points):
+            return None
+        return route.points[self.cursor]
+
+    def _enter_point(self, route_index: int, point_index: int) -> None:
+        """进入某个点：切换游标并清空单点状态。"""
+        self.route_index = route_index
+        self.cursor = point_index
+        self.point_started_at = time.monotonic()
+        self._reset_point_state()
+
+    def _reset_point_state(self) -> None:
+        """清空与单个点绑定的交互状态。
+
+        转向比例不重置：它是整局共享的校准结果，换点后继续沿用。
+        只清掉待学习样本，避免拿跨点的旧样本反推。
+        """
+        self.current_kind = None
+        self.f_pressed = False
+        self.mechanical_hold_until = None
+        self.mechanical_retried = False
+        self.target_wait_since = None
+        self.small_step_since = None
+        self.steps = 0
+
+    def _record_input(self) -> None:
+        """记录一次输入并拒绝复用旧截图。"""
+        self.steps += 1
+        self.last_input_frame = max(time.time(), self.last_screenshot_time)
+
+    def _release_forward(self) -> None:
+        """松开前进键与冲刺键，并清卡位计时。"""
+        self.stuck_since = None
+        self._stop_sprint()
+        self.ctx.controller.stop_moving_forward()
+
+    def _adopt_screenshot(self, op: BagelOperation) -> None:
+        """子操作结束后同步其最后截图。"""
+        if op.last_screenshot is not None:
+            self.last_screenshot = op.last_screenshot
+            self.last_screenshot_time = op.last_screenshot_time
+
+    def handle_pause(self) -> None:
+        """暂停时松键。"""
+        self._release_forward()
+        super().handle_pause()
+
+    def after_operation_done(self, result: OperationResult) -> None:
+        """退出路径统一松键，含冲刺键。"""
+        self._stop_sprint()
+        self.ctx.controller.stop_moving_forward()
+        super().after_operation_done(result)
