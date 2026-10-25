@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import time
+from math import hypot
 from typing import TYPE_CHECKING
 
 import cv2
@@ -23,7 +24,11 @@ from zzz_od.application.bagel.bagel_operation import (
     BagelOperation,
     BagelRecoverableFailure,
 )
-from zzz_od.application.bagel.bagel_route_vision import BagelRouteVision
+from zzz_od.application.bagel.bagel_route import route_layer
+from zzz_od.application.bagel.bagel_route_vision import (
+    ROUTE_MATCH_MAX_DISTANCE,
+    BagelRouteVision,
+)
 from zzz_od.application.bagel.bagel_store import BagelStoreSafe
 from zzz_od.application.bagel.bagel_unlock_safe import BagelUnlockSafe
 
@@ -32,7 +37,7 @@ if TYPE_CHECKING:
 
     from one_dragon.base.operation.operation_base import OperationResult
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
-    from zzz_od.application.bagel.bagel_fixed_map import BagelFixedMap
+    from zzz_od.application.bagel.bagel_map_model import BagelMapModel
     from zzz_od.context.zzz_context import ZContext
 
 
@@ -75,7 +80,7 @@ class BagelRunFlow(BagelOperation):
         flow: BagelFlow,
         step_ids: tuple[str, ...] | None = None,
         on_event: Callable[[dict[str, object]], None] | None = None,
-        map_snapshot: BagelFixedMap | None = None,
+        map_snapshot: BagelMapModel | None = None,
         continuous_safe_unlock: bool = False,
         on_location_wait: Callable[[], None] | None = None,
         blueprint_priority: bool = True,
@@ -103,7 +108,7 @@ class BagelRunFlow(BagelOperation):
         self._precondition_waits: int = 0
         self._location_waits: int = 0
         self.vision: BagelRouteVision | None = None
-        self._map_snapshot: BagelFixedMap | None = map_snapshot
+        self._map_snapshot: BagelMapModel | None = map_snapshot
         self._container_recovery: ContainerRecovery | None = None
         self._container_step_id: str | None = None
         self._approach_step: BagelStep | None = None
@@ -144,8 +149,10 @@ class BagelRunFlow(BagelOperation):
         ):
             if self.ctx.screen_loader.get_area('贝果-局内', area) is None:
                 raise ValueError(f'缺少画面区域：{area}')
-        self.vision = BagelRouteVision(self.flow.map_id, map_snapshot=self._map_snapshot)
-        self.emit('snapshot', flow=self.flow.to_dict(), step_ids=self.step_ids, map_snapshot_id=self.vision.map.snapshot_id)
+        self.vision = BagelRouteVision(
+            route_layer(self.flow.map_id), map_snapshot=self._map_snapshot,
+        )
+        self.emit('snapshot', flow=self.flow.to_dict(), step_ids=self.step_ids, layer_name=self.vision.layer_name)
 
     def emit(self, kind: str, **details: object) -> None:
         """事件原样发送；文本日志补充步骤归属，重复前置检查只记一次开始。"""
@@ -244,20 +251,28 @@ class BagelRunFlow(BagelOperation):
                 target=0,
             )
             if position is None:
-                location = self.vision.last_location
-                if location is not None and location.reason == 'insufficient_geometry':
-                    return self.STATUS_LOCATION_PENDING
                 return '当前小地图无法定位'
-            if (
-                step.action == 'spawn'
-                and (
-                    (position[0] - self.vision.spawn[0]) ** 2
-                    + (position[1] - self.vision.spawn[1]) ** 2
-                )
-                > 25
-            ):
-                return '当前不在所选出生点'
+            if step.action == 'spawn':
+                start = self._route_start()
+                if hypot(
+                    position[0] - start[0], position[1] - start[1],
+                ) > ROUTE_MATCH_MAX_DISTANCE:
+                    return '当前离路线起点太远'
         return None
+
+    def _route_start(self) -> tuple[float, float]:
+        """取本流程第一个路点，作为是否走这条路的参照。
+
+        Returns:
+            路线起点的全局坐标。
+
+        Raises:
+            ValueError: 流程里没有任何路点。
+        """
+        for step in self.flow.steps:
+            for point in step.waypoints:
+                return point.xy
+        raise ValueError('流程没有路点，无法判定起点')
 
     def container_interrupted(self, step: BagelStep) -> bool:
         """只在预期容器操作中确认面板已消失且回到局内；未知画面不自动退出。"""
@@ -315,7 +330,9 @@ class BagelRunFlow(BagelOperation):
         """业务动作只有一个执行来源，工具不复制游戏交互。"""
         if step.action in ('move', 'approach'):
             if self.vision is None:
-                self.vision = BagelRouteVision(self.flow.map_id, map_snapshot=self._map_snapshot)
+                self.vision = BagelRouteVision(
+            route_layer(self.flow.map_id), map_snapshot=self._map_snapshot,
+        )
             return BagelNavigate(
                 self.ctx,
                 destination='move' if step.action == 'move' else step.target,
@@ -323,7 +340,6 @@ class BagelRunFlow(BagelOperation):
                 route_data=step.route(self.flow.map_id),
                 map_snapshot=self.vision.map,
                 navigation=step.navigation,
-                require_spawn=False,
                 check_target_position=True,
                 coordinate_only=step.action == 'move',
                 final_approach=step.action == 'approach',

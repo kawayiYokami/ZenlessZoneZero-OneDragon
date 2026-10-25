@@ -9,20 +9,60 @@ from typing import Any
 
 from one_dragon.utils import os_utils
 
-SUPPORTED_MAP_IDS: tuple[str, ...] = ('janus_high_a', 'janus_high_b')
-MAP_LABELS: dict[str, str] = {
+SUPPORTED_ROUTE_IDS: tuple[str, ...] = ('janus_high_a', 'janus_high_b')
+"""已支持的出生路线标识。每条路线挂在一个独立分层上。"""
+
+ROUTE_LABELS: dict[str, str] = {
     'janus_high_a': 'A · 录像店', 'janus_high_b': 'B · 白鸽工地地铁站',
 }
+"""路线标识到界面显示名的映射。"""
+
+ROUTE_LAYERS: dict[str, str] = {
+    'janus_high_a': '雅努斯幻境/Custom',
+    'janus_high_b': '雅努斯幻境/Custom',
+}
+"""路线标识到分层名的映射。迁移期两条路线暂共用同一层，重新标定后按实测改。"""
+
 ROLE_LABELS: dict[str, str] = {
     'turn': '转折', 'entry': '保险箱入口', 'approach': '接近', 'target': '交互目标',
 }
 
+COORDINATE_LIMIT = 4000.0
+"""全局画布坐标的合法上限。底图按 24% 缩放后单边不超过数千像素。"""
 
-def resource_root(map_id: str) -> Path:
-    """只允许已支持的资源目录。"""
-    if map_id not in SUPPORTED_MAP_IDS:
-        raise ValueError(f'不支持的贝果路线：{map_id}')
-    return Path(os_utils.get_resource_path('assets', 'game_data', 'bagel', map_id))
+
+def route_layer(route_id: str) -> str:
+    """取路线所在分层名。
+
+    Args:
+        route_id: 路线标识。
+
+    Returns:
+        含地图前缀的完整分层名。
+
+    Raises:
+        ValueError: 路线标识不受支持。
+    """
+    if route_id not in SUPPORTED_ROUTE_IDS:
+        raise ValueError(f'不支持的贝果路线：{route_id}')
+    return ROUTE_LAYERS[route_id]
+
+
+def resource_root(route_id: str) -> Path:
+    """取路线资源目录，只允许已支持的路线。
+
+    Args:
+        route_id: 路线标识。
+
+    Returns:
+        该路线的资源目录，存放 ``flow.yml`` 等流程资源。
+
+    Raises:
+        ValueError: 路线标识不受支持。
+    """
+    if route_id not in SUPPORTED_ROUTE_IDS:
+        raise ValueError(f'不支持的贝果路线：{route_id}')
+    return Path(os_utils.get_resource_path('assets', 'game_data', 'bagel', route_id))
 
 
 def _number(value: object, label: str, lower: float, upper: float) -> float:
@@ -101,7 +141,7 @@ class BagelRoute:
     @classmethod
     def from_dict(cls, map_id: str, data: dict[str, Any], *, complete: bool = True, check_roles: bool = True) -> BagelRoute:
         """在任何游戏输入前校验持久化数据或编辑草稿。"""
-        if map_id not in SUPPORTED_MAP_IDS or not isinstance(data, dict) or data.get('map_id') != map_id:
+        if map_id not in SUPPORTED_ROUTE_IDS or not isinstance(data, dict) or data.get('map_id') != map_id:
             raise ValueError('路线地图标识不匹配')
         values = data.get('waypoints')
         if not isinstance(values, list) or len(values) > 100:
@@ -130,7 +170,7 @@ class BagelRoute:
             stop = value.get('stop', True)
             if not isinstance(stop, bool):
                 raise ValueError('停步要求必须是布尔值')
-            point = BagelWaypoint(name.strip(), tuple(_number(v, '坐标', -1000, 1000) for v in xy), stage, role, tolerance, stop, passed)
+            point = BagelWaypoint(name.strip(), tuple(_number(v, '坐标', -COORDINATE_LIMIT, COORDINATE_LIMIT) for v in xy), stage, role, tolerance, stop, passed)
             points.append(point)
         route = cls(map_id, tuple(points))
         box, safe = route.points_for('box'), route.points_for('safe')

@@ -33,7 +33,7 @@ from zzz_od.application.bagel.bagel_operation import (
     BagelOperation,
     BagelRecoverableFailure,
 )
-from zzz_od.application.bagel.bagel_route import BagelRoute
+from zzz_od.application.bagel.bagel_route import BagelRoute, route_layer
 from zzz_od.application.bagel.bagel_route_vision import BagelRouteVision
 from zzz_od.operation.turning.turn_compensation import AngleTurnCompensator
 
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
     from one_dragon.base.operation.operation_base import OperationResult
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
-    from zzz_od.application.bagel.bagel_fixed_map import BagelFixedMap
+    from zzz_od.application.bagel.bagel_map_model import BagelMapModel
     from zzz_od.context.zzz_context import ZContext
 
 Destination = Literal['box', 'safe', 'move']
@@ -53,7 +53,6 @@ Destination = Literal['box', 'safe', 'move']
 class BagelNavigate(BagelOperation):
     """按实际定位朝目的地正常移动或碎步接近，按坐标或交互提示完成。"""
 
-    STATUS_UNSUPPORTED: str = '非支持出生点'
     STATUS_WAYPOINT: str = '已到路点'
     STATUS_ARRIVED_BOX: str = '已到武备箱'
     STATUS_ARRIVED_SAFE: str = '已到电子保险箱'
@@ -66,11 +65,10 @@ class BagelNavigate(BagelOperation):
         route_data: BagelRoute | None = None,
         on_observation: Callable[[dict[str, object]], None] | None = None,
         navigation: NavigationOptions | None = None,
-        require_spawn: bool = True,
         check_target_position: bool = False,
         coordinate_only: bool = False,
         final_approach: bool = False,
-        map_snapshot: BagelFixedMap | None = None,
+        map_snapshot: BagelMapModel | None = None,
         recovery: ContainerRecovery | None = None,
         recovering: bool = False,
         on_location_wait: Callable[[], None] | None = None,
@@ -111,7 +109,6 @@ class BagelNavigate(BagelOperation):
                 raise ValueError('发布流程没有对应的移动步骤')
             route_data = BagelRoute(map_id, tuple(points))
         self.navigation: NavigationOptions = navigation or (default_step.navigation if default_step else NavigationOptions())
-        self.require_spawn: bool = require_spawn
         self.check_target_position: bool = check_target_position
         self.coordinate_only: bool = coordinate_only
         self.final_approach: bool = final_approach
@@ -119,8 +116,10 @@ class BagelNavigate(BagelOperation):
         self.destination: Destination = destination
         self.map_id: str = map_id
         self.on_observation: Callable[[dict[str, object]], None] | None = on_observation
-        self.vision: BagelRouteVision = BagelRouteVision(map_id, route_data, map_snapshot)
-        if not self.vision.route.points_for(destination):
+        self.vision: BagelRouteVision = BagelRouteVision(
+            route_layer(map_id), route_data, map_snapshot,
+        )
+        if self.vision.route is None or not self.vision.route.points_for(destination):
             raise ValueError(f'{map_id} 暂不支持该导航路段：{destination}')
         self.active_waypoints: list[tuple[str, tuple[float, float]]] = self._select_waypoints()
         self.interact_area: str = '武备箱交互' if destination == 'box' else '电子保险箱交互'
@@ -140,8 +139,6 @@ class BagelNavigate(BagelOperation):
         self.last_position: tuple[float, float] | None = None
         self._cruise_progress: tuple[tuple[float, float], float] | None = None
         self.last_cruise_turn_at: float | None = None
-        self._spawn_far: int = 0
-        self._spawn_miss: int = 0
         self._safe_brake_until: float | None = None
         self._destination_braked: bool = False
         self._owns_recovery: bool = recovery is None
@@ -166,8 +163,6 @@ class BagelNavigate(BagelOperation):
         self.last_position = None
         self._cruise_progress = None
         self.last_cruise_turn_at = None
-        self._spawn_far = 0
-        self._spawn_miss = 0
         self._safe_brake_until = None
         self._destination_braked = False
         self._settle_until = None
@@ -189,10 +184,7 @@ class BagelNavigate(BagelOperation):
 
     @operation_node(name='检查起点', is_start_node=True, node_max_retry_times=6)
     def check_start(self) -> OperationRoundResult:
-        """到箱前须确认本路线出生点；到大保险前只需确认局内 HUD。
-
-        配准没有结果时再看。连续三帧没有位置，或连续三帧离开出生点超过 5 像素，才当作不是这条路线。
-        """
+        """出发前先确认能定位；走哪条路线由入口处的路线匹配决定，导航内不再复核出生点。"""
         if self.is_bagel_result():
             return self.round_fail(self.STATUS_DEFEATED)
         if not self.coordinate_only:
@@ -206,27 +198,10 @@ class BagelNavigate(BagelOperation):
                 return self.round_recoverable_fail(reason) if reason else self.round_wait('等待容器面板确认', wait=0.25)
         if not self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-普通攻击').is_success:
             return self.round_recoverable_fail('未识别贝果局内画面')
-        if self.destination != 'box' or not self.require_spawn:
-            if self.vision.locate(self.minimap()) is None:
-                reason = '起点小地图暂时无法定位'
-                return self.round_retry(reason, data=BagelRecoverableFailure(reason), wait=0.15)
-            return self.round_success('开始移动')
-        position = self.vision.locate(self.minimap())
-        if position is None:
-            self._spawn_far = 0
-            self._spawn_miss += 1
-            if self._spawn_miss >= 3:
-                return self.round_success(self.STATUS_UNSUPPORTED)
-            return self.round_retry('小地图暂时对不上出生点', wait=0.15)
-        self._spawn_miss = 0
-        distance = hypot(position[0] - self.vision.spawn[0], position[1] - self.vision.spawn[1])
-        if distance <= 5:
-            self._spawn_far = 0
-            return self.round_success('开始移动')
-        self._spawn_far += 1
-        if self._spawn_far >= 3:
-            return self.round_success(self.STATUS_UNSUPPORTED)
-        return self.round_retry('出生点位置未稳定', wait=0.15)
+        if self.vision.locate(self.minimap()) is None:
+            reason = '起点小地图暂时无法定位'
+            return self.round_retry(reason, data=BagelRecoverableFailure(reason), wait=0.15)
+        return self.round_success('开始移动')
 
     @node_from(from_name='检查起点', status='开始移动')
     @operation_node(name='沿小地图节点移动')
@@ -284,11 +259,9 @@ class BagelNavigate(BagelOperation):
             self.on_observation({
                 'time': self.last_screenshot_time, 'position': position,
                 'angle': self.vision.player_angle(crop), 'target': self.waypoint_index,
-                'map_snapshot_id': self.vision.map.snapshot_id,
-                'location_reason': self.vision.last_location.reason if self.vision.last_location else None,
-                'location_ms': self.vision.last_location.elapsed_ms if self.vision.last_location else None,
-                'location_inliers': self.vision.last_location.inliers if self.vision.last_location else None,
-                'location_residual_px': self.vision.last_location.median_residual_px if self.vision.last_location else None,
+                'camera_angle': self.vision.camera_angle(crop),
+                'layer_name': self.vision.last_layer_name,
+                'location_score': self.vision.last_score,
             })
         small_steps = (
             (self.recovering or self.navigation.effective_final_mode(self.destination) in ('small_steps', 'short_steps'))
@@ -296,21 +269,15 @@ class BagelNavigate(BagelOperation):
         )
         if position is None:
             self._release_forward()
-            if not self.coordinate_only and self.vision.last_location is not None and self.vision.last_location.reason in (
-                'ambiguous_position', 'outside_coverage', 'invalid_crop',
-            ):
-                return self.round_recoverable_fail(f'小地图定位失败：{self.vision.last_location.reason}')
-            if self.last_position is None and self.vision.last_location is not None:
-                self._release_forward()
-                if self.vision.last_location.reason == 'insufficient_geometry':
-                    self.initial_locate_misses += 1
-                    if self.initial_locate_misses <= NAV_INITIAL_LOCATE_MISS_LIMIT:
-                        if self.on_location_wait is not None:
-                            self.on_location_wait()
-                        return self.round_wait(
-                            '起步小地图暂时无法定位，等待下一帧', wait=NAV_INITIAL_LOCATE_WAIT,
-                        )
-                return self.round_recoverable_fail('小地图定位失败，停止移动')
+            if self.last_position is None:
+                self.initial_locate_misses += 1
+                if self.initial_locate_misses <= NAV_INITIAL_LOCATE_MISS_LIMIT:
+                    if self.on_location_wait is not None:
+                        self.on_location_wait()
+                    return self.round_wait(
+                        '起步小地图暂时无法定位，等待下一帧', wait=NAV_INITIAL_LOCATE_WAIT,
+                    )
+            return self.round_recoverable_fail('小地图定位失败，停止移动')
             if self.last_position is not None and self.locate_misses < NAV_LOCATE_MISS_LIMIT:
                 self.locate_misses += 1
                 self._release_forward()
@@ -520,7 +487,7 @@ class BagelNavigate(BagelOperation):
         angle = self.vision.player_angle(self.minimap())
         if angle is None:
             return False
-        controller_angle = (-angle) % 360
+        controller_angle = angle % 360
         target_angle = degrees(atan2(position[1] - target[1], target[0] - position[0])) % 360
         return abs(cal_utils.angle_delta(controller_angle, target_angle)) > 90
 
@@ -543,7 +510,7 @@ class BagelNavigate(BagelOperation):
 
     def _observe_heading(self, image_angle: float, target_angle: float) -> tuple[float, float]:
         """用新朝向学习上一拍转向，返回控制器朝向和到目标的有向偏差。"""
-        controller_angle = (-image_angle) % 360
+        controller_angle = image_angle % 360
         if self.pending_turn is not None:
             source, effective = self.pending_turn
             self.turn_compensator.learn(source, effective, controller_angle)

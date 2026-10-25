@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>贝果路线编辑器</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; }
+  body { display: flex; background: #eef1f6; color: #202020; font-size: 15px; }
+  #left { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+  #mapTabs { display: flex; gap: 8px; padding: 10px 14px; background: #e9eef6; border-bottom: 1px solid #cfd8e3; }
+  .mapTab { padding: 6px 16px; border: 1px solid #cfd8e3; border-radius: 16px; background: #fff; cursor: pointer; font-size: 14px; }
+  .mapTab.active { background: #2b6cb0; color: #fff; border-color: #2b6cb0; }
+  #canvasWrap { flex: 1 1 auto; position: relative; overflow: hidden; background: #e6eaf2; cursor: grab; }
+  #canvasWrap.dragging { cursor: grabbing; }
+  canvas { display: block; image-rendering: pixelated; }
+  #hud {
+    flex: 0 0 auto; padding: 6px 14px; border-top: 1px solid #cfd8e3;
+    background: #e9eef6; color: #47525f; font-size: 13px; line-height: 1.8;
+    pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #right { flex: 0 0 430px; display: flex; flex-direction: column; border-left: 1px solid #cfd8e3; background: #f7f9fc; }
+  .section { display: flex; flex-direction: column; min-height: 0; }
+  #routeSection { flex: 0 0 34%; border-bottom: 1px solid #cfd8e3; }
+  #detailSection { flex: 1 1 auto; }
+  .sectionHead {
+    padding: 10px 14px; font-size: 15px; font-weight: 600; background: #e9eef6;
+    border-bottom: 1px solid #cfd8e3; display: flex; justify-content: space-between; align-items: center;
+  }
+  .sectionHead .hint { font-weight: 400; font-size: 13px; color: #6b7684; }
+  .row .locate {
+    flex: 0 0 auto; padding: 1px 8px; border-radius: 5px; font-size: 13px;
+    line-height: 19px; cursor: pointer; background: #fff;
+    border: 1px solid #a8c8e8; color: #1a6fb5;
+  }
+  .row .locate:hover { background: #eaf3fc; }
+  .row .locate:disabled { color: #a7b0bb; border-color: #d8dfe8; background: #f2f5f9; cursor: default; }
+  #routeList, #detailList { overflow-y: auto; flex: 1 1 auto; }
+  .routeItem { padding: 10px 14px; border-bottom: 1px solid #e3e9f2; cursor: pointer; display: flex; align-items: flex-start; gap: 8px; }
+  .routeItem:hover { background: #eef4fd; }
+  .routeItem.active { background: #dceafd; }
+  .routeItem .body { flex: 1 1 auto; min-width: 0; }
+  .routeItem .name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .routeItem .toggle { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 400; color: #47525f; cursor: pointer; }
+  .routeItem .toggle input { width: 15px; height: 15px; cursor: pointer; }
+  .routeItem.disabled .name { color: #8a95a3; }
+  .routeItem.disabled .meta { color: #a7b0bb; }
+  .routeItem .meta { font-size: 13px; color: #6b7684; margin-top: 3px; }
+  .routeItem .del, .routeItem .test, .routeItem .rename {
+    flex: 0 0 auto; padding: 2px 9px; border-radius: 5px; font-size: 13px;
+    line-height: 20px; cursor: pointer; background: #fff;
+  }
+  .routeItem .del { border: 1px solid #e3b8b8; color: #c0392b; }
+  .routeItem .del:hover { background: #fdeceb; }
+  .routeItem .test { border: 1px solid #a8c8e8; color: #1a6fb5; }
+  .routeItem .test:hover { background: #eaf3fc; }
+  .routeItem .rename { border: 1px solid #c8d3e0; color: #47525f; }
+  .routeItem .rename:hover { background: #eef4fd; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid #e9eef6; }
+  .row .dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+  .row .order { flex: 0 0 26px; color: #6b7684; font-size: 13px; text-align: right; }
+  .row .coord { flex: 0 0 auto; color: #47525f; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .row select {
+    flex: 1 1 auto; min-width: 0; font-size: 14px; padding: 3px 4px; border: 1px solid #cfd8e3;
+    border-radius: 5px; background: #fff; color: #202020;
+  }
+  .empty { padding: 18px 14px; color: #6b7684; font-size: 14px; }
+  #pointMenu {
+    position: fixed; z-index: 20; display: none; min-width: 168px; padding: 6px;
+    background: #fff; border: 1px solid #cfd8e3; border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(20, 40, 70, 0.18);
+  }
+  #pointMenu .item { padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  #pointMenu .item:hover { background: #eef4fd; }
+  #pointMenu .item.danger { color: #c0392b; }
+  #pointMenu .item.danger:hover { background: #fdeceb; }
+  #pointMenu .sep { height: 1px; margin: 5px 3px; background: #e9eef6; }
+</style>
+</head>
+<body>
+<div id="left">
+  <div id="mapTabs"></div>
+  <div id="canvasWrap"><canvas id="map"></canvas></div>
+  <div id="hud">载入中…</div>
+</div>
+<div id="right">
+  <div class="section" id="routeSection">
+    <div class="sectionHead"><span>路线列表</span><span class="hint" id="routeCount"></span></div>
+    <div id="routeList"></div>
+  </div>
+  <div class="section" id="detailSection">
+    <div class="sectionHead"><span>路线内容</span><span class="hint" id="detailHint"></span></div>
+    <div id="detailList"></div>
+  </div>
+</div>
+<div id="pointMenu"></div>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+// 每类点一个固定色相，浅底上取深一档保证对比度。
+// 电子=橙、机械=紫、普通箱=绿，是用户指定的语义色，不要随意换。
+// 其余三类按色相环尽量拉开：灯塔深蓝、门青蓝、电梯玫红，
+// 任意两类的色相至少差 41 度，肉眼可辨。
+const KIND_COLORS = {
+  beacon: '#2233b4',
+  electronic_safe: '#d97400',
+  mechanical_safe: '#8b3fc4',
+  box: '#1f8a4c',
+  door: '#238495',
+  elevator: '#bc2f5e'
+};
+const KIND_LABELS = {
+  beacon: '寻路灯塔',
+  electronic_safe: '电子保险箱',
+  mechanical_safe: '机械保险箱',
+  box: '普通箱子',
+  door: '门',
+  elevator: '电梯'
+};
+
+const state = {
+  layers: [],
+  byName: {},
+  images: {},
+  maps: {},
+  activeMap: null,
+  routes: [],
+  activeRoute: null,
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  autoFit: true,
+  dragging: false,
+  dragStart: null,
+  livePoints: [],
+  livePosition: null,
+  recording: false,
+  // 编辑态：拖动点位、插入点位时与鼠标的临时交互
+  dragPoint: -1,
+  dragMoved: false,
+  insertAfter: -1,
+  mouseMap: null,
+  selectedPoint: -1,
+  lastEdit: ''
+};
+
+const POINT_HIT_RADIUS = 12;
+// 点选点位的命中半径（屏幕像素）。
+
+const LINE_HIT_RADIUS = 7;
+// 点选连线的命中半径（屏幕像素）。
+
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvasWrap');
+const hud = document.getElementById('hud');
+
+// 网页 → Python 的通道；脚本没载入时删除按钮给出提示而不是静默失败。
+let bridge = null;
+new QWebChannel(qt.webChannelTransport, (channel) => {
+  bridge = channel.objects.bagelBridge;
+});
+
+function requestDeleteRoute(routeId) {
+  if (!bridge) {
+    window.alert('删除通道未就绪，请重启编辑器再试。');
+    return;
+  }
+  bridge.deleteRoute(routeId);
+}
+
+function requestTestRoute(routeId) {
+  if (!bridge) {
+    window.alert('试跑通道未就绪，请重启编辑器再试。');
+    return;
+  }
+  bridge.testRoute(routeId);
+}
+
+function requestRenameRoute(routeId) {
+  if (!bridge) {
+    window.alert('重命名通道未就绪，请重启编辑器再试。');
+    return;
+  }
+  const input = window.prompt('给这条路线起个新名字：', routeId);
+  if (input === null) return;
+  const name = input.trim();
+  if (!name || name === routeId) return;
+  bridge.renameRoute(routeId, name);
+}
+
+// 路线开关：关闭后这条路线在执行时被跳过，编辑器里仍然显示。
+function requestSetRouteEnabled(routeId, enabled) {
+  if (!bridge) {
+    window.alert('开关通道未就绪，请重启编辑器再试。');
+    return;
+  }
+  bridge.setRouteEnabled(routeId, enabled);
+}
+
+// 节点定位：切到游戏定位一次，用结果替换这一行的坐标。
+function requestLocatePoint(index) {
+  if (!bridge) {
+    window.alert('定位通道未就绪，请重启编辑器再试。');
+    return;
+  }
+  bridge.locatePoint(index);
+}
+
+function layerKey(layer) { return layer.map_id + '/' + layer.name; }
+
+function resizeCanvas() {
+  const rect = wrap.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (state.autoFit && state.activeMap) fitMap();
+  draw();
+}
+
+function loadImage(layer) {
+  const key = layerKey(layer);
+  if (state.images[key]) return Promise.resolve(state.images[key]);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { state.images[key] = img; resolve(img); };
+    img.onerror = () => { state.images[key] = null; resolve(null); };
+    img.src = 'assets/game_data/map_locator/' + layer.image;
+  });
+}
+
+// 把同一张地图的所有分块按 origin 贴到一块离屏画布上，得到完整大地图。
+// 底图是高通纹理（深灰线 + 透明底），直接叠起来会黑成一片，
+// 这里把有像素的部分反相成浅底深线，透明区留成浅灰底。
+function buildMapComposites() {
+  const groups = {};
+  state.layers.forEach(l => {
+    if (!groups[l.map_id]) groups[l.map_id] = [];
+    groups[l.map_id].push(l);
+  });
+  state.maps = {};
+  Object.keys(groups).forEach(mid => {
+    const items = groups[mid];
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    items.forEach(l => {
+      const img = state.images[layerKey(l)];
+      if (!img) return;
+      x0 = Math.min(x0, l.origin[0]);
+      y0 = Math.min(y0, l.origin[1]);
+      x1 = Math.max(x1, l.origin[0] + img.width);
+      y1 = Math.max(y1, l.origin[1] + img.height);
+    });
+    if (!isFinite(x0)) return;
+    const c = document.createElement('canvas');
+    c.width = x1 - x0;
+    c.height = y1 - y0;
+    const cc = c.getContext('2d');
+    cc.imageSmoothingEnabled = false;
+    items.forEach(l => {
+      const img = state.images[layerKey(l)];
+      if (!img) return;
+      cc.drawImage(img, l.origin[0] - x0, l.origin[1] - y0);
+    });
+    invertToLight(cc, c.width, c.height);
+    state.maps[mid] = { mapId: mid, x0, y0, x1, y1, canvas: c, layers: items };
+  });
+}
+
+// 反相成浅底深线：透明像素填浅灰，不透明像素按亮度反相。
+function invertToLight(cc, width, height) {
+  if (!width || !height) return;
+  const data = cc.getImageData(0, 0, width, height);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] === 0) {
+      px[i] = 238; px[i + 1] = 241; px[i + 2] = 246; px[i + 3] = 255;
+      continue;
+    }
+    const v = px[i];
+    px[i] = 255 - v;
+    px[i + 1] = 255 - v;
+    px[i + 2] = 255 - v;
+    px[i + 3] = 255;
+  }
+  cc.putImageData(data, 0, 0);
+}
+
+async function boot() {
+  const resp = await fetch('assets/game_data/map_locator/layers.json');
+  const data = await resp.json();
+  state.layers = data.layers;
+  state.byName = {};
+  data.layers.forEach(l => { state.byName[layerKey(l)] = l; });
+  await Promise.all(state.layers.map(l => loadImage(l)));
+  buildMapComposites();
+  hud.textContent = Object.keys(state.maps).length + ' 张地图 · '
+    + state.layers.length + ' 块贴图';
+  renderMapTabs();
+  if (state.activeRoute) {
+    applyRouteMap();
+    renderRouteList();
+    renderDetail();
+    draw();
+  } else {
+    const first = Object.keys(state.maps)[0];
+    if (first) selectMap(first);
+  }
+}
+
+function renderMapTabs() {
+  const box = document.getElementById('mapTabs');
+  box.innerHTML = '';
+  Object.keys(state.maps).forEach(mid => {
+    const m = state.maps[mid];
+    const el = document.createElement('div');
+    el.className = 'mapTab' + (mid === state.activeMap ? ' active' : '');
+    el.textContent = mid + ' (' + (m.x1 - m.x0) + '×' + (m.y1 - m.y0) + ')';
+    el.onclick = () => selectMap(mid);
+    box.appendChild(el);
+  });
+}
+
+function selectMap(mid) {
+  if (!state.maps[mid]) return;
+  state.activeMap = mid;
+  state.autoFit = true;
+  fitMap();
+  renderMapTabs();
+  // 切地图后当前选中的路线可能不在这张图上，改选这张图的第一条。
+  if (!routeOnActiveMap(state.activeRoute)) {
+    const first = visibleRoutes()[0] || null;
+    state.activeRoute = first;
+    state.selectedPoint = -1;
+    state.insertAfter = -1;
+    state.lastEdit = '';
+  }
+  renderRouteList();
+  renderDetail();
+  draw();
+}
+
+function fitMap() {
+  const m = state.maps[state.activeMap];
+  const rect = wrap.getBoundingClientRect();
+  if (!m || !rect.width || !rect.height) return;
+  const pad = 24;
+  const w = m.x1 - m.x0;
+  const h = m.y1 - m.y0;
+  state.scale = Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h, 4);
+  state.offsetX = (rect.width - w * state.scale) / 2;
+  state.offsetY = (rect.height - h * state.scale) / 2;
+}
+
+function routeMap(route) {
+  if (!route) return null;
+  for (const p of route.points) {
+    const layer = state.byName[p.layer];
+    if (layer) return layer.map_id;
+  }
+  return null;
+}
+
+// 路线是否落在当前打开的地图上；列表只显示当前地图的路线。
+function routeOnActiveMap(route) {
+  return !!route && routeMap(route) === state.activeMap;
+}
+
+// 当前地图上要显示的路线。
+function visibleRoutes() {
+  return state.routes.filter(routeOnActiveMap);
+}
+
+function applyRouteMap() {
+  const mid = routeMap(state.activeRoute);
+  if (!mid || !state.maps[mid]) return;
+  if (state.activeMap !== mid) selectMap(mid);
+}
+
+function renderRouteList() {
+  const list = document.getElementById('routeList');
+  const routes = visibleRoutes();
+  document.getElementById('routeCount').textContent = routes.length + ' 条';
+  if (!routes.length) {
+    list.innerHTML = '<div class="empty">这张地图上还没有路线。切到其它地图查看，或点上方「录制路线」打点。</div>';
+    return;
+  }
+  list.innerHTML = '';
+  routes.forEach(r => {
+    const el = document.createElement('div');
+    el.className = 'routeItem' + (state.activeRoute && state.activeRoute.route_id === r.route_id ? ' active' : '');
+    const layers = [];
+    r.points.forEach(p => { if (!layers.includes(p.layer)) layers.push(p.layer); });
+    const mapName = routeMap(r) || '未知地图';
+    const body = document.createElement('div');
+    body.className = 'body';
+    const enabled = r.enabled !== false;
+    body.innerHTML = '<div class="name">'
+      + '<label class="toggle"><input type="checkbox"' + (enabled ? ' checked' : '') + '>'
+      + '<span>启用</span></label>'
+      + r.route_id + '</div>' +
+      '<div class="meta">' + r.points.length + ' 点 · ' + mapName +
+      (layers.length > 1 ? ' · ' + layers.length + ' 层' : '') + '</div>';
+    el.classList.toggle('disabled', !enabled);
+    const box = body.querySelector('input[type="checkbox"]');
+    box.onclick = (ev) => {
+      ev.stopPropagation();
+      requestSetRouteEnabled(r.route_id, box.checked);
+    };
+    body.onclick = () => {
+      state.activeRoute = r;
+      state.selectedPoint = -1;
+      state.insertAfter = -1;
+      state.lastEdit = '';
+      applyRouteMap();
+      renderRouteList();
+      renderDetail();
+      draw();
+    };
+    el.appendChild(body);
+
+    const test = document.createElement('button');
+    test.className = 'test';
+    test.textContent = '试跑';
+    test.onclick = (ev) => {
+      ev.stopPropagation();
+      if (!window.confirm(
+        '试跑路线 ' + r.route_id + '？\n\n先让角色站在起点灯塔附近（100 像素内），'
+        + '确认后会自动切到游戏，按打点顺序走一遍。'
+      )) return;
+      requestTestRoute(r.route_id);
+    };
+    el.appendChild(test);
+
+    const rename = document.createElement('button');
+    rename.className = 'rename';
+    rename.textContent = '改名';
+    rename.onclick = (ev) => {
+      ev.stopPropagation();
+      requestRenameRoute(r.route_id);
+    };
+    el.appendChild(rename);
+
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '删除';
+    del.onclick = (ev) => {
+      ev.stopPropagation();
+      if (!window.confirm('删除路线 ' + r.route_id + '？文件会被直接移除。')) return;
+      requestDeleteRoute(r.route_id);
+    };
+    el.appendChild(del);
+
+    list.appendChild(el);
+  });
+}
+
+function renderDetail() {
+  const box = document.getElementById('detailList');
+  const hint = document.getElementById('detailHint');
+  const route = state.activeRoute;
+  if (!route) {
+    hint.textContent = '';
+    box.innerHTML = '<div class="empty">选择左侧一条路线查看内容。</div>';
+    return;
+  }
+  const activeMap = state.activeMap;
+  const items = route.points
+    .map((p, i) => ({ p, order: i + 1 }))
+    .filter(it => {
+      const layer = state.byName[it.p.layer];
+      return !activeMap || (layer && layer.map_id === activeMap);
+    });
+  hint.textContent = items.length + ' / ' + route.points.length + ' 点';
+  if (!items.length) {
+    box.innerHTML = '<div class="empty">这张地图上没有点位。</div>';
+    return;
+  }
+  box.innerHTML = '';
+  items.forEach(it => {
+    const d = it.p;
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.onclick = () => {
+      state.selectedPoint = it.order - 1;
+      draw();
+    };
+
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = KIND_COLORS[d.kind] || '#888';
+    row.appendChild(dot);
+
+    const order = document.createElement('span');
+    order.className = 'order';
+    order.textContent = it.order;
+    row.appendChild(order);
+
+    // 类型下拉就是这一行的类型标签，不再额外显示类型文字
+    const sel = document.createElement('select');
+    Object.keys(KIND_LABELS).forEach(kind => {
+      const opt = document.createElement('option');
+      opt.value = kind;
+      opt.textContent = KIND_LABELS[kind];
+      if (kind === d.kind) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.onclick = (ev) => ev.stopPropagation();
+    sel.onchange = () => {
+      const index = it.order - 1;
+      if (!state.activeRoute) return;
+      state.activeRoute.points[index].kind = sel.value;
+      dot.style.background = KIND_COLORS[sel.value] || '#888';
+      state.selectedPoint = index;
+      commitEdit('第 ' + it.order + ' 点改成 ' + (KIND_LABELS[sel.value] || sel.value));
+    };
+    row.appendChild(sel);
+
+    const coord = document.createElement('span');
+    coord.className = 'coord';
+    coord.textContent = '(' + d.x.toFixed(0) + ', ' + d.y.toFixed(0) + ')';
+    row.appendChild(coord);
+
+    // 定位按钮：站到目标位置后点它，把这一行的坐标换成当前真实位置。
+    const locate = document.createElement('button');
+    locate.className = 'locate';
+    locate.textContent = '定位';
+    locate.title = '切到游戏定位一次，把这一点的坐标换成角色当前位置';
+    locate.onclick = (ev) => {
+      ev.stopPropagation();
+      requestLocatePoint(it.order - 1);
+    };
+    row.appendChild(locate);
+
+    box.appendChild(row);
+  });
+  if (state.lastEdit) {
+    const tip = document.createElement('div');
+    tip.className = 'empty';
+    tip.textContent = state.lastEdit;
+    box.appendChild(tip);
+  }
+}
+
+function toScreen(x, y) {
+  return [state.offsetX + x * state.scale, state.offsetY + y * state.scale];
+}
+
+// 全局坐标 → 当前大地图画布坐标
+function toMapCanvas(x, y) {
+  const m = state.maps[state.activeMap];
+  if (!m) return null;
+  return [x - m.x0, y - m.y0];
+}
+
+// 屏幕坐标 → 全局坐标，取整并夹到底图范围内。
+// 必须取整：定位返回的是整数像素，点坐标若带小数，
+// 距离会出现 0.5px 这种值，到达判定就永远对不上。
+function toGlobal(sx, sy) {
+  const m = state.maps[state.activeMap];
+  if (!m) return null;
+  const x = (sx - state.offsetX) / state.scale + m.x0;
+  const y = (sy - state.offsetY) / state.scale + m.y0;
+  return [
+    Math.round(Math.min(Math.max(x, m.x0), m.x1)),
+    Math.round(Math.min(Math.max(y, m.y0), m.y1))
+  ];
+}
+
+function globalToScreen(x, y) {
+  const c = toMapCanvas(x, y);
+  return c ? toScreen(c[0], c[1]) : null;
+}
+
+function onActiveMap(layerName) {
+  const layer = state.byName[layerName];
+  return !!layer && layer.map_id === state.activeMap;
+}
+
+function localMouse(e) {
+  const rect = wrap.getBoundingClientRect();
+  return [e.clientX - rect.left, e.clientY - rect.top];
+}
+
+// 当前地图上可见的点，带上它在整条路线里的下标
+function visibleRoutePoints() {
+  const route = state.activeRoute;
+  const out = [];
+  if (!route) return out;
+  route.points.forEach((p, index) => {
+    if (!onActiveMap(p.layer)) return;
+    const s = globalToScreen(p.x, p.y);
+    if (s) out.push({ index: index, p: p, s: s });
+  });
+  return out;
+}
+
+// 命中最近的点位，返回它在路线里的下标；没命中返回 -1
+function hitPoint(mx, my) {
+  let best = -1;
+  let bestDist = POINT_HIT_RADIUS;
+  visibleRoutePoints().forEach(it => {
+    const d = Math.hypot(it.s[0] - mx, it.s[1] - my);
+    if (d <= bestDist) { bestDist = d; best = it.index; }
+  });
+  return best;
+}
+
+// 命中相邻两点之间的连线，返回插到哪一对之间以及落点全局坐标
+function hitSegment(mx, my) {
+  const route = state.activeRoute;
+  if (!route) return null;
+  let best = null;
+  let bestDist = LINE_HIT_RADIUS;
+  for (let i = 1; i < route.points.length; i++) {
+    const a = route.points[i - 1];
+    const b = route.points[i];
+    if (a.layer !== b.layer || !onActiveMap(a.layer)) continue;
+    const sa = globalToScreen(a.x, a.y);
+    const sb = globalToScreen(b.x, b.y);
+    if (!sa || !sb) continue;
+    const vx = sb[0] - sa[0];
+    const vy = sb[1] - sa[1];
+    const len2 = vx * vx + vy * vy;
+    if (!len2) continue;
+    let t = ((mx - sa[0]) * vx + (my - sa[1]) * vy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const px = sa[0] + vx * t;
+    const py = sa[1] + vy * t;
+    const d = Math.hypot(px - mx, py - my);
+    if (d > bestDist) continue;
+    bestDist = d;
+    best = {
+      index: i - 1,
+      x: Math.round(a.x + (b.x - a.x) * t),
+      y: Math.round(a.y + (b.y - a.y) * t)
+    };
+  }
+  return best;
+}
+
+// 在第 index 点后面插一个点，沿用同一点的分层
+function insertPointAfter(index, gx, gy, kind) {
+  const route = state.activeRoute;
+  if (!route) return -1;
+  const ref = route.points[index];
+  if (!ref) return -1;
+  route.points.splice(index + 1, 0, { x: gx, y: gy, layer: ref.layer, kind: kind });
+  return index + 1;
+}
+
+// 编辑落盘：重画、刷新列表，并把整条路线推回 Python 写文件
+function commitEdit(message) {
+  state.lastEdit = message || '';
+  renderRouteList();
+  renderDetail();
+  draw();
+  if (!bridge || !state.activeRoute) return;
+  bridge.saveRoute(
+    state.activeRoute.route_id, JSON.stringify(state.activeRoute.points)
+  );
+}
+
+function deletePoint(index) {
+  const route = state.activeRoute;
+  if (!route || index < 0 || index >= route.points.length) return;
+  route.points.splice(index, 1);
+  commitEdit('已删掉第 ' + (index + 1) + ' 点');
+}
+
+function startInsert(index) {
+  state.insertAfter = index;
+  state.lastEdit = '点地图落点，插入一个灯塔（Esc 取消）';
+  draw();
+}
+
+function cancelInsert() {
+  if (state.insertAfter < 0) return;
+  state.insertAfter = -1;
+  state.lastEdit = '';
+  draw();
+}
+
+const pointMenu = document.getElementById('pointMenu');
+
+function hidePointMenu() {
+  pointMenu.style.display = 'none';
+}
+
+// 点菜单：删除这个点，或从它往后加一个点
+function showPointMenu(index, clientX, clientY) {
+  pointMenu.innerHTML = '';
+  const del = document.createElement('div');
+  del.className = 'item danger';
+  del.textContent = '删除这个点';
+  del.onclick = () => { hidePointMenu(); deletePoint(index); };
+  pointMenu.appendChild(del);
+
+  const sep = document.createElement('div');
+  sep.className = 'sep';
+  pointMenu.appendChild(sep);
+
+  const add = document.createElement('div');
+  add.className = 'item';
+  add.textContent = '在这后面加一个点';
+  add.onclick = () => { hidePointMenu(); startInsert(index); };
+  pointMenu.appendChild(add);
+
+  pointMenu.style.display = 'block';
+  pointMenu.style.left = Math.min(clientX, window.innerWidth - 150) + 'px';
+  pointMenu.style.top = Math.min(clientY, window.innerHeight - 90) + 'px';
+}
+
+function draw() {
+  const rect = wrap.getBoundingClientRect();
+  ctx.clearRect(0, 0, rect.width, rect.height);
+  ctx.fillStyle = '#e6eaf2';
+  ctx.fillRect(0, 0, rect.width, rect.height);
+
+  const m = state.maps[state.activeMap];
+  if (!m) return;
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(m.canvas, state.offsetX, state.offsetY,
+    m.canvas.width * state.scale, m.canvas.height * state.scale);
+
+  const route = state.activeRoute;
+  if (route) {
+    const pts = route.points
+      .map((p, i) => ({ p, order: i + 1 }))
+      .filter(it => {
+        const layer = state.byName[it.p.layer];
+        return layer && layer.map_id === state.activeMap;
+      });
+
+    // 同层的相邻点连成折线；跨层的相邻点断开，避免把上下楼连成一条线。
+    ctx.strokeStyle = 'rgba(40, 90, 160, 0.7)';
+    ctx.lineWidth = 1.5;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      if (a.p.layer !== b.p.layer) continue;
+      const ca = toMapCanvas(a.p.x, a.p.y);
+      const cb = toMapCanvas(b.p.x, b.p.y);
+      if (!ca || !cb) continue;
+      const sa = toScreen(ca[0], ca[1]);
+      const sb = toScreen(cb[0], cb[1]);
+      ctx.beginPath();
+      ctx.moveTo(sa[0], sa[1]);
+      ctx.lineTo(sb[0], sb[1]);
+      ctx.stroke();
+    }
+
+    ctx.font = '11px "Microsoft YaHei UI", sans-serif';
+    pts.forEach(it => {
+      const c = toMapCanvas(it.p.x, it.p.y);
+      if (!c) return;
+      const s = toScreen(c[0], c[1]);
+      if (it.order - 1 === state.selectedPoint) {
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], 12, 0, Math.PI * 2);
+        ctx.strokeStyle = '#e23b3b';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], 7, 0, Math.PI * 2);
+      ctx.fillStyle = KIND_COLORS[it.p.kind] || '#888';
+      ctx.fill();
+      ctx.fillStyle = '#123';
+      ctx.font = '13px "Microsoft YaHei UI", sans-serif';
+      ctx.fillText(String(it.order), s[0] + 10, s[1] - 8);
+    });
+  }
+
+  // 插入模式：从锚点拉一条跟着鼠标走的虚线，提示下一个点会落在哪
+  if (state.insertAfter >= 0 && state.activeRoute && state.mouseMap) {
+    const anchor = state.activeRoute.points[state.insertAfter];
+    if (anchor && onActiveMap(anchor.layer)) {
+      const sa = globalToScreen(anchor.x, anchor.y);
+      const mp = globalToScreen(state.mouseMap[0], state.mouseMap[1]);
+      if (sa && mp) {
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(sa[0], sa[1]);
+        ctx.lineTo(mp[0], mp[1]);
+        ctx.strokeStyle = 'rgba(226, 59, 59, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(mp[0], mp[1], 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(226, 59, 59, 0.85)';
+        ctx.fill();
+      }
+    }
+  }
+
+  // 录制态的临时图形只在录制中画：停止后即使状态没清干净也不留残影。
+  if (state.recording) {
+    state.livePoints.forEach((p, i) => {
+      const layer = state.byName[p.layer];
+      if (!layer || layer.map_id !== state.activeMap) return;
+      const c = toMapCanvas(p.x, p.y);
+      if (!c) return;
+      const s = toScreen(c[0], c[1]);
+      // 录制中的相邻点连成折线，跨层断开。
+      const prev = i > 0 ? state.livePoints[i - 1] : null;
+      if (prev && prev.layer === p.layer) {
+        const pc = toMapCanvas(prev.x, prev.y);
+        if (pc) {
+          const ps = toScreen(pc[0], pc[1]);
+          ctx.beginPath();
+          ctx.moveTo(ps[0], ps[1]);
+          ctx.lineTo(s[0], s[1]);
+          ctx.strokeStyle = 'rgba(40, 90, 160, 0.85)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      }
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], 7, 0, Math.PI * 2);
+      ctx.strokeStyle = KIND_COLORS[p.kind] || '#888';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.fillStyle = '#123';
+      ctx.font = '13px "Microsoft YaHei UI", sans-serif';
+      ctx.fillText(String(i + 1), s[0] + 10, s[1] - 8);
+    });
+
+    // 最后一个点到角色当前位置的引导线，跟着角色移动。
+    if (state.livePoints.length && state.livePosition) {
+      const last = state.livePoints[state.livePoints.length - 1];
+      const layer = state.byName[last.layer];
+      if (layer && layer.map_id === state.activeMap) {
+        const lc = toMapCanvas(last.x, last.y);
+        if (lc) {
+          const ls = toScreen(lc[0], lc[1]);
+          const ps = toScreen(state.livePosition[0], state.livePosition[1]);
+          ctx.save();
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.moveTo(ls[0], ls[1]);
+          ctx.lineTo(ps[0], ps[1]);
+          ctx.strokeStyle = 'rgba(226, 59, 59, 0.8)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+
+    if (state.livePosition) {
+      const s = toScreen(state.livePosition[0], state.livePosition[1]);
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], 5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#e23b3b';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  if (state.insertAfter >= 0) {
+    hud.textContent = '插入模式 · 点击地图落下第 ' + (state.insertAfter + 2) + ' 点（寻路灯塔） · Esc 取消';
+  } else {
+    hud.textContent = state.activeMap + ' · '
+      + m.canvas.width + '×' + m.canvas.height + ' · 缩放 ' + state.scale.toFixed(2)
+      + ' · 拖点可移动 · 点线中插入 · 点圆点弹菜单';
+  }
+}
+
+wrap.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  const [mx, my] = localMouse(e);
+  hidePointMenu();
+
+  // 插入模式：点地图落点，不进入拖动
+  if (state.insertAfter >= 0) {
+    const g = toGlobal(mx, my);
+    if (g) {
+      const at = insertPointAfter(state.insertAfter, g[0], g[1], 'beacon');
+      state.insertAfter = -1;
+      state.selectedPoint = at;
+      commitEdit('已插入第 ' + (at + 1) + ' 点（寻路灯塔）');
+    }
+    return;
+  }
+
+  const hit = hitPoint(mx, my);
+  if (hit >= 0) {
+    state.dragPoint = hit;
+    state.dragMoved = false;
+    state.selectedPoint = hit;
+    draw();
+    return;
+  }
+
+  // 点在线上就插一个灯塔，不然就是平移底图
+  const seg = hitSegment(mx, my);
+  if (seg) {
+    const at = insertPointAfter(seg.index, seg.x, seg.y, 'beacon');
+    state.selectedPoint = at;
+    commitEdit('已在连线中间插入第 ' + (at + 1) + ' 点（寻路灯塔）');
+    return;
+  }
+
+  state.dragging = true;
+  state.dragStart = [e.clientX - state.offsetX, e.clientY - state.offsetY];
+  wrap.classList.add('dragging');
+});
+
+wrap.addEventListener('mousemove', (e) => {
+  const [mx, my] = localMouse(e);
+
+  if (state.dragPoint >= 0 && state.activeRoute) {
+    const g = toGlobal(mx, my);
+    if (g) {
+      const p = state.activeRoute.points[state.dragPoint];
+      if (p) {
+        p.x = g[0];
+        p.y = g[1];
+        state.dragMoved = true;
+        draw();
+      }
+    }
+    return;
+  }
+
+  if (state.insertAfter >= 0) {
+    state.mouseMap = toGlobal(mx, my);
+    draw();
+    return;
+  }
+
+  if (state.dragging) return;
+
+  const hit = hitPoint(mx, my);
+  if (hit >= 0) {
+    wrap.style.cursor = 'move';
+    return;
+  }
+  if (hitSegment(mx, my)) {
+    wrap.style.cursor = 'copy';
+    return;
+  }
+  wrap.style.cursor = '';
+});
+
+// 松开事件挂在 window 上：拖点时鼠标可能已经移出画布，
+// 挂在画布上会收不到 mouseup，点位就一直跟着鼠标走。
+window.addEventListener('mouseup', (e) => {
+  if (state.dragPoint >= 0) {
+    const index = state.dragPoint;
+    const moved = state.dragMoved;
+    state.dragPoint = -1;
+    state.dragMoved = false;
+    if (moved) {
+      commitEdit('已移动第 ' + (index + 1) + ' 点');
+    } else if (e.button === 0) {
+      // 没拖动就是单击：弹菜单，可以删点或在它后面加点
+      showPointMenu(index, e.clientX, e.clientY);
+    }
+    return;
+  }
+  if (state.dragging) {
+    state.dragging = false;
+    wrap.classList.remove('dragging');
+    wrap.style.cursor = '';
+  }
+});
+
+// 点在菜单外面就收起菜单
+window.addEventListener('mousedown', (e) => {
+  if (!pointMenu.contains(e.target)) hidePointMenu();
+}, true);
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    cancelInsert();
+    hidePointMenu();
+  }
+});
+
+wrap.addEventListener('mouseleave', () => {
+  if (state.insertAfter >= 0) {
+    state.mouseMap = null;
+    draw();
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!state.dragging) return;
+  state.offsetX = e.clientX - state.dragStart[0];
+  state.offsetY = e.clientY - state.dragStart[1];
+  draw();
+});
+wrap.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = wrap.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const before = [(mx - state.offsetX) / state.scale, (my - state.offsetY) / state.scale];
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  state.scale = Math.min(Math.max(state.scale * factor, 0.05), 12);
+  state.autoFit = false;
+  state.offsetX = mx - before[0] * state.scale;
+  state.offsetY = my - before[1] * state.scale;
+  draw();
+}, { passive: false });
+
+window.addEventListener('resize', resizeCanvas);
+
+// 供 Python 侧调用
+window.bagelEditor = {
+  setRoutes(routes) {
+    state.routes = routes || [];
+    // 刷新列表时尽量保住当前选中的路线：改名后标识会变，
+    // 所以按标识找不到时退回当前地图上的第一条，而不是把用户踢回开头。
+    const keepId = state.activeRoute ? state.activeRoute.route_id : null;
+    state.activeRoute = null;
+    if (keepId) {
+      const kept = state.routes.find(r => r.route_id === keepId) || null;
+      state.activeRoute = routeOnActiveMap(kept) ? kept : null;
+    }
+    if (!state.activeRoute) {
+      state.activeRoute = visibleRoutes()[0] || null;
+    }
+    state.selectedPoint = -1;
+    state.insertAfter = -1;
+    state.lastEdit = '';
+    applyRouteMap();
+    renderRouteList();
+    renderDetail();
+    draw();
+  },
+  startRecording(routeId) {
+    state.recording = true;
+    state.livePoints = [];
+    state.activeRoute = null;
+    hud.textContent = '录制中 · ' + routeId
+      + ' · 1 灯塔 2 电子箱 3 机械箱 4 普通箱 5 门 6 电梯 · 退格 删上一个点';
+    renderRouteList();
+    renderDetail();
+    draw();
+  },
+  stopRecording() {
+    // 录制态必须连同点与角色位置一起清掉：draw() 只看 livePoints
+    // 非空就画，残留下来会在图上留一圈点不掉的「死点」。
+    state.recording = false;
+    state.livePoints = [];
+    state.livePosition = null;
+    draw();
+  },
+  addPoint(point) {
+    state.livePoints.push(point);
+    const layer = state.byName[point.layer];
+    if (layer && state.activeMap !== layer.map_id) selectMap(layer.map_id);
+    draw();
+  },
+  popPoint() {
+    state.livePoints.pop();
+    draw();
+  },
+  setPosition(layerName, localXY) {
+    const layer = layerName ? state.byName[layerName] : null;
+    if (!layer || !localXY) { state.livePosition = null; draw(); return; }
+    if (state.activeMap !== layer.map_id) selectMap(layer.map_id);
+    const c = toMapCanvas(localXY[0] + layer.origin[0], localXY[1] + layer.origin[1]);
+    state.livePosition = c;
+    draw();
+  },
+  // 用定位结果替换第 index 个点的坐标：坐标是全局坐标，与打点写入的一致。
+  setPointPosition(index, layerName, globalXY) {
+    const route = state.activeRoute;
+    if (!route || index < 0 || index >= route.points.length || !globalXY) return;
+    const p = route.points[index];
+    p.x = Math.round(globalXY[0]);
+    p.y = Math.round(globalXY[1]);
+    if (layerName && state.byName[layerName]) p.layer = layerName;
+    state.selectedPoint = index;
+    commitEdit('第 ' + (index + 1) + ' 点已定位到 (' + p.x + ', ' + p.y + ')');
+  }
+};
+
+resizeCanvas();
+boot();
+</script>
+</body>
+</html>

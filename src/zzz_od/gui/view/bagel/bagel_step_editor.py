@@ -24,7 +24,7 @@ from zzz_od.application.bagel.bagel_flow import (
     BagelStep,
     NavigationOptions,
 )
-from zzz_od.application.bagel.bagel_route import BagelWaypoint
+from zzz_od.application.bagel.bagel_route import COORDINATE_LIMIT, BagelWaypoint
 
 MOVEMENT_MODES: tuple[tuple[str, str], ...] = (
     ('正常移动', 'coordinate'),
@@ -180,7 +180,7 @@ class BagelStepDialog(QDialog):
         self.x_input: DoubleSpinBox = DoubleSpinBox(self)
         self.y_input: DoubleSpinBox = DoubleSpinBox(self)
         for label, spin, value in zip(('X', 'Y'), (self.x_input, self.y_input), xy, strict=True):
-            spin.setRange(-1000, 1000)
+            spin.setRange(-COORDINATE_LIMIT, COORDINATE_LIMIT)
             spin.setDecimals(1)
             spin.setValue(value)
             spin.setAccessibleName(f'{label} 坐标（地图像素）')
