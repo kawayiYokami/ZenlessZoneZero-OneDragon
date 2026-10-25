@@ -1,22 +1,24 @@
-"""固定底图定位、出生识别与实时角色箭头方向。"""
+"""固定底图定位、出生识别与独立的角色、镜头方向。"""
 
 from __future__ import annotations
 
-from math import atan2, degrees, hypot
+from math import hypot
 from typing import TYPE_CHECKING
-
-import cv2
-import numpy as np
 
 from zzz_od.application.bagel.bagel_fixed_map import load_fixed_map
 from zzz_od.application.bagel.bagel_flow import load_published_flow
+from zzz_od.application.bagel.bagel_heading import character_heading
 from zzz_od.application.bagel.bagel_map_locator import locate_on_map
+from zzz_od.application.bagel.bagel_observation import BagelObserver
 from zzz_od.application.bagel.bagel_route import SUPPORTED_MAP_IDS, BagelRoute
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    import numpy as np
+
     from zzz_od.application.bagel.bagel_fixed_map import BagelFixedMap
+    from zzz_od.application.bagel.bagel_heading import HeadingObservation
     from zzz_od.application.bagel.bagel_map_locator import MapLocation
 
 
@@ -43,6 +45,7 @@ class BagelRouteVision:
         self.spawn: tuple[float, float] = self.map.spawn
         self.arrow_settings: Mapping[str, object] = self.map.arrow_settings
         self.last_location: MapLocation | None = None
+        self._camera_observer: BagelObserver | None = None
 
     def locate(self, crop: np.ndarray) -> tuple[float, float] | None:
         """返回原路线坐标或明确失败，并保存本帧诊断。"""
@@ -51,40 +54,13 @@ class BagelRouteVision:
 
     def player_angle(self, crop: np.ndarray) -> float | None:
         """读取黄色箭头亮色尖端的方向；图像右方为零、顺时针为正。"""
-        if crop.shape != (201, 201, 3) or crop.dtype != np.uint8:
-            return None
-        settings = self.arrow_settings
-        radius = settings['crop_radius']
-        ax, ay = (int(value) for value in self.anchor)
-        arrow = crop[ay - radius:ay + radius + 1, ax - radius:ax + radius + 1]
-        hsv = cv2.cvtColor(arrow, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, np.array(settings['hsv_lower']), np.array(settings['hsv_upper']))
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        candidates: list[np.ndarray] = []
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if not settings['area_range'][0] <= area <= settings['area_range'][1]:
-                continue
-            x, y, width, height = cv2.boundingRect(contour)
-            if x == 0 or y == 0 or x + width == mask.shape[1] or y + height == mask.shape[0]:
-                continue
-            moments = cv2.moments(contour)
-            if hypot(moments['m10'] / area - radius, moments['m01'] / area - radius) <= settings['maximum_center_offset']:
-                candidates.append(contour)
-        if len(candidates) != 1:
-            return None
-        mask[:] = 0
-        cv2.drawContours(mask, candidates, -1, 255, -1)
-        ys, xs = np.nonzero(mask)
-        green = arrow[:, :, 1]
-        if np.ptp(green[mask > 0]) < settings['minimum_green_spread']:
-            return None
-        threshold = np.percentile(green[mask > 0], settings['tip_percentile'])
-        tip_y, tip_x = np.nonzero((mask > 0) & (green >= threshold))
-        dx, dy = float(tip_x.mean() - xs.mean()), float(tip_y.mean() - ys.mean())
-        if hypot(dx, dy) < settings['minimum_tip_offset']:
-            return None
-        return degrees(atan2(dy, dx)) % 360
+        return character_heading(crop, self.anchor, self.arrow_settings).angle
+
+    def camera_heading(self, crop: np.ndarray) -> HeadingObservation:
+        """读取本帧镜头方向及拒绝原因；不使用角色箭头代替镜头。"""
+        if self._camera_observer is None:
+            self._camera_observer = BagelObserver()
+        return self._camera_observer.camera_heading(crop)
 
     def is_at_spawn(self, crop: np.ndarray) -> bool:
         """位置靠近本路线出生点才识别为该路线。"""

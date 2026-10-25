@@ -15,6 +15,7 @@
 | 快捷手册入口、局间返回与等待 | [入口与等待规则](bagel_speedup.md) |
 | 编辑、试跑、导出流程 | [开发工具](bagel_flow_editor.md) |
 | 地图坐标、来源缺口、新录像建图 | [固定地图](bagel_fixed_map.md) |
+| 位置、角色朝向与镜头朝向的独立识别 | [位置与朝向](bagel_heading_observation.md) |
 | 日常检查、完整回归和素材规范 | [测试入口](../../testing/bagel.md)、[素材规范](../screenshot_archive.md) |
 
 本文维护自动化编排和识别决策。游戏机制、使用步骤及专项规则由上表对应文档维护。未知实机效果不作为已实现效果描述。
