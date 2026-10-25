@@ -4,9 +4,6 @@ import re
 import time
 from typing import TYPE_CHECKING
 
-import cv2
-
-from one_dragon.base.geometry.point import Point
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_screen import (
@@ -18,10 +15,7 @@ from zzz_od.application.bagel.bagel_slots import (
     WAREHOUSE_SAFE_CENTERS,
     inspect_safe_slots,
 )
-from zzz_od.application.bagel.bagel_transfer import (
-    BagelTransferOperation,
-    carried_slot_state,
-)
+from zzz_od.application.bagel.bagel_transfer import BagelTransferOperation
 
 if TYPE_CHECKING:
     from cv2.typing import MatLike
@@ -30,18 +24,13 @@ if TYPE_CHECKING:
     from zzz_od.context.zzz_context import ZContext
 
 
-# 1080p 仓库布局来自清空战备录像；行位置由边框重新定位，兼容滚动后的偏移。
-_BACKPACK_XS: tuple[int, ...] = (267, 371, 475, 579, 683, 787)
-
-
-def read_carried_backpack(ctx: ZContext, screen: MatLike) -> tuple[tuple[int, int], int] | None:
-    """读取背包数量与标题底部；结算奖励会把背包标题向下推。"""
+def read_carried_backpack(ctx: ZContext, screen: MatLike) -> tuple[int, int] | None:
+    """读取普通背包占用数和容量；固定区域失效时按唯一标题定位数字。"""
     pair = parse_capacity_pair(read_area(ctx, screen, '贝果-仓库', '背包数量'))
     if pair is not None:
-        area = ctx.screen_loader.get_area('贝果-仓库', '背包数量')
-        return pair, area.pc_rect.y2
+        return pair
     matches = ctx.ocr_service.get_ocr_result_list(screen)
-    candidates: list[tuple[tuple[int, int], int]] = []
+    candidates: list[tuple[int, int]] = []
     for label in matches:
         if '背包' not in label.data or not (180 < label.center.x < 850 and 90 < label.center.y < 780):
             continue
@@ -53,29 +42,8 @@ def read_carried_backpack(ctx: ZContext, screen: MatLike) -> tuple[tuple[int, in
             continue
         pair = parse_capacity_pair(text)
         if pair is not None:
-            candidates.append((pair, max(match.y + match.h for match in row)))
+            candidates.append(pair)
     return candidates[0] if len(candidates) == 1 else None
-
-
-def backpack_centers(screen: MatLike, header_bottom: int = 158) -> tuple[Point, ...]:
-    """按仓库左侧格子边框找完整行，排除被裁断的首末行和库存区。"""
-    gray = cv2.cvtColor(screen, cv2.COLOR_RGB2GRAY)
-    contours, _ = cv2.findContours(cv2.Canny(gray, 40, 100), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    rows: dict[int, set[int]] = {}
-    for contour in contours:
-        x, y, width, height = cv2.boundingRect(contour)
-        if not (x > 205 and x + width < 855 and y > max(160, header_bottom) and y + height < 780
-                and 85 <= width <= 115 and 95 <= height <= 130):
-            continue
-        column = min(range(6), key=lambda index: abs(_BACKPACK_XS[index] - (x + width / 2)))
-        if abs(_BACKPACK_XS[column] - (x + width / 2)) > 6:
-            continue
-        cy = round(y + height / 2)
-        row = next((key for key in rows if abs(key - cy) <= 6), cy)
-        rows.setdefault(row, set()).add(column)
-    return tuple(
-        Point(x, y) for y, columns in sorted(rows.items()) if len(columns) >= 4 for x in _BACKPACK_XS
-    )
 
 
 class BagelStoreCarried(BagelTransferOperation):
@@ -91,7 +59,7 @@ class BagelStoreCarried(BagelTransferOperation):
         self.before_counts: tuple[int, int, int, int, int] | None = None
 
     def handle_init(self) -> None:
-        """清除上一轮容器基线及滚动次数。"""
+        """清除上一轮转存的数量基线。"""
         super().handle_init()
         self.before_counts = None
 
@@ -105,34 +73,21 @@ class BagelStoreCarried(BagelTransferOperation):
         if not self.round_by_find_area(self.last_screenshot, '贝果-仓库', '放入仓库').is_success:
             self._stable_image = None
             return self.read_again('未识别仓库主画面')
-        backpack_info = read_carried_backpack(self.ctx, self.last_screenshot)
+        backpack = read_carried_backpack(self.ctx, self.last_screenshot)
         warehouse = parse_capacity_pair(read_area(self.ctx, self.last_screenshot, '贝果-仓库', '仓库数量'))
         safe = inspect_safe_slots(self.last_screenshot, WAREHOUSE_SAFE_CENTERS)
-        if backpack_info is None or warehouse is None or safe is None:
+        if backpack is None or warehouse is None or safe is None:
             self._stable_image = None
             return self.read_again('无法完整识别背包、安全箱或仓库数量')
-        backpack, header_bottom = backpack_info
         safe_count = len(safe.occupied)
         self.observation = f'背包 {backpack[0]}/{backpack[1]}，安全箱 {safe_count} 格，仓库 {warehouse[0]}/{warehouse[1]}'
         counts = (backpack[0], safe_count, warehouse[0], backpack[1], warehouse[1])
-        # 数量可能被误读为零，仍须核验可见格子，不能仅凭读数判定空包。
-        centers = backpack_centers(self.last_screenshot, header_bottom)
-        if not centers:
-            self._stable_image = None
-            return self.read_again('无法定位背包完整格子行')
-        states = [carried_slot_state(self.last_screenshot, center) for center in centers]
-        if None in states:
-            self._stable_image = None
-            return self.read_again('背包格子状态不清')
-        if sum(state is True for state in states) > backpack[0]:
-            self._stable_image = None
-            return self.read_again('背包格子与占用数不符')
-        # 图标会持续闪动；核对数量、行位置与每格占用，滚动或重排后重新等待。
-        signature = (*counts, tuple(center.tuple() for center in centers), *states, safe)
+        # 普通背包只核验数字；安全箱没有占用数字，仍按格子状态核验。
+        signature = (*counts, safe)
         if not self.stable_slots((), signature):
             if self.pending:
-                return self.wait_transfer('等待转存后格子稳定')
-            return self.read_again('等待仓库格子稳定')
+                return self.wait_transfer('等待转存后读数稳定')
+            return self.read_again('等待仓库读数稳定')
         if self.pending:
             self.read_misses = 0
             return self.confirm_transfer(counts)
