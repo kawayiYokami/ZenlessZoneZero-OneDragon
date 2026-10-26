@@ -41,11 +41,12 @@ DODGE: str = 'dodge'
 SLEEP_SLICE: float = 0.01
 """等待轮询的切片时长（秒）。"""
 
-TURN_SETTLE: float = 0.08
+TURN_SETTLE: float = 0.02
 """转向下发后等画面更新的时长（秒）。
 
 鼠标移动是瞬间返回的，但游戏把小地图朝向重新画出来要一帧多。
-不等这一下，主线会在旧画面上截图，读到的角度还是转之前的。"""
+不等这一下，主线会在旧画面上截图，读到的角度还是转之前的。
+"""
 
 
 class _Command:
@@ -141,7 +142,7 @@ class _TurnChannel:
     而是「有在转就丢弃新请求」。
 
     转完还要再等一小段才放开 busy：鼠标事件下发是瞬间返回的，
-    但游戏把新朝向画到小地图上要一帧多。不settle 的话，
+    但游戏把新朝向画到小地图上要一帧多。不等的话，
     主线会在画面还没更新时截图，读到的还是转之前的朝向。
     """
     def __init__(self, handler: Callable[[float], None], settle: float = TURN_SETTLE) -> None:
