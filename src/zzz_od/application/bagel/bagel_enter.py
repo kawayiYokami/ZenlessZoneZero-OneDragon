@@ -8,7 +8,6 @@ from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_clear_loadout import BagelClearLoadout
 from zzz_od.application.bagel.bagel_const import (
-    CONTAINER_TITLE_AREAS,
     DEFAULT_CLEAN_FILTER_GROUPS,
     RECOMMENDED_VALUE,
 )
@@ -120,7 +119,7 @@ class BagelEnter(BagelOperation):
             if not result.is_success:
                 return result
             return self.round_wait('等待关闭大地图后恢复局内画面', wait=0.5)
-        if self._has('搜查安全箱') and any(self._has(name) for name in CONTAINER_TITLE_AREAS.values()):
+        if self._has('搜查安全箱') and any(self._has(name) for name in ('搜查容器标题', '电子保险箱标题')):
             self.ctx.controller.btn_press('esc', press_time=0.1)
             return self.round_retry('关闭贝果搜查面板，等待恢复局内画面', wait=0.5)
         if self._has('按键-普通攻击', '战斗画面'):
