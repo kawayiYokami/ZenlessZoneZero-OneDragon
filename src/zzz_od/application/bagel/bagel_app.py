@@ -37,7 +37,7 @@ class BagelApp(ZApplication):
     """支持出生点收集并按成功入仓局数循环。"""
 
     STATUS_SKIP: str = '非支持出生点，退出重开'
-    STATUS_ANCHOR_SKIP: str = '附近没有灯塔，退出重开'
+    STATUS_ANCHOR_SKIP: str = '附近没有途径点，退出重开'
     STATUS_A: str = '录像店复活点，开始收集'
 
     def __init__(
@@ -229,7 +229,7 @@ class BagelApp(ZApplication):
         self.attempts += 1
         # 出生锚定由路线执行器完成：这里只确认画面是贝果局内并可以开始。
         self.matched_map_id = 'route_walker'
-        log.info('第 %s 次入场成功，交给路线执行器锚定最近灯塔', self.attempts)
+        log.info('第 %s 次入场成功，交给路线执行器锚定最近途径点', self.attempts)
         return self.round_success(self.STATUS_A)
 
     @node_from(from_name='识别出生点', status=STATUS_SKIP)

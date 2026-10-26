@@ -43,24 +43,62 @@ area_list:
   - 140
   - 1745
   - 195
-  text: 武备箱
-  lcs_percent: 1.0
+  text: 箱
+  lcs_percent: 0.9
+- area_name: 搜查容器标题_包
+  pc_rect:
+  - 1290
+  - 140
+  - 1745
+  - 195
+  text: 包
+  lcs_percent: 0.9
+- area_name: 搜查容器标题_柜
+  pc_rect:
+  - 1290
+  - 140
+  - 1745
+  - 195
+  text: 柜
+  lcs_percent: 0.9
 - area_name: 搜查完成
   pc_rect:
-  - 1640
-  - 460
-  - 1790
-  - 525
+  - 1650
+  - 320
+  - 1810
+  - 560
   text: 全部拾取
   lcs_percent: 1.0
 - area_name: 搜查进行中
   pc_rect:
-  - 1640
-  - 460
-  - 1790
-  - 525
+  - 1650
+  - 320
+  - 1810
+  - 560
   text: 全部拾取
   lcs_percent: 1.0
+- area_name: 全部拾取_单行
+  pc_rect:
+  - 1650
+  - 320
+  - 1810
+  - 410
+  text: 全部拾取
+  lcs_percent: 1.0
+- area_name: 全部拾取_双行
+  pc_rect:
+  - 1650
+  - 440
+  - 1810
+  - 560
+  text: 全部拾取
+  lcs_percent: 1.0
+- area_name: 电梯选项
+  pc_rect:
+  - 1370
+  - 590
+  - 1910
+  - 980
 - area_name: 搜查安全箱
   pc_rect:
   - 240

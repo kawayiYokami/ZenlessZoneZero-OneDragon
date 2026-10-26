@@ -64,6 +64,12 @@
     flex: 1 1 auto; min-width: 0; font-size: 14px; padding: 3px 4px; border: 1px solid #cfd8e3;
     border-radius: 5px; background: #fff; color: #202020;
   }
+  /* 电梯行比普通行多出楼层输入框和出梯方向两项，占位收窄，避免把坐标和按钮挤出去 */
+  .row .elevOption {
+    flex: 0 1 118px; min-width: 0; font-size: 14px; padding: 3px 6px; border: 1px solid #cfd8e3;
+    border-radius: 5px; background: #fff; color: #202020;
+  }
+  .row .elevExit { flex: 0 0 96px; }
   .empty { padding: 18px 14px; color: #6b7684; font-size: 14px; }
   #pointMenu {
     position: fixed; z-index: 20; display: none; min-width: 168px; padding: 6px;
@@ -98,7 +104,7 @@
 <script>
 // 每类点一个固定色相，浅底上取深一档保证对比度。
 // 电子=橙、机械=紫、普通箱=绿，是用户指定的语义色，不要随意换。
-// 其余三类按色相环尽量拉开：灯塔深蓝、门青蓝、电梯玫红，
+// 其余三类按色相环尽量拉开：途径点深蓝、门青蓝、电梯玫红，
 // 任意两类的色相至少差 41 度，肉眼可辨。
 const KIND_COLORS = {
   beacon: '#2233b4',
@@ -109,7 +115,7 @@ const KIND_COLORS = {
   elevator: '#bc2f5e'
 };
 const KIND_LABELS = {
-  beacon: '寻路灯塔',
+  beacon: '途径点',
   electronic_safe: '电子保险箱',
   mechanical_safe: '机械保险箱',
   box: '普通箱子',
@@ -426,7 +432,7 @@ function renderRouteList() {
     test.onclick = (ev) => {
       ev.stopPropagation();
       if (!window.confirm(
-        '试跑路线 ' + r.route_id + '？\n\n先让角色站在起点灯塔附近（100 像素内），'
+        '试跑路线 ' + r.route_id + '？\n\n先让角色站在起点途径点附近（100 像素内），'
         + '确认后会自动切到游戏，按打点顺序走一遍。'
       )) return;
       requestTestRoute(r.route_id);
@@ -511,11 +517,53 @@ function renderDetail() {
       const index = it.order - 1;
       if (!state.activeRoute) return;
       state.activeRoute.points[index].kind = sel.value;
+      // 电梯类型自带楼层与出梯方向两项参数，切换类型后要立刻重绘让它们出现或消失。
+      if (sel.value === 'elevator') {
+        const p = state.activeRoute.points[index];
+        if (!p.elevator_option) p.elevator_option = '';
+        if (!p.elevator_exit) p.elevator_exit = 'forward';
+      }
       dot.style.background = KIND_COLORS[sel.value] || '#888';
       state.selectedPoint = index;
       commitEdit('第 ' + it.order + ' 点改成 ' + (KIND_LABELS[sel.value] || sel.value));
+      renderDetail();
     };
     row.appendChild(sel);
+
+    // 电梯专有两项：要选的楼层文字（空表示不选、直接进门）、出梯方向。
+    if (d.kind === 'elevator') {
+      const option = document.createElement('input');
+      option.className = 'elevOption';
+      option.placeholder = '楼层文字，留空=不选';
+      option.title = '填楼层列表里的文字，如「负二层站台」；留空表示这电梯没有选项，直接进门';
+      option.value = d.elevator_option || '';
+      option.onclick = (ev) => ev.stopPropagation();
+      option.onchange = () => {
+        const index = it.order - 1;
+        if (!state.activeRoute) return;
+        state.activeRoute.points[index].elevator_option = option.value.trim();
+        commitEdit('第 ' + it.order + ' 点电梯楼层设为「' + (option.value.trim() || '不选') + '」');
+      };
+      row.appendChild(option);
+
+      const exit = document.createElement('select');
+      exit.className = 'elevExit';
+      [['forward', '出梯向前'], ['backward', '出梯向后']].forEach(([value, text]) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = text;
+        if ((d.elevator_exit || 'forward') === value) opt.selected = true;
+        exit.appendChild(opt);
+      });
+      exit.onclick = (ev) => ev.stopPropagation();
+      exit.onchange = () => {
+        const index = it.order - 1;
+        if (!state.activeRoute) return;
+        state.activeRoute.points[index].elevator_exit = exit.value;
+        commitEdit('第 ' + it.order + ' 点出梯方向设为 ' + exit.options[exit.selectedIndex].text);
+      };
+      row.appendChild(exit);
+    }
 
     const coord = document.createElement('span');
     coord.className = 'coord';
@@ -671,7 +719,7 @@ function deletePoint(index) {
 
 function startInsert(index) {
   state.insertAfter = index;
-  state.lastEdit = '点地图落点，插入一个灯塔（Esc 取消）';
+  state.lastEdit = '点地图落点，插入一个途径点（Esc 取消）';
   draw();
 }
 
@@ -862,7 +910,7 @@ function draw() {
   }
 
   if (state.insertAfter >= 0) {
-    hud.textContent = '插入模式 · 点击地图落下第 ' + (state.insertAfter + 2) + ' 点（寻路灯塔） · Esc 取消';
+    hud.textContent = '插入模式 · 点击地图落下第 ' + (state.insertAfter + 2) + ' 点（途径点） · Esc 取消';
   } else {
     hud.textContent = state.activeMap + ' · '
       + m.canvas.width + '×' + m.canvas.height + ' · 缩放 ' + state.scale.toFixed(2)
@@ -882,7 +930,7 @@ wrap.addEventListener('mousedown', (e) => {
       const at = insertPointAfter(state.insertAfter, g[0], g[1], 'beacon');
       state.insertAfter = -1;
       state.selectedPoint = at;
-      commitEdit('已插入第 ' + (at + 1) + ' 点（寻路灯塔）');
+      commitEdit('已插入第 ' + (at + 1) + ' 点（途径点）');
     }
     return;
   }
@@ -896,12 +944,12 @@ wrap.addEventListener('mousedown', (e) => {
     return;
   }
 
-  // 点在线上就插一个灯塔，不然就是平移底图
+  // 点在线上就插一个途径点，不然就是平移底图
   const seg = hitSegment(mx, my);
   if (seg) {
     const at = insertPointAfter(seg.index, seg.x, seg.y, 'beacon');
     state.selectedPoint = at;
-    commitEdit('已在连线中间插入第 ' + (at + 1) + ' 点（寻路灯塔）');
+    commitEdit('已在连线中间插入第 ' + (at + 1) + ' 点（途径点）');
     return;
   }
 
@@ -1039,7 +1087,7 @@ window.bagelEditor = {
     state.livePoints = [];
     state.activeRoute = null;
     hud.textContent = '录制中 · ' + routeId
-      + ' · 1 灯塔 2 电子箱 3 机械箱 4 普通箱 5 门 6 电梯 · 退格 删上一个点';
+      + ' · 1 途径点 2 电子箱 3 机械箱 4 普通箱 5 门 6 电梯 · 退格 删上一个点';
     renderRouteList();
     renderDetail();
     draw();

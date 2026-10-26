@@ -51,7 +51,7 @@ MARKER_COLORS: dict[str, QColor] = {
 """点位类型到显示颜色，与插件保持一致。"""
 
 MARKER_ITEMS: tuple[tuple[str, str, str], ...] = (
-    ('1', '寻路灯塔', 'beacon'),
+    ('1', '途径点', 'beacon'),
     ('2', '电子保险箱', 'electronic_safe'),
     ('3', '机械保险箱', 'mechanical_safe'),
     ('4', '普通箱子', 'box'),

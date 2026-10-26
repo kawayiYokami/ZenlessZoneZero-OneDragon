@@ -15,11 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QObject, QRect, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, QRect, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
     PrimaryPushButton,
@@ -30,6 +30,9 @@ from qfluentwidgets import (
 from one_dragon.utils import os_utils
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_route_recorder import (
+    ELEVATOR,
+    ELEVATOR_EXIT_BACKWARD,
+    ELEVATOR_EXIT_FORWARD,
     KIND_LABELS,
     POINT_KINDS,
     BagelPointRecorder,
@@ -58,6 +61,47 @@ WEB_DIR = Path(__file__).parent / 'web'
 
 OVERLAY_INTERVAL_MS = 150
 """悬浮窗跟随游戏窗口位置与显隐的刷新间隔。"""
+
+UNDO_KEY_LABEL = '退格'
+"""删除键在界面上的显示名。"""
+
+
+class _KeyCap(QLabel):
+    """单个按键的键帽样式标签，形状按内容宽度自适应。"""
+
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        """
+        Args:
+            text: 键名，如 1、退格。
+            parent: 父窗口。
+        """
+        super().__init__(text, parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet(
+            'QLabel {'
+            ' color: #3b3b3b;'
+            ' background: #ffffff;'
+            ' border: 1px solid #c8ccd2;'
+            ' border-bottom: 2px solid #a8adb5;'
+            ' border-radius: 4px;'
+            ' padding: 0 6px;'
+            ' min-height: 20px;'
+            ' font-size: 12px;'
+            '}'
+        )
+
+
+class _KeyName(QLabel):
+    """键帽右侧的类型名，用普通正文色。"""
+
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        """
+        Args:
+            text: 类型名，如 途径点。
+            parent: 父窗口。
+        """
+        super().__init__(text, parent)
+        self.setStyleSheet('QLabel { color: #4a4a4a; font-size: 12px; }')
 
 
 class BagelEditorBridge(QObject):
@@ -199,6 +243,28 @@ class BagelRouteEditor(QDialog):
         self.resize(1280, 800)
         self._build_ui()
 
+    def _build_key_hint(self, bar: QWidget) -> QWidget:
+        """把打点键位做成键帽加名字的一行，供顶部栏右侧显示。
+
+        Args:
+            bar: 顶部按钮栏，作为控件的父窗口。
+
+        Returns:
+            装好全部键位说明的容器。
+        """
+        holder = QWidget(bar)
+        layout = QHBoxLayout(holder)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        items = [(key, label) for key, (_kind, label) in POINT_KINDS.items()]
+        items.append((UNDO_KEY_LABEL, '删上一个点'))
+        for index, (key, label) in enumerate(items):
+            if index > 0:
+                layout.addSpacing(8)
+            layout.addWidget(_KeyCap(key, holder))
+            layout.addWidget(_KeyName(label, holder))
+        return holder
+
     def _build_ui(self) -> None:
         """顶部按钮栏加网页视图。"""
         layout = QVBoxLayout(self)
@@ -222,8 +288,7 @@ class BagelRouteEditor(QDialog):
         self.status_label: BodyLabel = BodyLabel('就绪', bar)
         bar_layout.addWidget(self.status_label)
         bar_layout.addStretch(1)
-        keys = '  '.join(f'{key}={label}' for key, (_kind, label) in POINT_KINDS.items())
-        bar_layout.addWidget(BodyLabel(f'{keys}  退格=删上一个点', bar))
+        bar_layout.addWidget(self._build_key_hint(bar))
         layout.addWidget(bar)
 
         self.view: QWebEngineView = QWebEngineView(self)
@@ -705,12 +770,16 @@ def _game_window_rect(ctx: ZContext) -> QRect | None:
 
 def _point_json(point: BagelRoutePoint) -> dict[str, Any]:
     """点的网页表示。"""
-    return {
+    data: dict[str, Any] = {
         'x': point.x,
         'y': point.y,
         'layer': point.layer,
         'kind': point.kind,
     }
+    if point.kind == ELEVATOR:
+        data['elevator_option'] = point.elevator_option
+        data['elevator_exit'] = point.elevator_exit
+    return data
 
 
 COORDINATE_LIMIT = 4000.0
@@ -743,7 +812,17 @@ def _parse_point(item: Any) -> BagelRoutePoint:
         raise ValueError(f'x 越界：{x}')
     if not (-COORDINATE_LIMIT <= y <= COORDINATE_LIMIT):
         raise ValueError(f'y 越界：{y}')
-    return BagelRoutePoint(round(x), round(y), layer, kind)
+    option = str(item.get('elevator_option', '')).strip()
+    exit_direction = str(item.get('elevator_exit', ELEVATOR_EXIT_FORWARD))
+    if exit_direction not in (ELEVATOR_EXIT_FORWARD, ELEVATOR_EXIT_BACKWARD):
+        raise ValueError(f'电梯出梯方向不支持：{exit_direction}')
+    if kind != ELEVATOR:
+        option = ''
+        exit_direction = ELEVATOR_EXIT_FORWARD
+    return BagelRoutePoint(
+        round(x), round(y), layer, kind,
+        elevator_option=option, elevator_exit=exit_direction,
+    )
 
 
 def _route_json(route: BagelRoute) -> dict[str, Any]:

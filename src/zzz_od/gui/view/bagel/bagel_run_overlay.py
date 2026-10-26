@@ -53,7 +53,7 @@ KIND_COLORS: dict[str, QColor] = {
 """
 
 KIND_LABELS: dict[str, str] = {
-    'beacon': '灯塔',
+    'beacon': '途径点',
     'electronic_safe': '电子箱',
     'mechanical_safe': '机械箱',
     'box': '普通箱',

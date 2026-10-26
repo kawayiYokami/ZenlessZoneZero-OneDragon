@@ -24,10 +24,7 @@ class BagelCloseSearch(BagelOperation):
         """搜索未结束时等待；点击返回后必须看到局内画面才完成。"""
         if self.is_bagel_result():
             return self.round_fail(self.STATUS_DEFEATED)
-        has_title = any(
-            self.round_by_find_area(self.last_screenshot, '贝果-局内', area).is_success
-            for area in ('搜查容器标题', '电子保险箱标题')
-        )
+        has_title = self._has('搜查容器标题') or self._has('电子保险箱标题')
         if not has_title:
             if self.round_by_find_area(
                 self.last_screenshot, '战斗画面', '按键-普通攻击'
