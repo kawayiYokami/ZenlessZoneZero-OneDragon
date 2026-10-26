@@ -6,20 +6,25 @@ description: "首领专属交互：终结技被禁用期间按空格，禁用解
 handlers:
   # 薇斯珀：按实测时间轴连按 5 次空格（按键-切换角色-下一个 默认绑定 space）
   # 时间取自 20:17 那次实机录制：禁用开始后 2.646 / +1.460 / +1.294 / +1.706 / +1.812 秒
-  # 5 次之后等待 10 秒，期间终结技禁用解除由 interrupt_states 立即中断
+  # 全部间隔用「等待秒数」，等待期间终结技禁用解除可立即中断
   - states: "[首领-薇斯珀, 0, 999]"
     interrupt_states: "![按键禁用-终结技, 0, 999]"
     debug_name: "薇斯珀-首领交互"
     operations:
+      - op_name: "等待秒数"
+        seconds: 2.846
       - op_name: "按键-切换角色-下一个"
-        pre_delay: 2.646
+      - op_name: "等待秒数"
+        seconds: 1.46
       - op_name: "按键-切换角色-下一个"
-        pre_delay: 1.46
+      - op_name: "等待秒数"
+        seconds: 1.294
       - op_name: "按键-切换角色-下一个"
-        pre_delay: 1.294
+      - op_name: "等待秒数"
+        seconds: 1.706
       - op_name: "按键-切换角色-下一个"
-        pre_delay: 1.706
+      - op_name: "等待秒数"
+        seconds: 1.812
       - op_name: "按键-切换角色-下一个"
-        pre_delay: 1.812
       - op_name: "等待秒数"
         seconds: 10

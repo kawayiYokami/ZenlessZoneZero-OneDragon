@@ -12,6 +12,7 @@ class TargetCheckWay(Enum):
     CONNECTED_AREA_WIDTH_RATIO = "connected_area_width_ratio"
     CONNECTED_AREA_LENGTH_RATIO = "connected_area_length_ratio"
     TEMPLATE_MATCH_CONFIDENCE = "template_match_confidence"
+    TEMPLATE_MATCH_MULTI = "template_match_multi"  # 同一裁剪区域上逐个模板匹配 命中一个即停
     OCR_RESULT_AS_NUMBER = "ocr_result_as_number"
     OCR_TEXT_CONTAINS = "ocr_text_contains"
     OCR_TEXT_SIMILARITY = "ocr_text_similarity"  # 使用编辑距离计算相似度
@@ -39,13 +40,15 @@ class DetectionTask:
     """
 
     task_id: str
-    pipeline_name: str
+    pipeline_name: str | None  # 为空表示不跑CV流水线 直接在 area_name 区域上做多模板匹配
     state_definitions: List[TargetStateDef]
     enabled: bool = True
     interval: float = 1.0
     is_async: bool = False
     # 用于动态频率的特殊配置
     dynamic_interval_config: dict = field(default_factory=dict)
+    # 多模板匹配使用的区域名 在「战斗画面」下查找
+    area_name: str | None = None
 
 
 # 状态检测任务注册表
@@ -143,17 +146,18 @@ DETECTION_TASKS: List[DetectionTask] = [
             ),
         ],
     ),
-    # 任务4: 右上角首领头像检测 多边形遮罩避开左侧血条与左下角数值
+    # 任务4: 右上角首领头像检测 输出区域逐模板匹配 上次命中的首领下次优先试
     DetectionTask(
         task_id="boss_avatar",
-        pipeline_name="boss_avatar_vesper",
+        pipeline_name=None,
+        area_name="首领头像",
         interval=10.0,
         is_async=True,
         state_definitions=[
             TargetStateDef(
                 "首领-薇斯珀",
-                TargetCheckWay.TEMPLATE_MATCH_CONFIDENCE,
-                {"threshold": 0.85},
+                TargetCheckWay.TEMPLATE_MATCH_MULTI,
+                {"template_name": "target_state/boss_vesper", "threshold": 0.85},
                 clear_on_miss=True,
             ),
         ],

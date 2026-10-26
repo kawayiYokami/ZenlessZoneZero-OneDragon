@@ -107,7 +107,7 @@ graph TD
 
 -   **定位**: `src/zzz_od/auto_battle/target_state/target_state_checker.py`
 -   **职责**:
-    -   **运行CV**: 根据传入的 `DetectionTask`，调用相应的CV流水线。
+    -   **运行CV**: 根据传入的 `DetectionTask`，调用相应的CV流水线（`pipeline_name` 为空时跳过，只用画面区域做多模板匹配）。
     -   **解码结果**: 遍历 `task` 中的每个 `TargetStateDef`，使用指定的 `check_way` 和 `check_params` 来解码CV结果。
     -   **返回约定**: 对每个状态，返回一个标准化的结果，通知 `Context` 如何操作。
 
@@ -123,6 +123,15 @@ graph TD
 | `False`                | 状态未被检测到，需要**忽略**     | *不生成任何记录*                              |
 
 **这个约定，结合 `TargetStateDef` 中的 `clear_on_miss` 参数，提供了对状态生命周期管理的精确控制。**
+
+#### 特殊 `check_way` 说明：`TEMPLATE_MATCH_MULTI`
+
+同一块画面区域上挂多个模板（例如多个首领的头像），逐个匹配，命中第一个就停。不需要为每个模板各建一条流水线或一个检测任务。
+
+-   **不跑CV流水线**：任务的 `pipeline_name` 留空，`area_name` 指向「战斗画面」下的一个区域（例如 `首领头像`）。checker 直接裁剪这块区域做模板匹配，和角色头像识别走同一条路径（`ctx.tm.crop_and_match_template`）。
+-   **check_params**：`template_name` 写成 `子目录/模板id`（例如 `target_state/boss_vesper`），`threshold` 置信度阈值，不填时默认 0.85。
+-   **上次命中的优先试**：checker 按任务记住上一次命中的状态名，下一轮先试它，没命中再按定义顺序试其它模板。
+-   **状态返回值**：命中的状态返回 `True`；未命中的按 `clear_on_miss` 返回 `None`（清除）或 `False`（忽略）。
 
 #### 特殊 `check_way` 说明：`TEMPLATE_MATCH_CONFIDENCE`
 

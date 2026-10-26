@@ -1,5 +1,0 @@
-- step: 按模板裁剪
-  params:
-    template_name: target_state/boss_vesper
-    enable_match: true
-    match_threshold: 0.85
