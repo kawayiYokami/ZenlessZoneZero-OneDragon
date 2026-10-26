@@ -12,14 +12,20 @@
    "kind": "beacon"
   },
   {
-   "x": 368,
-   "y": 407,
+   "x": 358,
+   "y": 433,
    "layer": "雅努斯幻境/Custom",
    "kind": "beacon"
   },
   {
-   "x": 372,
+   "x": 381,
    "y": 403,
+   "layer": "雅努斯幻境/Custom",
+   "kind": "beacon"
+  },
+  {
+   "x": 374,
+   "y": 397,
    "layer": "雅努斯幻境/Custom",
    "kind": "box"
   },
@@ -96,7 +102,7 @@
    "kind": "beacon"
   },
   {
-   "x": 940,
+   "x": 947,
    "y": 358,
    "layer": "雅努斯幻境/Custom",
    "kind": "electronic_safe"
