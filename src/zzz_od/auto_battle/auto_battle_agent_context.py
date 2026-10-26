@@ -333,15 +333,6 @@ class AutoBattleAgentContext:
         self._last_check_agent_time: float = 0
         self._last_switch_agent_time: float = 0
 
-    def get_front_agent_info(self) -> AgentInfo | None:
-        """
-        获取前台代理人的识别信息
-        :return: 还没有识别到任何代理人时返回 None
-        """
-        if self.team_info.agent_list is None or len(self.team_info.agent_list) == 0:
-            return None
-        return self.team_info.agent_list[0]
-
     def get_possible_agent_list(self) -> Optional[List[Tuple[Agent, Optional[str]]]]:
         """
         获取用于匹配的候选角色列表

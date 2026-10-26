@@ -30,7 +30,6 @@ from zzz_od.auto_battle.auto_battle_target_context import AutoBattleTargetContex
 from zzz_od.game_data.agent import Agent, AgentEnum
 
 if TYPE_CHECKING:
-    from zzz_od.auto_battle.auto_battle_agent_context import AgentInfo
     from zzz_od.context.zzz_context import ZContext
 
 
@@ -557,15 +556,19 @@ class AutoBattleContext:
         """
         normal_attack_available: bool = self.is_normal_attack_btn_available(screen)
 
-        # 按键识别不到可用时 再识别是否被禁用(按钮位置出现禁用图标)
+        # 三个按钮各自判断 自己的可用图标匹配不到时 才去匹配该按钮的禁用图标
         # 禁用的按钮图标变了 模板匹配不到 不能当成离开战斗 否则战斗结束识别会被误触发
-        front_agent_info: AgentInfo | None = self.agent_context.get_front_agent_info()
+        special_attack_available: bool = self.is_btn_icon_available(
+            screen, self.area_btn_special, ('btn_special_attack_1', 'btn_special_attack_2'))
+        ultimate_available: bool = self.is_btn_icon_available(
+            screen, self.area_btn_ultimate, ('btn_ultimate_1', 'btn_ultimate_2'))
+
         ban_check_list: list[tuple[str, ScreenArea, str]] = []
         if not normal_attack_available:
             ban_check_list.append((BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value, self.area_btn_normal, 'btn_ban_normal_attack'))
-        if front_agent_info is None or not front_agent_info.special_ready:
+        if not special_attack_available:
             ban_check_list.append((BattleStateEnum.STATUS_SPECIAL_BAN.value, self.area_btn_special, 'btn_ban_special_attack'))
-        if front_agent_info is None or not front_agent_info.ultimate_ready:
+        if not ultimate_available:
             ban_check_list.append((BattleStateEnum.STATUS_ULTIMATE_BAN.value, self.area_btn_ultimate, 'btn_ban_ultimate'))
 
         ban_result: dict[str, bool] = self.check_btn_ban(screen, ban_check_list)
@@ -1066,6 +1069,21 @@ class AutoBattleContext:
         mrl = self.ctx.tm.match_template(part, 'battle', 'btn_normal_attack',
                                          threshold=0.9)
         return mrl.max is not None
+
+    def is_btn_icon_available(self, screen: MatLike, area: ScreenArea, template_ids: tuple[str, ...]) -> bool:
+        """
+        识别按钮位置是否还能匹配到可用图标 任一模板命中即算可用
+        :param screen: 游戏画面
+        :param area: 按钮区域
+        :param template_ids: 该按钮可用状态的模板ID 通常一个是未充能 一个是充能完成
+        :return: 是否匹配到可用图标
+        """
+        part = cv2_utils.crop_image_only(screen, area.rect)
+        for template_id in template_ids:
+            mrl = self.ctx.tm.match_template(part, 'battle', template_id, threshold=0.9)
+            if mrl.max is not None:
+                return True
+        return False
 
     def check_btn_ban(self, screen: MatLike,
                       ban_check_list: list[tuple[str, ScreenArea, str]]) -> dict[str, bool]:
