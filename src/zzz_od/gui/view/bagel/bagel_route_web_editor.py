@@ -33,6 +33,7 @@ from zzz_od.application.bagel.bagel_route_recorder import (
     ELEVATOR,
     ELEVATOR_EXIT_BACKWARD,
     ELEVATOR_EXIT_FORWARD,
+    KIND_COLORS,
     KIND_LABELS,
     POINT_KINDS,
     BagelPointRecorder,
@@ -77,6 +78,7 @@ class _KeyCap(QLabel):
         """
         super().__init__(text, parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setFixedHeight(24)
         self.setStyleSheet(
             'QLabel {'
             ' color: #3b3b3b;'
@@ -84,9 +86,8 @@ class _KeyCap(QLabel):
             ' border: 1px solid #c8ccd2;'
             ' border-bottom: 2px solid #a8adb5;'
             ' border-radius: 4px;'
-            ' padding: 0 6px;'
-            ' min-height: 20px;'
-            ' font-size: 12px;'
+            ' padding: 0 7px;'
+            ' font-size: 13px;'
             '}'
         )
 
@@ -102,6 +103,22 @@ class _KeyName(QLabel):
         """
         super().__init__(text, parent)
         self.setStyleSheet('QLabel { color: #4a4a4a; font-size: 12px; }')
+
+
+class _KindDot(QLabel):
+    """类型名前面的圆点，颜色与网页画该类型点的颜色一致。"""
+
+    def __init__(self, color: str, parent: QWidget | None = None) -> None:
+        """
+        Args:
+            color: 圆点颜色，取自 KIND_COLORS。
+            parent: 父窗口。
+        """
+        super().__init__('', parent)
+        self.setFixedSize(8, 8)
+        self.setStyleSheet(
+            f'QLabel {{ background: {color}; border-radius: 4px; }}'
+        )
 
 
 class BagelEditorBridge(QObject):
@@ -256,13 +273,21 @@ class BagelRouteEditor(QDialog):
         layout = QHBoxLayout(holder)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
-        items = [(key, label) for key, (_kind, label) in POINT_KINDS.items()]
-        items.append((UNDO_KEY_LABEL, '删上一个点'))
-        for index, (key, label) in enumerate(items):
+        # 颜色圆点跟在键帽后面、名字前面，和网页画点用的是同一套颜色。
+        items = [(key, kind, label) for key, (kind, label) in POINT_KINDS.items()]
+        for index, (key, kind, label) in enumerate(items):
             if index > 0:
                 layout.addSpacing(8)
             layout.addWidget(_KeyCap(key, holder))
+            layout.addSpacing(2)
+            layout.addWidget(
+                _KindDot(KIND_COLORS[kind], holder), 0,
+                Qt.AlignmentFlag.AlignVCenter,
+            )
             layout.addWidget(_KeyName(label, holder))
+        layout.addSpacing(8)
+        layout.addWidget(_KeyCap(UNDO_KEY_LABEL, holder))
+        layout.addWidget(_KeyName('删上一个点', holder))
         return holder
 
     def _build_ui(self) -> None:
