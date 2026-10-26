@@ -143,4 +143,19 @@ DETECTION_TASKS: List[DetectionTask] = [
             ),
         ],
     ),
+    # 任务4: 右上角首领头像检测 多边形遮罩避开左侧血条与左下角数值
+    DetectionTask(
+        task_id="boss_avatar",
+        pipeline_name="boss_avatar_vesper",
+        interval=10.0,
+        is_async=True,
+        state_definitions=[
+            TargetStateDef(
+                "首领-薇斯珀",
+                TargetCheckWay.TEMPLATE_MATCH_CONFIDENCE,
+                {"threshold": 0.85},
+                clear_on_miss=True,
+            ),
+        ],
+    ),
 ]

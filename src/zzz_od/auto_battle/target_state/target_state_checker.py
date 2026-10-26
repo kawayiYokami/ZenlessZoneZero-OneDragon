@@ -29,6 +29,7 @@ class TargetStateChecker:
             TargetCheckWay.OCR_TEXT_CONTAINS: self._check_ocr_text_contains,
             TargetCheckWay.OCR_TEXT_SIMILARITY: self._check_ocr_text_similarity,
             TargetCheckWay.MAP_CONTOUR_LENGTH_TO_PERCENT: self._check_map_contour_length_to_percent,
+            TargetCheckWay.TEMPLATE_MATCH_CONFIDENCE: self._check_template_match_confidence,
         }
 
     def run_task(self, screen: MatLike, task: DetectionTask, debug_mode: bool = False) -> Tuple[CvPipelineContext, List[Tuple[str, Any]]]:
@@ -220,6 +221,27 @@ class TargetStateChecker:
         except (ValueError, TypeError, AttributeError) as e:
             log.exception(f"计算轮廓宽度与遮罩宽度比率时出错: {e}")
             return None if state_def.clear_on_miss else False
+
+    def _check_template_match_confidence(self, cv_result: CvPipelineContext, state_def: TargetStateDef, _start_time: float) -> bool | None:
+        """
+        处理 TEMPLATE_MATCH_CONFIDENCE
+        流水线完成模板匹配后 按最佳匹配置信度判断是否命中
+        """
+        # 检查点: 进入函数时检查超时
+        if cv_result.check_timeout():
+            return None  # 超时则返回None，表示未检测到状态
+
+        threshold = state_def.check_params.get('threshold', 0.8)
+        match_result = cv_result.match_result
+        if match_result is None or match_result.max is None:
+            log.debug(f"状态 {state_def.state_name}: 模板匹配无结果")
+            return None if state_def.clear_on_miss else False
+
+        confidence = match_result.max.confidence
+        log.debug(f"状态 {state_def.state_name}: 模板匹配置信度 {confidence:.4f} (阈值 {threshold})")
+        if confidence >= threshold:
+            return True
+        return None if state_def.clear_on_miss else False
 
     def _check_ocr_text_similarity(self, cv_result: CvPipelineContext, state_def: TargetStateDef, _start_time: float) -> bool | None:
         """

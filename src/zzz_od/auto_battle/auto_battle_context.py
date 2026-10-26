@@ -30,6 +30,7 @@ from zzz_od.auto_battle.auto_battle_target_context import AutoBattleTargetContex
 from zzz_od.game_data.agent import Agent, AgentEnum
 
 if TYPE_CHECKING:
+    from zzz_od.auto_battle.auto_battle_agent_context import AgentInfo
     from zzz_od.context.zzz_context import ZContext
 
 
@@ -84,6 +85,9 @@ class AutoBattleContext:
 
         # 自动释放终结技开关
         self.auto_ultimate_enabled: bool = True  # 是否在终结技可用时自动释放
+
+        # 按键禁用状态的首次识别时间 禁用期间不刷新 用于判断已经禁用了多久
+        self._btn_ban_first_time: dict[str, float] = {}
 
     def init_auto_op(
         self,
@@ -164,6 +168,9 @@ class AutoBattleContext:
             return
         usage_states = self.auto_op.usage_states
 
+        # 禁用状态重新计时 避免状态被重置后仍按旧时间判断
+        self._btn_ban_first_time = {}
+
         # 遍历所有当前策略使用的状态，并将其重置为初始状态
         log.info(f"正在清空 {len(usage_states)} 个状态...")
         for state_id in usage_states:
@@ -204,6 +211,9 @@ class AutoBattleContext:
         self.without_distance_times: int = 0  # 没有显示距离的次数
         self.with_distance_times: int = 0  # 有显示距离的次数
         self.last_check_distance = -1
+
+        # 新一场战斗 禁用状态重新计时
+        self._btn_ban_first_time = {}
 
     def init_screen_area(self) -> None:
         """
@@ -545,9 +555,24 @@ class AutoBattleContext:
         识别战斗状态的总入口
         :return: 当前是否在战斗画面
         """
-        in_battle = self.is_normal_attack_btn_available(screen)
+        normal_attack_available: bool = self.is_normal_attack_btn_available(screen)
+
+        # 按键识别不到可用时 再识别是否被禁用(按钮位置出现禁用图标)
+        # 禁用的按钮图标变了 模板匹配不到 不能当成离开战斗 否则战斗结束识别会被误触发
+        front_agent_info: AgentInfo | None = self.agent_context.get_front_agent_info()
+        ban_check_list: list[tuple[str, ScreenArea, str]] = []
+        if not normal_attack_available:
+            ban_check_list.append((BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value, self.area_btn_normal, 'btn_ban_normal_attack'))
+        if front_agent_info is None or not front_agent_info.special_ready:
+            ban_check_list.append((BattleStateEnum.STATUS_SPECIAL_BAN.value, self.area_btn_special, 'btn_ban_special_attack'))
+        if front_agent_info is None or not front_agent_info.ultimate_ready:
+            ban_check_list.append((BattleStateEnum.STATUS_ULTIMATE_BAN.value, self.area_btn_ultimate, 'btn_ban_ultimate'))
+
+        ban_result: dict[str, bool] = self.check_btn_ban(screen, ban_check_list)
+        in_battle: bool = normal_attack_available or ban_result.get(BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value, False)
+
         self.last_check_in_battle = in_battle
-        if in_battle:
+        if normal_attack_available:
             self.state_record_service.update_state(
                 StateRecord(BattleStateEnum.STATUS_NORMAL_ATTACK_READY.value, screenshot_time))
         else:
@@ -555,6 +580,10 @@ class AutoBattleContext:
             # 避免战后残留的"按键可用"让 速切模板-通用 兜底继续发普攻(#2157)
             self.state_record_service.update_state(
                 StateRecord(BattleStateEnum.STATUS_NORMAL_ATTACK_READY.value, is_clear=True))
+
+        ban_state_records = self._update_btn_ban_states(ban_result, screenshot_time)
+        if len(ban_state_records) > 0:
+            self.state_record_service.batch_update_states(ban_state_records)
 
         future_list: list[Future] = []
 
@@ -1037,6 +1066,58 @@ class AutoBattleContext:
         mrl = self.ctx.tm.match_template(part, 'battle', 'btn_normal_attack',
                                          threshold=0.9)
         return mrl.max is not None
+
+    def check_btn_ban(self, screen: MatLike,
+                      ban_check_list: list[tuple[str, ScreenArea, str]]) -> dict[str, bool]:
+        """
+        识别按键是否处于禁用态 禁用时按钮位置显示的是 X 图标
+        :param screen: 游戏画面
+        :param ban_check_list: 需要识别的 (状态名, 按钮区域, 模板ID) 列表
+        :return: 状态名 -> 是否禁用
+        """
+        if len(ban_check_list) == 0:
+            return {}
+
+        future_list: list[Future] = []
+        for _, area, template_id in ban_check_list:
+            future_list.append(_battle_state_check_executor.submit(
+                self.ctx.tm.crop_and_match_template,
+                screen, area.rect, 'battle', template_id, threshold=0.9,
+            ))
+
+        result: dict[str, bool] = {}
+        for (state_name, _, _), future in zip(ban_check_list, future_list, strict=True):
+            try:
+                mrl = future.result()
+                result[state_name] = mrl.max is not None
+            except Exception:
+                log.error('识别按键禁用状态失败 %s', state_name, exc_info=True)
+
+        return result
+
+    def _update_btn_ban_states(self, ban_result: dict[str, bool], screenshot_time: float) -> list[StateRecord]:
+        """
+        更新按键禁用状态
+        与按键可用互斥 本次没有识别的状态视为未禁用 会清掉禁用状态
+        禁用期间只记录首次识别到的时间 不刷新 因此可以用 [状态, 时间下限, 时间上限] 判断已经禁用了多久
+        :param ban_result: 状态名 -> 是否禁用
+        :param screenshot_time: 截图时间
+        :return: 需要投递的状态记录
+        """
+        state_records: list[StateRecord] = []
+        for state_name in [BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value,
+                           BattleStateEnum.STATUS_SPECIAL_BAN.value,
+                           BattleStateEnum.STATUS_ULTIMATE_BAN.value]:
+            if ban_result.get(state_name, False):
+                if state_name in self._btn_ban_first_time:
+                    continue  # 已经在禁用中 不刷新时间
+                self._btn_ban_first_time[state_name] = screenshot_time
+                state_records.append(StateRecord(state_name, screenshot_time))
+            elif state_name in self._btn_ban_first_time:
+                del self._btn_ban_first_time[state_name]
+                state_records.append(StateRecord(state_name, is_clear=True))
+
+        return state_records
 
     def start_context_async(self) -> None:
         """

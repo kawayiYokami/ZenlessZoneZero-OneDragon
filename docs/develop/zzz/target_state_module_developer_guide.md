@@ -124,6 +124,14 @@ graph TD
 
 **这个约定，结合 `TargetStateDef` 中的 `clear_on_miss` 参数，提供了对状态生命周期管理的精确控制。**
 
+#### 特殊 `check_way` 说明：`TEMPLATE_MATCH_CONFIDENCE`
+
+用模板匹配一块固定的 UI（例如右上角的首领头像），按最佳匹配置信度判断状态是否成立。
+
+-   **CV流水线要求**：用 `按模板裁剪` 步骤，`enable_match: true`，匹配结果会写到 `CvPipelineContext.match_result`。
+-   **check_params**：`threshold` 置信度阈值，不填时默认 0.8。
+-   **模板形状**：模板的 `template_shape: polygon` 同时决定遮罩——只有多边形内部的像素参与匹配。会变化的内容（血条、数值、层数）应该落在多边形外面，这样它们怎么变都不影响识别。首领头像模板 `target_state/boss_vesper` 就是用多边形避开了左侧血条和左下角的数值。
+
 #### 特殊 `check_way` 说明：`MAP_CONTOUR_LENGTH_TO_PERCENT`
 
 这是一个特殊且强大的 `check_way`，用于将一个进度条（如血条、失衡条）的长度转换为0-100的百分比。
