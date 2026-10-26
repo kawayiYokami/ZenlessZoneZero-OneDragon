@@ -149,7 +149,7 @@ ANGLE_FAIL_SECONDS: float = 10.0
 单帧读不到是常事（转视角、贴墙、扇形被挡），不能立刻中断整条路线。
 """
 
-WALK_TURN_ANGLE: float = 5.0
+WALK_TURN_ANGLE: float = 10.0
 """束角（用户术语）：朝向偏差在它以内不松前进键，边走边转微调。
 
 超过束角就停车转（松键、转到位、再走）：同时下发转向和前进会互相干扰，
@@ -914,8 +914,8 @@ class BagelRouteWalker(BagelOperation):
     ) -> OperationRoundResult:
         """远距离移动：偏差小就边走边修，偏差大就停车转。
 
-        分界是 WALK_TURN_ANGLE：15 度以内保持前进键按住，同时小幅转，
-        走起来是连续的一条线；超过 15 度先松键停下转，转到位再走。
+        分界是 WALK_TURN_ANGLE：10 度以内保持前进键按住，同时小幅转，
+        走起来是连续的一条线；超过 10 度先松键停下转，转到位再走。
         同时下发大角度转向和前进会互相干扰，表现为原地乱转。
         """
         angle = self.player_angle()
@@ -1158,8 +1158,8 @@ class BagelRouteWalker(BagelOperation):
         用于两类场合：灯塔最后 10px 内，以及箱子 5px 外。
         比碎步快、比巡航稳，靠近目标时不会一冲而过。
 
-        转向同样按 15 度分界（WALK_TURN_ANGLE）：超过就停车转，
-        15 度以内边走边修，不为对准而放弃这一步。
+        转向同样按 10 度分界（WALK_TURN_ANGLE）：超过就停车转，
+        10 度以内边走边修，不为对准而放弃这一步。
         """
         angle = self.player_angle()
         miss = self._angle_miss_result(angle)
