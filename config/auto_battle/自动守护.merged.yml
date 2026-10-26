@@ -4,6 +4,27 @@
 "check_dodge_interval": 0.02
 "scenes":
 - "handlers":
+  - "debug_name": "薇斯珀-首领交互"
+    "interrupt_states": "![按键禁用-终结技, 0, 999]"
+    "operations":
+    - "op_name": "按键-切换角色-下一个"
+      "pre_delay": 2.646
+    - "op_name": "按键-切换角色-下一个"
+      "pre_delay": 1.46
+    - "op_name": "按键-切换角色-下一个"
+      "pre_delay": 1.294
+    - "op_name": "按键-切换角色-下一个"
+      "pre_delay": 1.706
+    - "op_name": "按键-切换角色-下一个"
+      "pre_delay": 1.812
+    - "op_name": "等待秒数"
+      "seconds": 10
+    "states": "[首领-薇斯珀, 0, 999]"
+  "interval": 0.3
+  "priority": 100
+  "triggers":
+  - "按键禁用-终结技"
+- "handlers":
   - "debug_name": "画面黑白无法支援"
     "operations":
     - "op_name": "清除状态"
