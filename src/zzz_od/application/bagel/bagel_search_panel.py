@@ -61,11 +61,11 @@ class SearchPanelGuard:
         self._screenshot_time = None
         self.result_centers = None
 
-    def observe(self, screen: MatLike, screenshot_time: float) -> bool:
+    def observe(self, screen: MatLike, screenshot_time: float, rows: int = 2) -> bool:
         """不接受重复截图、未定位的外框或两帧间仍在移动的格子。"""
         if self._screenshot_time is not None and screenshot_time <= self._screenshot_time:
             return False
-        centers = locate_result_centers(screen)
+        centers = locate_result_centers(screen, rows)
         pixels = search_panel_pixels(screen)
         if centers is None or pixels is None:
             self.reset()

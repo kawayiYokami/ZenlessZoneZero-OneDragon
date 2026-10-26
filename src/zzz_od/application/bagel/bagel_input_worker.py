@@ -19,6 +19,7 @@ import time
 from collections import deque
 from typing import TYPE_CHECKING
 
+from one_dragon.base.geometry.point import Point
 from one_dragon.utils.log_utils import log
 
 if TYPE_CHECKING:
@@ -29,6 +30,9 @@ if TYPE_CHECKING:
 TAP_INTERACT: str = 'tap_interact'
 """点按交互键（F），按满 duration 后松开。"""
 
+TAP_CENTER: str = 'tap_center'
+"""点一下屏幕中间，用于推进对话、让选项弹出。"""
+
 HOLD_INTERACT: str = 'hold_interact'
 """按住交互键（F）不松，直到收到松开指令。"""
 
@@ -38,8 +42,14 @@ RELEASE_INTERACT: str = 'release_interact'
 DODGE: str = 'dodge'
 """点一下闪避，用于维持冲刺。"""
 
+SIDE_STEP: str = 'side_step'
+"""点一下侧移（A 或 D）；方向记在 angle 上，-1 向左、1 向右。"""
+
 SLEEP_SLICE: float = 0.01
 """等待轮询的切片时长（秒）。"""
+
+SCREEN_CENTER: Point = Point(960, 540)
+"""画面中心，点它推进对话。按 1080p 基准。"""
 
 TURN_SETTLE: float = 0.02
 """转向下发后等画面更新的时长（秒）。
@@ -231,6 +241,11 @@ class BagelInputWorker:
         self._forward_down: bool = False
         """实际状态：W 键现在是否真的按着。两者不一致时才发键。"""
         self._forward_lock: threading.Lock = threading.Lock()
+        self._backward_want: bool = False
+        """主线意图：是否该一直按住后退（S）。电梯进出要用。"""
+        self._backward_down: bool = False
+        """实际状态：S 键现在是否真的按着。"""
+        self._backward_lock: threading.Lock = threading.Lock()
         self._stopping: bool = False
 
         self._turn_channel: _TurnChannel = _TurnChannel(self._run_turn)
@@ -241,6 +256,10 @@ class BagelInputWorker:
             target=self._forward_loop, name='bagel-forward', daemon=True,
         )
         self._forward_thread.start()
+        self._backward_thread: threading.Thread = threading.Thread(
+            target=self._backward_loop, name='bagel-backward', daemon=True,
+        )
+        self._backward_thread.start()
 
     # ---------- 主线投递 ----------
 
@@ -273,6 +292,16 @@ class BagelInputWorker:
         with self._forward_lock:
             self._forward_want = False
 
+    def hold_backward(self) -> None:
+        """希望一直按住后退（S）；线程会把它对齐到真实按键状态。"""
+        with self._backward_lock:
+            self._backward_want = True
+
+    def stop_backward(self) -> None:
+        """松开后退。"""
+        with self._backward_lock:
+            self._backward_want = False
+
     def turn(self, angle: float) -> None:
         """按角度转向；上一条还没转完就忽略本次。
 
@@ -297,6 +326,16 @@ class BagelInputWorker:
         """
         self._instant_channel.put(_Command(TAP_INTERACT, duration=duration))
 
+    def tap_center(self, duration: float = 0.08) -> None:
+        """点一下屏幕中间，推进对话。
+
+        电梯、门这类要按对话推进才会弹选项的地方，按 F 没用，必须点屏幕。
+
+        Args:
+            duration: 按住时长（秒）。
+        """
+        self._instant_channel.put(_Command(TAP_CENTER, duration=duration))
+
     def hold_interact(self) -> None:
         """按住交互键不松，用于机械保险箱长按。"""
         self._instant_channel.put(_Command(HOLD_INTERACT))
@@ -309,16 +348,29 @@ class BagelInputWorker:
         """点一下闪避，用于维持冲刺。"""
         self._instant_channel.put(_Command(DODGE))
 
+    def side_step(self, direction: int, duration: float = 0.2) -> None:
+        """点一下侧移，用来从卡住的位置挪回路径线。
+
+        Args:
+            direction: -1 向左（A），1 向右（D）。
+            duration: 按住时长（秒）。
+        """
+        self._instant_channel.put(
+            _Command(SIDE_STEP, duration=duration, angle=1.0 if direction > 0 else -1.0),
+        )
+
     def shutdown(self) -> None:
         """停止全部通道并松开前进；退出路径必须调用。"""
         self._stopping = True
         with self._forward_lock:
             self._forward_want = False
         self._forward_thread.join(timeout=1.0)
+        self._backward_thread.join(timeout=1.0)
         self._turn_channel.stop()
         self._instant_channel.stop()
         try:
             self.ctx.controller.move_w(release=True)
+            self.ctx.controller.move_s(release=True)
             self.ctx.controller.interact(release=True)
         except Exception:
             log.error('贝果输入线程退出时松开按键失败', exc_info=True)
@@ -344,6 +396,25 @@ class BagelInputWorker:
                         self._forward_down = want
                     except Exception:
                         log.error('贝果输入线程切换前进键失败', exc_info=True)
+            time.sleep(SLEEP_SLICE)
+
+    def _backward_loop(self) -> None:
+        """每周期把后退键（S）对齐到意图状态；与前进通道同一套写法。
+
+        电梯进门后可能要走出来，方向不一定是前进，所以需要单独一路按键。
+        """
+        while not self._stopping:
+            with self._backward_lock:
+                want = self._backward_want
+                if want != self._backward_down:
+                    try:
+                        if want:
+                            self.ctx.controller.move_s(press=True)
+                        else:
+                            self.ctx.controller.move_s(release=True)
+                        self._backward_down = want
+                    except Exception:
+                        log.error('贝果输入线程切换后退键失败', exc_info=True)
             time.sleep(SLEEP_SLICE)
 
     # ---------- 转向通道 ----------
@@ -390,6 +461,10 @@ class BagelInputWorker:
             time.sleep(command.duration or 0.0)
             controller.interact(release=True)
             return
+        if command.kind == TAP_CENTER:
+            # 电梯、门的选项靠点击对话推进才弹出，按 F 没用。
+            controller.click(SCREEN_CENTER, press_time=command.duration or 0.08)
+            return
         if command.kind == HOLD_INTERACT:
             controller.interact(press=True)
             return
@@ -400,3 +475,11 @@ class BagelInputWorker:
             # 冲刺是「按住前进再连点闪避」，顺序反了会变成静止闪避。
             self._ensure_forward_down()
             controller.dodge()
+            return
+        if command.kind == SIDE_STEP:
+            # 侧移方向由 angle 给出：-1 向左（A），1 向右（D）。
+            # 前进键保持按住，侧移变成斜向，能顺着墙滑出卡位。
+            key = controller.move_a if command.angle < 0 else controller.move_d
+            key(press=True)
+            time.sleep(command.duration or 0.0)
+            key(release=True)

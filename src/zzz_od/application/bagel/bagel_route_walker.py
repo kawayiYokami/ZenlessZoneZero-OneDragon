@@ -1,9 +1,9 @@
 """贝果路线执行状态机：按打点顺序走到最后。
 
 读取 ``bagel_routes`` 目录下的打点路线，入场后定位一次，在全部路线的
-灯塔点中找 100px 内最近者作为锚点；之后游标顺序推进：
+途径点中找 100px 内最近者作为锚点；之后游标顺序推进：
 
-- 下一格是灯塔：正常导航，进入 5px 到达半径即算路过。
+- 下一格是途径点：正常导航，进入 5px 到达半径即算路过。
 - 下一格是箱类：小碎步靠近，出现 F 提示后按类型交互——电子保险箱走光圈
   解锁，机械保险箱长按 F，普通箱子、门、电梯点按。
 - 一条路线走完：原地判断现场有无交互物，没有就切换到下一条最近路线；
@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import time
-from math import atan2, degrees, hypot
+from math import atan2, cos, degrees, hypot, radians, sin
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -32,6 +32,8 @@ from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
 from zzz_od.application.bagel.bagel_input_worker import BagelInputWorker
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_route_recorder import (
+    ELEVATOR,
+    ELEVATOR_EXIT_BACKWARD,
     BagelRoute,
     BagelRoutePoint,
     is_foreground,
@@ -48,15 +50,32 @@ from zzz_od.game_data.map_locator.minimap_angle import analyze
 if TYPE_CHECKING:
     from cv2.typing import MatLike
 
+    from one_dragon.base.matcher.ocr.ocr_match_result import OcrMatchResult
     from one_dragon.base.operation.operation_base import OperationResult
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
     from zzz_od.context.zzz_context import ZContext
 
 BEACON: str = 'beacon'
-"""灯塔点：纯路点，路过即可，不交互。"""
+"""途径点：纯路点，路过即可，不交互。"""
+
+ELEVATOR_OPTION_TAP_SECONDS: float = 1.0
+"""电梯选项还没出现时，点一次屏幕中间推进对话的间隔（用户给定每秒一次）。"""
+
+ELEVATOR_ENTRY_TIMEOUT: float = 10.0
+"""从电梯门口往前走多久还没进电梯就判失败（秒）。
+
+只限制「门口走向电梯」这一段，此时还在场景里，失败后能正常退出。
+进电梯之后的三段一律不设超时：卡在里面连游戏都退不出来。
+"""
+
+ELEVATOR_PHASE_ENTER: str = 'enter'
+ELEVATOR_PHASE_WAIT_OPTION: str = 'wait_option'
+ELEVATOR_PHASE_CLICK_OPTION: str = 'click_option'
+ELEVATOR_PHASE_EXIT: str = 'exit'
+"""电梯四个阶段的标识：进门、等选项、点选项、出电梯。"""
 
 ANCHOR_DISTANCE: float = 100.0
-"""锚点半径：初始定位后与灯塔点的最大距离（用户给定）。"""
+"""锚点半径：初始定位后与途径点的最大距离（用户给定）。"""
 
 ARRIVE_RADIUS: float = 3.0
 """到达半径：3px 内算到点（用户给定）。"""
@@ -71,18 +90,18 @@ SPRINT_DISTANCE: float = 30.0
 """
 
 BEACON_SLOW_RADIUS: float = 10.0
-"""灯塔慢步半径：进入它改用慢步走走停停，不再一路按住前进（用户给定）。"""
+"""途径点慢步半径：进入它改用慢步走走停停，不再一路按住前进（用户给定）。"""
 
 BOX_SMALL_STEP_RADIUS: float = 3.0
 """箱子碎步半径：进到它以内用碎步（用户给定 3px）。"""
 
-BOX_WAIT_RADIUS: float = 0.9
-"""箱子原地等待半径：距离小于 0.9px 就停步原地等提示（用户给定）。
+BOX_WAIT_RADIUS: float = 1.9
+"""箱子原地等待半径：距离小于 1.9px 就停步原地等提示（用户给定）。
 
 用户要求「0px 才停」，但坐标不一定正好落在目标点上：
 编辑器拖点会保留 1 位小数，定位又是整数像素，实际常停在 0.5px。
 按 <= 0 判定永远进不去原地等待，只能一路碎步撞到 75 秒兜底超时。
-所以用「小于 0.9」作判据，0.5px 这种就能正确进入等待。
+所以用「小于 1.9」作判据，0.5px 这种就能正确进入等待。
 """
 
 SMALL_STEP_TIMEOUT: float = 5.0
@@ -171,10 +190,16 @@ LOCATE_FAIL_SECONDS: float = 10.0
 
 STUCK_SECONDS: float = 3.0
 STUCK_DISTANCE: float = 2.0
-"""按住前进时判卡位：窗口内位移不足此值即失败。"""
+"""按住前进时判卡位：窗口内位移不足此值即视为走不动。"""
+
+SIDE_STEP_SECONDS: float = 0.2
+"""卡位时侧移一小步的按键时长（秒）。短按一下，不挪过头。"""
+
+STUCK_STEP_LIMIT: int = 5
+"""同一个点连续侧移的上限；挪这么多步还脱不了身，说明不是偏线而是真走不通。"""
 
 POINT_TIMEOUT: dict[str, float] = {BEACON: 45.0, 'default': 75.0}
-"""单点超时（秒）：灯塔 45，箱类 75。"""
+"""单点超时（秒）：途径点 45，箱类 75。"""
 
 ACTION_LIMIT: int = 100
 """单个点允许的输入次数上限。"""
@@ -204,20 +229,9 @@ ENTRY_TEXT_MARGIN: int = 6
 PICKUP_WORDS: tuple[str, ...] = ('药粉', '拾取')
 """可拾取物而非容器的提示词；按 F 会捡起地上的东西，不能当箱子处理。"""
 
-KIND_PANEL_AREA: dict[str, str] = {
-    'box': '搜查容器标题',
-    'electronic_safe': '电子保险箱标题',
-    'mechanical_safe': '搜查安全箱',
-}
-"""点类型到开箱后面板标题区域的映射；门、刷卡处、电梯没有面板。
-
-机械箱长按 F 在提示出现时进行，打开后面板与普通箱走同一套收集；
-它的专有标题未建档，这里复用底部共用的安全箱标记。
-"""
-
 
 class AnchorMissError(Exception):
-    """锚点半径内没有灯塔，无法开始执行。"""
+    """锚点半径内没有途径点，无法开始执行。"""
 
 
 def route_map_id(route: BagelRoute) -> str:
@@ -227,10 +241,35 @@ def route_map_id(route: BagelRoute) -> str:
     return route.points[0].layer.split('/')[0]
 
 
+def _closest_on_segment(
+    start: BagelRoutePoint, end: BagelRoutePoint, position: tuple[float, float],
+) -> tuple[float, float]:
+    """线段上离角色位置最近的点，夹在线段两端之间。
+
+    Args:
+        start: 线段起点，路径上的上一个点。
+        end: 线段终点，当前目标点。
+        position: 角色当前坐标。
+
+    Returns:
+        线段上的最近点坐标。
+    """
+    dx, dy = end.x - start.x, end.y - start.y
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 0:
+        return (float(start.x), float(start.y))
+    t = ((position[0] - start.x) * dx + (position[1] - start.y) * dy) / length_sq
+    t = max(0.0, min(1.0, t))
+    return (start.x + t * dx, start.y + t * dy)
+
+
 def anchor_index(
     routes: list[BagelRoute], position: tuple[float, float], map_id: str,
 ) -> tuple[int, int]:
-    """在全部路线的灯塔点中找锚点半径内最近者。
+    """只认路线第一个点作为锚点，且它必须是途径点。
+
+    不做「就近接入」：中途接入会从路线中段甚至终点开始走，前面的路段
+    整个被跳过。只比较每条路线的第 1 点。
 
     Args:
         routes: 参与选择的路线列表。
@@ -238,32 +277,34 @@ def anchor_index(
         map_id: 当前所在地图标识，只比较同地图的路线。
 
     Returns:
-        (路线下标, 该路线内灯塔点下标)。
+        (路线下标, 0)。
 
     Raises:
-        AnchorMissError: 没有任何灯塔在锚点半径内。
+        AnchorMissError: 没有任何路线的起点在锚点半径内。
     """
-    nearest: tuple[float, int, int] | None = None
+    nearest: tuple[float, int] | None = None
     for route_index, route in enumerate(routes):
         if route_map_id(route) != map_id:
             continue
-        for point_index, point in enumerate(route.points):
-            if point.kind != BEACON:
-                continue
-            distance = hypot(point.x - position[0], point.y - position[1])
-            if distance > ANCHOR_DISTANCE:
-                continue
-            if nearest is None or distance < nearest[0]:
-                nearest = (distance, route_index, point_index)
+        if not route.points:
+            continue
+        first = route.points[0]
+        if first.kind != BEACON:
+            continue
+        distance = hypot(first.x - position[0], first.y - position[1])
+        if distance > ANCHOR_DISTANCE:
+            continue
+        if nearest is None or distance < nearest[0]:
+            nearest = (distance, route_index)
     if nearest is None:
-        raise AnchorMissError(f'距离最近灯塔超过 {ANCHOR_DISTANCE:.0f}px')
-    return nearest[1], nearest[2]
+        raise AnchorMissError(f'路线起点都不在 {ANCHOR_DISTANCE:.0f}px 内')
+    return nearest[1], 0
 
 
 class BagelRouteWalker(BagelOperation):
     """按打点顺序执行路线，箱类按类型交互。"""
 
-    STATUS_ANCHOR_MISS: str = '附近没有灯塔，退出重开'
+    STATUS_ANCHOR_MISS: str = '附近没有途径点，退出重开'
     STATUS_NOT_FOREGROUND: str = '游戏不在前台，已停止'
     STATUS_DONE: str = '全部路线走完'
 
@@ -314,6 +355,8 @@ class BagelRouteWalker(BagelOperation):
         self.last_position: tuple[float, float] | None = None
         self.steps: int = 0
         self.stuck_since: tuple[tuple[float, float], float] | None = None
+        self.stuck_steps: int = 0
+        """当前点已经侧移了几次，进入新点时清零。"""
         self.target_wait_since: float | None = None
         self.small_step_since: float | None = None
         """进入 3px 碎步段的起始时刻，用于碎步超时判定。"""
@@ -337,6 +380,12 @@ class BagelRouteWalker(BagelOperation):
         """连续读到画面没变化的次数，同上，但发生在更小幅度上。"""
         self.last_turn_angle: float | None = None
         """上一轮下发转向时读到的镜头朝向，用来和这一轮的朝向求实际转角。"""
+        self.elevator_phase: str | None = None
+        """电梯当前阶段：进门 / 选楼层 / 出电梯；不在电梯里时为 None。"""
+        self.elevator_since: float | None = None
+        """当前电梯阶段的起始时刻，用于计时。"""
+        self.elevator_last_tap: float = 0.0
+        """上次为推进对话而点按的时刻，控制每秒一次。"""
         self.input_worker: BagelInputWorker = BagelInputWorker(ctx)
         """按键单独线程：主线投递即返回；同种操作不打断自己，不同操作打断旧的。"""
 
@@ -390,6 +439,11 @@ class BagelRouteWalker(BagelOperation):
 
         同样的文字连续重复时也照打：卡住的表现正是同一条反复出现，
         静默掉就看不到「一直短步」「一直转圈」这类症状。
+
+        到点那一轮不能把「当前游标」和「位置」直接配对：游标已经推进到
+        下一个点，位置还是走到上一个点时的位置，两边一算就得到一个
+        几十像素的假距离，看起来像「离老远就说到点」。所以到点这一轮
+        只打位置，判定距离由 navigate 自己在到点时打一条独立的 log。
         """
         point = self._current_point()
         parts = [f'[{node_name}]']
@@ -397,7 +451,8 @@ class BagelRouteWalker(BagelOperation):
             parts.append(status)
         if point is not None:
             parts.append(f'第{self.cursor + 1}点 {point.kind}')
-        if point is not None and self.position is not None:
+        arrived = node_name == '导航移动' and status.startswith('已到点')
+        if point is not None and self.position is not None and not arrived:
             distance = hypot(point.x - self.position[0], point.y - self.position[1])
             parts.append(f'距 {distance:.1f}px')
         if self.position is not None:
@@ -453,7 +508,7 @@ class BagelRouteWalker(BagelOperation):
 
     @operation_node(name='锚点定位', is_start_node=True)
     def anchor(self) -> OperationRoundResult:
-        """定位一次，找锚点半径内最近灯塔作为起点。"""
+        """定位一次，找锚点半径内最近途径点作为起点。"""
         position = self.locate()
         if position is None:
             return self.round_retry('定位失败，重试', wait=0.3)
@@ -473,8 +528,10 @@ class BagelRouteWalker(BagelOperation):
         return self.round_success('已锚定')
 
     @node_from(from_name='游标推进', status='已推进')
+    @node_from(from_name='导航移动', status='已到点')
     @node_from(from_name='导航移动', status='跳过此点')
     @node_from(from_name='碎步移动', status='跳过此点')
+    @node_from(from_name='进出电梯', status='已离开电梯')
     @operation_node(name='点调度', mute=True)
     def dispatch(self) -> OperationRoundResult:
         """按游标当前点分派到导航、碎步或现场判断。"""
@@ -482,7 +539,9 @@ class BagelRouteWalker(BagelOperation):
         if point is None:
             return self.round_success('路线走完')
         if point.kind == BEACON:
-            return self.round_success('下一格是灯塔')
+            return self.round_success('下一格是途径点')
+        if point.kind == ELEVATOR:
+            return self.round_success('下一格是电梯')
         return self.round_success('下一格是箱类')
 
     @node_from(from_name='点调度', status='路线走完')
@@ -592,7 +651,11 @@ class BagelRouteWalker(BagelOperation):
     @node_from(from_name='现场交互判断', status='现场无交互物')
     @operation_node(name='切换路线')
     def switch_route(self) -> OperationRoundResult:
-        """取剩余路线中最近的灯塔切换过去；没有剩余则结束。"""
+        """切到下一条还没走的路线，从它的第 1 点开始；没有剩余则结束。
+
+        不做「就近接入」：只比较每条路线的起点，接入点永远是第 1 点。
+        中途接入会从路线中段甚至终点点开始，前面的路段整个被跳过。
+        """
         self.finished_routes.add(self.routes[self.route_index].route_id)
         remaining = [
             route for route in self.routes
@@ -604,33 +667,39 @@ class BagelRouteWalker(BagelOperation):
         position = self.locate() or self.position
         if position is None:
             return self.round_retry('切换路线前定位失败', wait=0.3)
-        nearest: tuple[float, int, int] | None = None
+        nearest: tuple[float, int] | None = None
         for route_index, route in enumerate(self.routes):
             if route.route_id in self.finished_routes:
                 continue
             if route_map_id(route) != self.last_map_id:
                 continue
-            for point_index, point in enumerate(route.points):
-                if point.kind != BEACON:
-                    continue
-                distance = hypot(point.x - position[0], point.y - position[1])
-                if nearest is None or distance < nearest[0]:
-                    nearest = (distance, route_index, point_index)
+            if not route.points:
+                continue
+            first = route.points[0]
+            if first.kind != BEACON:
+                continue
+            distance = hypot(first.x - position[0], first.y - position[1])
+            if nearest is None or distance < nearest[0]:
+                nearest = (distance, route_index)
         if nearest is None:
-            return self.round_fail('剩余路线没有可达灯塔，无法切换')
-        self._enter_point(nearest[1], nearest[2])
+            return self.round_fail('剩余路线没有可用的起点途径点，无法切换')
+        self._enter_point(nearest[1], 0)
         return self.round_success('切换路线')
 
     # ---------- 导航 ----------
 
     @node_from(from_name='锚点定位', status='已锚定')
-    @node_from(from_name='点调度', status='下一格是灯塔')
-    @node_from(from_name='导航移动', status='已到点')
+    @node_from(from_name='点调度', status='下一格是途径点')
     @node_from(from_name='导航移动', status='提示已出现')
     @node_from(from_name='切换路线', status='切换路线')
     @operation_node(name='导航移动', mute=True)
     def navigate(self) -> OperationRoundResult:
-        """朝当前点移动；灯塔 3px 到达，箱类见到提示就停。"""
+        """朝当前点移动；途径点 3px 到达，箱类见到提示就停。
+
+        到点后必须回点调度重新分派，不能直接再进本节点：游标已经推进到
+        下一个点，那个点可能是电梯或箱子，得由点调度按种类交给对应节点。
+        直接自环会让电梯点落到箱类分支，被当成箱子慢步逼近。
+        """
         return self._move_toward()
 
     @node_from(from_name='点调度', status='下一格是箱类')
@@ -653,6 +722,152 @@ class BagelRouteWalker(BagelOperation):
         return self._move_toward()
 
     # ---------- 交互 ----------
+
+    @node_from(from_name='点调度', status='下一格是电梯')
+    @operation_node(name='进出电梯')
+    def elevator(self) -> OperationRoundResult:
+        """进出电梯：走向电梯，点楼层选项，再走出来。
+
+        电梯点在进门前能正常定位，进电梯后小地图整块消失，所以不能按
+        3px 判到达（用户定义：读不到朝向就是进了电梯）。进去之后分三段，
+        每段只等它自己的信号，统一不设超时——卡在电梯里连游戏都退不出来。
+
+        1. 进门：朝电梯点走，读不到朝向即进入电梯。
+        2. 等选项：一直点屏幕中间推进对话，直到楼层选项出现。
+        3. 点选项：一直点那个选项，直到它从画面上消失。
+        4. 出梯：一直按住配置的方向，直到小地图回来。
+
+        点上没有楼层文字（`elevator_option` 为空）的电梯没有第 2、3 段，
+        进门后直接进出梯段。
+        """
+        point = self._current_point()
+        if point is None:
+            return self.round_success('路线走完')
+        if self.elevator_phase is None:
+            # 首次进入本节点必须从「进门」阶段开始。之前漏了这一步，
+            # phase 一直是 None，直接落到出梯阶段，「朝电梯走」整个没执行过。
+            self.elevator_phase = ELEVATOR_PHASE_ENTER
+            self.elevator_since = None
+        phase = self.elevator_phase
+        if phase == ELEVATOR_PHASE_ENTER:
+            return self._elevator_enter(point)
+        if phase == ELEVATOR_PHASE_WAIT_OPTION:
+            return self._elevator_wait_option(point)
+        if phase == ELEVATOR_PHASE_CLICK_OPTION:
+            return self._elevator_click_option(point)
+        return self._elevator_exit(point)
+
+    def _elevator_enter(self, point: BagelRoutePoint) -> OperationRoundResult:
+        """朝电梯点走，途中读不到朝向就是进了电梯。
+
+        电梯点没有「到达」这回事：小地图会整块消失，坐标和朝向都读不到，
+        3px 这种判据在电梯口根本不成立。所以这里只朝点走，一旦
+        `player_angle()` 读不到就当已进电梯（用户定义）。
+        """
+        if self.player_angle() is None:
+            self._release_forward()
+            self.elevator_since = None
+            if point.elevator_option:
+                self.elevator_phase = ELEVATOR_PHASE_WAIT_OPTION
+                self.elevator_last_tap = 0.0
+                return self.round_wait('小地图已消失，视为进入电梯', wait=0.2)
+            self.elevator_phase = ELEVATOR_PHASE_EXIT
+            return self.round_wait('小地图已消失，这电梯没有楼层选项', wait=0.2)
+        if self.elevator_since is None:
+            self.elevator_since = time.monotonic()
+        if time.monotonic() - self.elevator_since >= ELEVATOR_ENTRY_TIMEOUT:
+            self._release_forward()
+            self.elevator_phase = None
+            self.elevator_since = None
+            return self.round_recoverable_fail('电梯门口走了 10 秒还没进入电梯')
+        position = self.locate()
+        if position is not None:
+            angle = self.player_angle()
+            if angle is not None:
+                angle_diff = cal_utils.angle_delta(
+                    angle % 360, self._target_angle(position, point),
+                )
+                turn = self._turn_step(angle_diff)
+                if turn is not None and abs(angle_diff) > WALK_TURN_ANGLE:
+                    # 方向偏太多先停下转，不然会走到旁边去。
+                    self._release_forward()
+                    self._send_turn(turn if angle_diff > 0 else -turn)
+                    return self.round_wait(f'朝电梯转向 {angle_diff:.0f}度', wait=TURN_INTERVAL)
+                self.input_worker.hold_forward()
+                if turn is not None:
+                    self._send_turn(turn if angle_diff > 0 else -turn)
+                return self.round_wait('走向电梯', wait=0.15)
+        # 定位暂时丢失但朝向还在（贴墙等）：先不松前进，等下一帧。
+        self.input_worker.hold_forward()
+        return self.round_wait('走向电梯，定位暂缺', wait=0.15)
+
+    def _elevator_wait_option(self, point: BagelRoutePoint) -> OperationRoundResult:
+        """一直点屏幕中间推进对话，直到楼层选项出现。不设超时。"""
+        found = self._find_elevator_option(point.elevator_option)
+        if found is not None:
+            self.elevator_phase = ELEVATOR_PHASE_CLICK_OPTION
+            return self.round_wait(f'楼层选项已出现：{found.data}', wait=0.1)
+        if time.monotonic() - self.elevator_last_tap >= ELEVATOR_OPTION_TAP_SECONDS:
+            self.elevator_last_tap = time.monotonic()
+            self.input_worker.tap_center()
+        return self.round_wait('等待电梯楼层选项', wait=0.2)
+
+    def _elevator_click_option(self, point: BagelRoutePoint) -> OperationRoundResult:
+        """一直点那个选项，直到它从画面上消失。不设超时。
+
+        选项点中后会收起，收起即表示楼层已选、电梯开始移动。
+        中途某一帧识别不到也算收起，所以这里用「识别到才点、识别不到就
+        进下一段」，不需要连续几帧确认。
+        """
+        found = self._find_elevator_option(point.elevator_option)
+        if found is None:
+            self.elevator_phase = ELEVATOR_PHASE_EXIT
+            return self.round_wait('楼层选项已消失，准备出梯', wait=0.1)
+        self.ctx.controller.click(found.rect.center)
+        return self.round_wait(f'点选楼层：{found.data}', wait=0.2)
+
+    def _find_elevator_option(self, option: str) -> OcrMatchResult | None:
+        """在楼层列表里找配置的文字。
+
+        Args:
+            option: 要选的楼层文字，如「负二层」。
+
+        Returns:
+            匹配到的 OCR 结果；没有则返回 None。
+        """
+        area = self.ctx.screen_loader.get_area('贝果-局内', '电梯选项')
+        if area is None:
+            return None
+        results = self.ctx.ocr_service.get_ocr_result_list(
+            image=self.last_screenshot, rect=area.pc_rect,
+        )
+        target = gt(option, 'game')
+        for item in results:
+            if target in str_utils.remove_whitespace(item.data):
+                return item
+        return None
+
+    def _elevator_exit(self, point: BagelRoutePoint) -> OperationRoundResult:
+        """一直按住配置的方向往前走，直到小地图回来。不设超时。"""
+        if self.player_angle() is not None:
+            self._release_forward()
+            self._release_backward()
+            self.elevator_phase = None
+            self.elevator_since = None
+            self._enter_point(self.route_index, self.cursor + 1)
+            return self.round_success('已离开电梯')
+        if self.elevator_since is None:
+            self.elevator_since = time.monotonic()
+        if point.elevator_exit == ELEVATOR_EXIT_BACKWARD:
+            self.input_worker.hold_backward()
+        else:
+            self.input_worker.hold_forward()
+        elapsed = time.monotonic() - self.elevator_since
+        return self.round_wait(f'出电梯 {elapsed:.1f}s', wait=0.15)
+
+    def _release_backward(self) -> None:
+        """松开后退键。"""
+        self.input_worker.stop_backward()
 
     @node_from(from_name='碎步移动', status='出现交互提示')
     @node_from(from_name='导航移动', status='提示已出现')
@@ -714,8 +929,10 @@ class BagelRouteWalker(BagelOperation):
         按 F 前先松前进键，避免按住前行漂移。
         """
         self._release_forward()
-        panel_area = KIND_PANEL_AREA.get(kind, '')
-        if panel_area and self._has(panel_area):
+        if kind == 'box' and self._has('搜查容器标题'):
+            # 容器面板已开：立刻交给收集入箱，不在这里判完成。
+            # 用「提示消失」推断完成会漏掉收集和关闭面板，面板一直开着
+            # 盖住小地图，后面整段导航都定位失败。
             self._reset_point_state()
             return self.round_success('面板已打开')
         if self.f_pressed and self._top_entry() is None:
@@ -801,15 +1018,21 @@ class BagelRouteWalker(BagelOperation):
         if distance <= SPRINT_DISTANCE and self.sprinting:
             self._exit_sprint()
         if point.kind == BEACON:
-            # 灯塔是纯路点：3px 内算到点，10px 内慢步逼近。
+            # 途径点是纯路点：3px 内算到点，10px 内慢步逼近。
             if distance <= ARRIVE_RADIUS:
                 self._release_forward()
+                log.info(
+                    '贝果到点：第 %s 点判定距离 %.2fpx（判据 %.0fpx，位置 %s）',
+                    self.cursor + 1, distance, ARRIVE_RADIUS, position,
+                )
                 self._enter_point(self.route_index, self.cursor + 1)
+                # 状态文字必须正好是「已到点」：节点边按状态精确匹配，
+                # 掺了距离就匹配不上，导航链会在这里断掉、整条路线直接判走完。
                 return self.round_success('已到点')
             if distance <= BEACON_SLOW_RADIUS:
                 return self._slow_step(point, position)
             return self._cruise(point, position)
-        # 箱类：3px 外慢步，3px 内碎步，0.9px 内原地等提示。
+        # 箱类：3px 外慢步，3px 内碎步，1.9px 内原地等提示。
         # 碎步阶段边走边检测提示，提示一出现就转入交互。
         prompt = self._prompt_stop(point, distance)
         if prompt is not None:
@@ -936,7 +1159,7 @@ class BagelRouteWalker(BagelOperation):
                 f'停车转向 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
                 wait=TURN_INTERVAL,
             )
-        stuck = self._check_stuck(position)
+        stuck = self._check_stuck(position, point, controller_angle)
         if stuck is not None:
             return stuck
         self._record_input()
@@ -1155,7 +1378,7 @@ class BagelRouteWalker(BagelOperation):
     ) -> OperationRoundResult:
         """慢步移动：按得比碎步久一点，走一段停一下。
 
-        用于两类场合：灯塔最后 10px 内，以及箱子 5px 外。
+        用于两类场合：途径点最后 10px 内，以及箱子 5px 外。
         比碎步快、比巡航稳，靠近目标时不会一冲而过。
 
         转向同样按 10 度分界（WALK_TURN_ANGLE）：超过就停车转，
@@ -1206,19 +1429,69 @@ class BagelRouteWalker(BagelOperation):
         """
         return degrees(atan2(-(point.y - position[1]), point.x - position[0])) % 360
 
-    def _check_stuck(self, position: tuple[float, float]) -> OperationRoundResult | None:
-        """按住前进判卡位：窗口内位移不足即失败。"""
+    def _check_stuck(
+        self, position: tuple[float, float], point: BagelRoutePoint, angle: float,
+    ) -> OperationRoundResult | None:
+        """按住前进却走不动时，往路径线那一侧侧移一小步。
+
+        走不动一般不是被挡住，而是已经偏到路径线外，正顶着墙或箱子。
+        这时继续判失败没意义。拿「上一个点 → 当前目标点」这条连线当路径线，
+        朝线上的最近点挪一小步，让前进方向重新对上线。
+        """
         if self.stuck_since is None:
             self.stuck_since = (position, time.monotonic())
             return None
         origin, started = self.stuck_since
         if hypot(position[0] - origin[0], position[1] - origin[1]) >= STUCK_DISTANCE:
             self.stuck_since = (position, time.monotonic())
+            self.stuck_steps = 0
             return None
         if time.monotonic() - started < STUCK_SECONDS:
             return None
-        self._release_forward()
-        return self.round_recoverable_fail('持续前进但位置未变化，停止移动')
+        if self.stuck_steps >= STUCK_STEP_LIMIT:
+            self._release_forward()
+            return self.round_recoverable_fail('持续前进但位置未变化，侧移多次仍无法脱离')
+        direction = self._path_side(position, point, angle)
+        self.stuck_steps += 1
+        self.stuck_since = None
+        if direction is None:
+            # 没有上一个点，或已经站在线上，判断不出该往哪挪，不瞎动。
+            return self.round_wait('前进受阻，等待重新判定路径线', wait=0.2)
+        self.input_worker.side_step(direction, SIDE_STEP_SECONDS)
+        self._record_input()
+        return self.round_wait(
+            f'前进受阻，往路径线{"右" if direction > 0 else "左"}侧移动一步',
+            wait=SIDE_STEP_SECONDS + 0.1,
+        )
+
+    def _path_side(
+        self, position: tuple[float, float], point: BagelRoutePoint, angle: float,
+    ) -> int | None:
+        """该往哪一侧挪：1 按 D（角色右手边），-1 按 A（角色左手边）。
+
+        A/D 是相对角色朝向的左右，不是地图上的左右，所以要先把「指向路径线」
+        的方向换算到角色局部坐标：角色朝向角 angle 下，右手方向是
+        `(sin angle, cos angle)`（地图 y 轴向下），与它点乘为正就是往右挪。
+
+        路径线取上一个点到当前目标点的连线；角色在线的哪一侧都不必先判，
+        直接朝线上最近点走，偏多偏少都成立。
+        """
+        origin = self._previous_point()
+        if origin is None:
+            return None
+        foot = _closest_on_segment(origin, point, position)
+        to_line = (foot[0] - position[0], foot[1] - position[1])
+        if hypot(to_line[0], to_line[1]) < 0.5:
+            return None
+        right_x, right_y = sin(radians(angle)), cos(radians(angle))
+        return 1 if to_line[0] * right_x + to_line[1] * right_y >= 0 else -1
+
+    def _previous_point(self) -> BagelRoutePoint | None:
+        """上一个点；路线起点没有上一个点时返回 None。"""
+        route = self.routes[self.route_index]
+        if self.cursor <= 0:
+            return None
+        return route.points[self.cursor - 1]
 
     def _check_timeout(self, point: BagelRoutePoint) -> OperationRoundResult | None:
         """单点超时检查。"""
@@ -1281,6 +1554,10 @@ class BagelRouteWalker(BagelOperation):
         self.target_wait_since = None
         self.small_step_since = None
         self.steps = 0
+        self.stuck_since = None
+        self.stuck_steps = 0
+        self.elevator_phase = None
+        self.elevator_since = None
 
     def _step_forward(self, duration: float) -> None:
         """发起一次短按前进；同种操作由输入线程自己保证不互相打断。
@@ -1300,6 +1577,7 @@ class BagelRouteWalker(BagelOperation):
         self.stuck_since = None
         self._stop_sprint()
         self.input_worker.stop_forward()
+        self.input_worker.stop_backward()
 
     def _adopt_screenshot(self, op: BagelOperation) -> None:
         """子操作结束后同步其最后截图。"""

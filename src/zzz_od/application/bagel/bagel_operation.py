@@ -25,6 +25,18 @@ def is_bagel_result(operation: Operation) -> bool:
     return operation.round_by_find_area(operation.last_screenshot, '贝果-结算', '失败').is_success
 
 
+CONTAINER_TITLE_AREAS: tuple[str, ...] = ('搜查容器标题', '搜查容器标题_包', '搜查容器标题_柜')
+"""普通容器搜查面板标题栏的识别区域。
+
+游戏里容器叫法有很多种：武备箱、公文包、某某柜……只认其中一个词会漏掉
+其它容器。漏认的后果不是少识别一次：面板明明开着却认为没开，调用方就会
+用「交互提示消失」推断已经完事，跳过收集入箱和关闭面板，面板一直盖住
+小地图，后面整段导航都定位失败。
+
+所以标题栏按结尾字分别建三个同坐标区域，箱、包、柜任一命中即算开到面板。
+"""
+
+
 def execute_bagel_round(operation: Operation) -> OperationRoundResult:
     """贝果程序异常直接停止，避免框架重试把错误改写为业务超时。"""
     try:
@@ -110,7 +122,16 @@ class BagelOperation(ZOperation):
         return self.round_fail(reason, data=BagelRecoverableFailure(reason))
 
     def _has(self, area: str, screen_name: str = '贝果-局内') -> bool:
-        """只使用当前截图核对指定画面区域。"""
+        """只使用当前截图核对指定画面区域。
+
+        「搜查容器标题」会展开成箱、包、柜三个同坐标区域：容器叫法有很多种，
+        只认其中一个词就认不出其它容器，面板开着也会被当成没开。
+        """
+        if screen_name == '贝果-局内' and area == '搜查容器标题':
+            return any(
+                self.round_by_find_area(self.last_screenshot, screen_name, name).is_success
+                for name in CONTAINER_TITLE_AREAS
+            )
         return self.round_by_find_area(self.last_screenshot, screen_name, area).is_success
 
     def _at_bagel_activity(self) -> bool:

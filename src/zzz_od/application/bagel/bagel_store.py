@@ -8,7 +8,6 @@ from one_dragon.base.geometry.point import Point
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.log_utils import log
-from zzz_od.application.bagel.bagel_const import CONTAINER_TITLE_AREAS
 from zzz_od.application.bagel.bagel_item_vision import (
     ACTION_FILL,
     ACTION_SWAP,
@@ -154,7 +153,7 @@ class BagelStoreSafe(BagelOperation):
                     ).is_success):
                 self._clear_pending()
                 return self.round_fail(self.STATUS_INTERRUPTED)
-        elif self._panel_guard.observe(self.last_screenshot, self.last_screenshot_time):
+        elif self._observe_panel():
             centers = self._panel_guard.result_centers
             assert centers is not None
             self._result_centers = centers
@@ -165,6 +164,26 @@ class BagelStoreSafe(BagelOperation):
             return self.round_wait('等待搜查面板到位并稳定', wait=0.3)
         self._clear_pending()
         return self._give_up('搜查面板状态持续不明')
+
+    def _observe_panel(self) -> bool:
+        """按「全部拾取」按钮的位置定排数，再核对格心与画面稳定。
+
+        小容器（公文包这类）只有一排结果格，按钮贴在那一排下方，y≈343；
+        大容器（电子保险箱这类）两排，按钮被挤到 y≈501。排数认不出来时不
+        猜测，先继续等下一帧。
+        """
+        rows = self._result_rows()
+        if rows is None:
+            return False
+        return self._panel_guard.observe(self.last_screenshot, self.last_screenshot_time, rows)
+
+    def _result_rows(self) -> int | None:
+        """结果格排数：单行按钮在上、双行按钮在下，两者位置不重叠。"""
+        if self._has('全部拾取_单行'):
+            return 1
+        if self._has('全部拾取_双行'):
+            return 2
+        return None
 
     def _wait_for_loading(self, states: list[str | None]) -> OperationRoundResult | None:
         """还有格子处于加载中就先等一帧；没有或预算用完返回 None。
@@ -190,11 +209,8 @@ class BagelStoreSafe(BagelOperation):
         return self.round_fail('安全箱格子状态不明，停止并保留现场')
 
     def _search_ready(self) -> bool:
-        """已支持容器的搜查标题与安全箱同时可见时才允许拖拽。"""
-        title_ok = any(
-            self.round_by_find_area(self.last_screenshot, '贝果-局内', area).is_success
-            for area in CONTAINER_TITLE_AREAS.values()
-        )
+        """搜查面板与安全箱同时可见才允许拖拽；箱子与电子保险箱标题均可。"""
+        title_ok = self._has('搜查容器标题') or self._has('电子保险箱标题')
         return title_ok and self.round_by_find_area(
             self.last_screenshot, '贝果-局内', '搜查安全箱',
         ).is_success and (self._search_complete() or self.round_by_find_area(
@@ -580,8 +596,5 @@ class BagelStoreSafe(BagelOperation):
         return transfer_visually_ok(before, after, source, destination)
 
     def _has_search_title(self) -> bool:
-        """任一已支持容器的标题可见时，仍处于搜查面板。"""
-        return any(
-            self.round_by_find_area(self.last_screenshot, '贝果-局内', area).is_success
-            for area in CONTAINER_TITLE_AREAS.values()
-        )
+        """箱子或电子保险箱标题任一可见即仍在搜查面板。"""
+        return self._has('搜查容器标题') or self._has('电子保险箱标题')

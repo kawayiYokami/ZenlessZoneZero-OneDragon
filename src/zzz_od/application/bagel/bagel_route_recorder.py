@@ -4,7 +4,7 @@
 所以旧机制里「先 interact 再 unlock 再 store」这套写死的顺序不再存在。
 
 按键沿用插件那套：
-- 1 寻路灯塔、2 电子保险箱、3 机械保险箱、4 普通箱子、5 门、6 电梯，按下即在当前位置打一个点。
+- 1 途径点、2 电子保险箱、3 机械保险箱、4 普通箱子、5 门、6 电梯，按下即在当前位置打一个点。
 - 退格删掉上一个点。
 """
 
@@ -63,7 +63,7 @@ UNDO_KEY = 'backspace'
 """删除上一个点的按键。"""
 
 POINT_KINDS: dict[str, tuple[str, str]] = {
-    '1': ('beacon', '寻路灯塔'),
+    '1': ('beacon', '途径点'),
     '2': ('electronic_safe', '电子保险箱'),
     '3': ('mechanical_safe', '机械保险箱'),
     '4': ('box', '普通箱子'),
@@ -71,6 +71,13 @@ POINT_KINDS: dict[str, tuple[str, str]] = {
     '6': ('elevator', '电梯'),
 }
 """打点键到（类型标识, 中文名）的映射。"""
+
+ELEVATOR: str = 'elevator'
+"""电梯类型标识。进门后可能出楼层选项，也可能不出。"""
+
+ELEVATOR_EXIT_FORWARD: str = 'forward'
+ELEVATOR_EXIT_BACKWARD: str = 'backward'
+"""电梯出来时朝哪个方向走。"""
 
 KIND_ALIASES: dict[str, str] = {
     'briefcase': 'box',
@@ -86,21 +93,30 @@ class BagelRoutePoint:
     """一个打点：全局坐标、所在分层与类型。
 
     点按打点顺序排列，顺序本身就是路线，不需要额外的连线数据。
+    电梯点额外带两项进出电梯的参数。
     """
 
     x: float
     y: float
     layer: str
     kind: str
+    elevator_option: str = ''
+    """电梯要选的楼层文字，如「负二层站台」；空表示不选（直接进门）。"""
+    elevator_exit: str = 'forward'
+    """出电梯往哪个方向走：forward 前进、backward 后退。"""
 
     def to_dict(self) -> dict[str, Any]:
         """生成可写入 JSON 的点。"""
-        return {
+        data: dict[str, Any] = {
             'x': round(self.x),
             'y': round(self.y),
             'layer': self.layer,
             'kind': self.kind,
         }
+        if self.kind == ELEVATOR:
+            data['elevator_option'] = self.elevator_option
+            data['elevator_exit'] = self.elevator_exit
+        return data
 
 
 class BagelRoute:
@@ -211,6 +227,8 @@ class BagelRoute:
             BagelRoutePoint(
                 float(round(item['x'])), float(round(item['y'])), str(item['layer']),
                 KIND_ALIASES.get(str(item['kind']), str(item['kind'])),
+                elevator_option=str(item.get('elevator_option', '')),
+                elevator_exit=str(item.get('elevator_exit', ELEVATOR_EXIT_FORWARD)),
             )
             for item in data['points']
         ]
