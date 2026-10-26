@@ -87,6 +87,20 @@ KIND_ALIASES: dict[str, str] = {
 KIND_LABELS: dict[str, str] = dict(POINT_KINDS.values())
 """类型标识到中文名，供界面与网页显示。"""
 
+KIND_COLORS: dict[str, str] = {
+    'beacon': '#2233b4',
+    'electronic_safe': '#d97400',
+    'mechanical_safe': '#8b3fc4',
+    'box': '#1f8a4c',
+    'door': '#238495',
+    'elevator': '#bc2f5e',
+}
+"""类型标识到标注色，与网页画点用的颜色是同一套。
+
+电子=橙、机械=紫、普通箱=绿是语义色，其余三类按色相环拉开，
+任意两类的色相至少差 41 度，肉眼可辨。
+"""
+
 
 @dataclass(frozen=True)
 class BagelRoutePoint:
