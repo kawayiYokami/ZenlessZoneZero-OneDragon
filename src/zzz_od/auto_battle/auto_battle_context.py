@@ -1098,7 +1098,8 @@ class AutoBattleContext:
     def _update_btn_ban_states(self, ban_result: dict[str, bool], screenshot_time: float) -> list[StateRecord]:
         """
         更新按键禁用状态
-        与按键可用互斥 本次没有识别的状态视为未禁用 会清掉禁用状态
+        禁用与可用是两套独立信号 可以同时成立
+        本次没有识别的状态视为未禁用 会清掉禁用状态 这样禁用解除后能及时复位
         禁用期间只记录首次识别到的时间 不刷新 因此可以用 [状态, 时间下限, 时间上限] 判断已经禁用了多久
         :param ban_result: 状态名 -> 是否禁用
         :param screenshot_time: 截图时间
