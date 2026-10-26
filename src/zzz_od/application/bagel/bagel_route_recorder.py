@@ -486,7 +486,7 @@ class BagelPointRecorder:
             if crop is None:
                 continue
             angle_start = time.perf_counter()
-            marker, sector, _radius, _origin = analyze(crop)
+            marker, _marker_edges, sector, _radius, _origin = analyze(crop)
             angle_ms = (time.perf_counter() - angle_start) * 1000
             self.on_angles(sector, marker)
             locate_start = time.perf_counter()

@@ -115,8 +115,8 @@ class BagelRouteVision:
         Returns:
             角色朝向角度，识别不出时返回 None。
         """
-        marker, _sector, _radius, _center = analyze(_rgb(crop))
-        return marker
+        _marker_vertices, marker_edges, _sector, _radius, _center = analyze(_rgb(crop))
+        return marker_edges
 
     def camera_angle(self, crop: np.ndarray) -> float | None:
         """返回镜头朝向角，正右为 0、逆时针增加。
@@ -127,7 +127,7 @@ class BagelRouteVision:
         Returns:
             镜头朝向角度，识别不出时返回 None。
         """
-        _marker, sector, _radius, _center = analyze(_rgb(crop))
+        _marker_vertices, _marker_edges, sector, _radius, _center = analyze(_rgb(crop))
         return sector
 
 

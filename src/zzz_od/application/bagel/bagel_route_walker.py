@@ -29,6 +29,7 @@ from one_dragon.utils import cal_utils, cv2_utils, str_utils
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
+from zzz_od.application.bagel.bagel_input_worker import BagelInputWorker
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_route_recorder import (
     BagelRoute,
@@ -63,18 +64,10 @@ ARRIVE_RADIUS: float = 3.0
 INTERACTION_TRUST_DISTANCE: float = 40.0
 """交互采信距离：提示出现时距目标点超过此值不采信。"""
 
-SPRINT_DISTANCE: float = 40.0
-"""冲刺距离：距目标点超过它就冲刺（用户给定）。
+SPRINT_DISTANCE: float = 30.0
+"""多少像素外开冲刺（用户给定 30px）。
 
-40px 外冲刺，40px 内松开；灯塔再进 10px（BEACON_SLOW_RADIUS）改慢步。
-"""
-
-SPRINT_STOP_SECONDS: float = 1.0
-"""退出冲刺需要松开方向键的时长（秒，用户给定）。
-
-绝区零的冲刺是「按住方向键 + 连点闪避」，松开闪避并不会退出冲刺，
-必须松开方向键满 1 秒才脱离冲刺惯性。
-所以冲刺过后要走路、慢步、碎步之前，先松键停满这个时长。
+30px 外就冲刺，边跑边点闪避；30px 内不冲刺，松键改用走路逼近。
 """
 
 BEACON_SLOW_RADIUS: float = 10.0
@@ -105,10 +98,11 @@ SLOW_STEP_PRESS: float = 0.5
 SLOW_STEP_WAIT: float = 0.1
 """慢步走完停一下的时长（秒），形成走走停停的节奏（用户给定 0.1）。"""
 
-TURN_FRACTION: float = 0.5
-"""每轮转向取偏差的几成（用户给定 1/2）。
+TURN_FRACTION: float = 1.0
+"""每轮转向取偏差的几成（用户给定：一次直接转到目标角度）。
 
-不分档，不管偏差多大都只转一半；向下取整，宁可少转不转过头。
+取 1.0 表示偏差多少就转多少，不再「每轮转一半、逐步收敛」。
+实际下发角由 turn_ratio 校准值换算，所以这里给的是名义角。
 """
 
 ALIGN_DEADBAND: float = 1.0
@@ -142,10 +136,23 @@ TURN_RATIO_MIN_ANGLE: float = 3.0
 TURN_RATIO_MIN_DELTA: float = 0.5
 """实际转角小于它视为画面还没跟上，样本留到下一轮再算。"""
 
-WALK_TURN_ANGLE: float = 15.0
-"""边走边转的上限：偏差在它以内不松前进键，行进中调整。
+ANGLE_MISS_BLIND_TURN: float = 5.0
+"""读不到镜头朝向时每轮盲转的度数（用户给定 5 度）。
 
-超过它就停车转向：同时下发转向和前进会互相干扰，
+读到朝向后能算出往哪边转；读不到就分不清，只能固定朝一个方向轻推，
+换一个视角让扇形露出来。转多了会白白偏离目标，5 度是用户定的量。
+"""
+
+ANGLE_FAIL_SECONDS: float = 10.0
+"""连续读不到镜头朝向超过这个时长才判失败（用户给定 10 秒）。
+
+单帧读不到是常事（转视角、贴墙、扇形被挡），不能立刻中断整条路线。
+"""
+
+WALK_TURN_ANGLE: float = 5.0
+"""束角（用户术语）：朝向偏差在它以内不松前进键，边走边转微调。
+
+超过束角就停车转（松键、转到位、再走）：同时下发转向和前进会互相干扰，
 偏差大时表现为原地乱转，所以大偏差必须先停下转。
 """
 
@@ -184,6 +191,9 @@ SURROUND_CHECK_SECONDS: float = 2.0
 
 MECHANICAL_HOLD_SECONDS: float = 5.0
 """机械保险箱长按 F 的最长时间（秒）。"""
+
+INTERACT_TAP_SECONDS: float = 0.2
+"""点按交互键 F 的按住时长（秒）。"""
 
 ICON_THRESHOLD: float = 0.8
 """交互图标与刷卡图标的模板匹配阈值；实测同类 1.0、异类 0.33。"""
@@ -299,6 +309,8 @@ class BagelRouteWalker(BagelOperation):
         self.locate_misses: int = 0
         self.locate_miss_since: float | None = None
         """连续定位失败的起始时刻，恢复定位后清空。"""
+        self.angle_miss_since: float | None = None
+        """连续读不到镜头朝向的起始时刻，读到朝向后清空。"""
         self.last_position: tuple[float, float] | None = None
         self.steps: int = 0
         self.stuck_since: tuple[tuple[float, float], float] | None = None
@@ -311,8 +323,6 @@ class BagelRouteWalker(BagelOperation):
         """最近一轮的决策文字，供执行态悬浮窗显示。"""
         self.sprinting: bool = False
         """当前是否在冲刺。"""
-        self.sprint_stop_since: float | None = None
-        """退出冲刺后开始松键停稳的时刻；停满 1 秒才允许走路。"""
         self.turn_ratio: float = 1.0
         """转向校准值：名义转角乘它就是实际转角，1.0 表示还没校准过。"""
         self.pending_turn: float | None = None
@@ -327,6 +337,8 @@ class BagelRouteWalker(BagelOperation):
         """连续读到画面没变化的次数，同上，但发生在更小幅度上。"""
         self.last_turn_angle: float | None = None
         """上一轮下发转向时读到的镜头朝向，用来和这一轮的朝向求实际转角。"""
+        self.input_worker: BagelInputWorker = BagelInputWorker(ctx)
+        """按键单独线程：主线投递即返回；同种操作不打断自己，不同操作打断旧的。"""
 
     def state_snapshot(self) -> dict[str, object]:
         """给悬浮窗用的执行状态快照。
@@ -434,7 +446,7 @@ class BagelRouteWalker(BagelOperation):
         鼠标转动只改变镜头，角色朝向几乎不变，取错就会出现
         「不管怎么转，角度完全没更新」。
         """
-        _marker, sector, _radius, _center = analyze(self.minimap())
+        _marker_vertices, _marker_edges, sector, _radius, _center = analyze(self.minimap())
         return sector
 
     # ---------- 节点 ----------
@@ -679,14 +691,14 @@ class BagelRouteWalker(BagelOperation):
         if self.mechanical_hold_until is None:
             self._release_forward()
             self.mechanical_hold_until = time.monotonic() + MECHANICAL_HOLD_SECONDS
-            self.ctx.controller.interact(press=True)
+            self.input_worker.hold_interact()
             return self.round_wait('长按F中')
         if self._has('搜查安全箱'):
-            self.ctx.controller.interact(release=True)
+            self.input_worker.release_interact()
             self._reset_point_state()
             return self.round_success('机械保险箱已打开')
         if time.monotonic() >= self.mechanical_hold_until:
-            self.ctx.controller.interact(release=True)
+            self.input_worker.release_interact()
             if self.mechanical_retried:
                 self._reset_point_state()
                 return self.round_recoverable_fail('机械保险箱长按F超时')
@@ -709,7 +721,7 @@ class BagelRouteWalker(BagelOperation):
         if self.f_pressed and self._top_entry() is None:
             self._reset_point_state()
             return self.round_success('已完成')
-        self.ctx.controller.interact(press=True, press_time=0.2, release=True)
+        self.input_worker.tap_interact(INTERACT_TAP_SECONDS)
         self.f_pressed = True
         return self.round_wait('已点按F，等待结果', wait=0.4)
 
@@ -780,17 +792,14 @@ class BagelRouteWalker(BagelOperation):
         self.locate_misses = 0
         self.locate_miss_since = None
         self.last_position = position
+        if not self.input_worker.idle():
+            # 转向还在线程里转，此刻截到的画面是转之前的，读出的角度不能采信。
+            return self.round_wait('等待转向落地', wait=0.02)
         if self.last_input_frame is not None and self.last_screenshot_time <= self.last_input_frame:
             return self.round_wait('等待动作后的新截图', wait=0.05)
         distance = hypot(point.x - position[0], point.y - position[1])
-        if distance <= SPRINT_DISTANCE:
-            # 已经进到不冲刺的范围：刚冲过就先松方向键停满 1 秒再走，
-            # 否则角色还带着冲刺惯性，一按方向键就又冲出去。
-            if self.sprinting:
-                self._exit_sprint()
-            hold = self._hold_for_sprint_stop()
-            if hold is not None:
-                return hold
+        if distance <= SPRINT_DISTANCE and self.sprinting:
+            self._exit_sprint()
         if point.kind == BEACON:
             # 灯塔是纯路点：3px 内算到点，10px 内慢步逼近。
             if distance <= ARRIVE_RADIUS:
@@ -867,6 +876,39 @@ class BagelRouteWalker(BagelOperation):
         self.target_wait_since = None
         return self.round_success('提示已出现')
 
+    def _angle_miss_result(self, angle: float | None) -> OperationRoundResult | None:
+        """读不到镜头朝向时盲转等待；连续读不到满 10 秒才判失败。
+
+        单帧读不到是常事（转视角、贴墙、扇形被墙切掉），一帧失败就中断
+        整条路线太脆。读不到朝向后也算不出该往哪边转，只能固定朝一个
+        方向轻推 5 度，换个视角让扇形重新露出来。
+
+        Args:
+            angle: 本轮读到的镜头朝向；读到就不做处理。
+
+        Returns:
+            需要等待或失败时返回本轮结果；读到朝向后返回 None。
+        """
+        if angle is not None:
+            self.angle_miss_since = None
+            return None
+        self._release_forward()
+        if self.angle_miss_since is None:
+            self.angle_miss_since = time.monotonic()
+        missed = time.monotonic() - self.angle_miss_since
+        if missed >= ANGLE_FAIL_SECONDS:
+            return self.round_recoverable_fail(
+                f'连续 {ANGLE_FAIL_SECONDS:.0f}s 识别不到镜头朝向，停止移动',
+            )
+        self._send_turn(ANGLE_MISS_BLIND_TURN)
+        # 盲转期间读不到朝向，事后也无法判断这 5 度实际转了多少，
+        # 拿它当校准样本会污染比例。清掉待验证角，下次读到朝向只对齐基准。
+        self.pending_turn = None
+        return self.round_wait(
+            f'未识别到朝向，盲转 {ANGLE_MISS_BLIND_TURN:.0f} 度（{missed:.1f}s）',
+            wait=TURN_INTERVAL,
+        )
+
     def _cruise(
         self, point: BagelRoutePoint, position: tuple[float, float],
     ) -> OperationRoundResult:
@@ -877,9 +919,9 @@ class BagelRouteWalker(BagelOperation):
         同时下发大角度转向和前进会互相干扰，表现为原地乱转。
         """
         angle = self.player_angle()
-        if angle is None:
-            self._release_forward()
-            return self.round_recoverable_fail('无法识别角色箭头，停止移动')
+        miss = self._angle_miss_result(angle)
+        if miss is not None:
+            return miss
         self._sample_turn_ratio(angle)
         target_angle = self._target_angle(position, point)
         controller_angle = angle % 360
@@ -898,7 +940,7 @@ class BagelRouteWalker(BagelOperation):
         if stuck is not None:
             return stuck
         self._record_input()
-        self.ctx.controller.start_moving_forward()
+        self.input_worker.hold_forward()
         self._set_sprint(hypot(point.x - position[0], point.y - position[1]))
         if turn is None:
             return self.round_wait('冲刺前进' if self.sprinting else '按住前进')
@@ -925,7 +967,7 @@ class BagelRouteWalker(BagelOperation):
         """
         actual = nominal / self.turn_ratio if self.turn_ratio else nominal
         self.pending_turn = actual
-        self.ctx.controller.turn_by_angle_diff(actual)
+        self.input_worker.turn(actual)
         self._record_input()
 
     def _sample_turn_ratio(self, angle: float) -> None:
@@ -1020,53 +1062,31 @@ class BagelRouteWalker(BagelOperation):
         want = distance > SPRINT_DISTANCE
         if want:
             self.sprinting = True
-            self.sprint_stop_since = None
             self._dodge_tap()
         elif self.sprinting:
             self._exit_sprint()
 
     def _dodge_tap(self) -> None:
         """点一下闪避：冲刺期间每轮都点，维持冲刺状态。"""
-        self.ctx.controller.dodge()
+        self.input_worker.dodge()
 
     def _exit_sprint(self) -> None:
-        """退出冲刺：松开方向键，标记等停稳。
-
-        闪避松开并不脱离冲刺，必须松开方向键满 SPRINT_STOP_SECONDS。
-        这里只标记，由 _hold_for_sprint_stop 在需要走路前等满时长。
-        """
+        """退出冲刺：松开方向键。"""
         self.sprinting = False
-        self.sprint_stop_since = time.monotonic()
-        self.ctx.controller.stop_moving_forward()
+        self.input_worker.stop_forward()
 
     def _stop_sprint(self) -> None:
-        """立刻松键；刚冲过就标记需要停稳，别带着惯性继续走。"""
-        if self.sprinting:
-            self.sprinting = False
-            self.sprint_stop_since = time.monotonic()
-        self.ctx.controller.stop_moving_forward()
-
-    def _hold_for_sprint_stop(self) -> OperationRoundResult | None:
-        """冲刺过就松键停满 1 秒再走，否则角色还带着冲刺惯性。
-
-        Returns:
-            仍在等待时返回等待结果；已经停稳或没冲刺过返回 None。
-        """
-        if self.sprint_stop_since is None:
-            return None
-        left = SPRINT_STOP_SECONDS - (time.monotonic() - self.sprint_stop_since)
-        if left <= 0:
-            self.sprint_stop_since = None
-            return None
-        self.ctx.controller.stop_moving_forward()
-        return self.round_wait(f'冲刺后停稳 {left:.1f}s', wait=min(left, 0.1))
+        """立刻松键。"""
+        self.sprinting = False
+        self.input_worker.stop_forward()
 
     @staticmethod
     def _turn_step(angle_diff: float) -> float | None:
         """这一轮转多少度：偏差的一半向下取整，但至少 1 度。
 
-        不分档，不管偏差是 180 度还是 3 度，都只转一半（用户给定）。
-        每轮都重新读取偏差、重新算一半，转不准就下一轮接着转，没有终点。
+        不分档，不管偏差大小都按 TURN_FRACTION 折算（用户给定 1.0，
+        即一次转到目标角度）。每轮都重新读取偏差、重新算，
+        转不准就下一轮接着转，没有终点。
 
         向下取整是刻意的：宁可少转一点也不转过头。
         但取整后不足 1 度时补到 1 度（用户给定）：否则偏差一两度时
@@ -1097,7 +1117,7 @@ class BagelRouteWalker(BagelOperation):
         if limited is not None:
             return limited
         self._release_forward()
-        self.ctx.controller.move_w(press=True, press_time=SMALL_STEP_PRESS, release=True)
+        self._step_forward(SMALL_STEP_PRESS)
         self._record_input()
         return self.round_wait('短步前进')
 
@@ -1142,9 +1162,9 @@ class BagelRouteWalker(BagelOperation):
         15 度以内边走边修，不为对准而放弃这一步。
         """
         angle = self.player_angle()
-        if angle is None:
-            self._release_forward()
-            return self.round_recoverable_fail('无法识别角色箭头，停止移动')
+        miss = self._angle_miss_result(angle)
+        if miss is not None:
+            return miss
         self._sample_turn_ratio(angle)
         target_angle = self._target_angle(position, point)
         controller_angle = angle % 360
@@ -1163,7 +1183,7 @@ class BagelRouteWalker(BagelOperation):
         if limited is not None:
             return limited
         self._release_forward()
-        self.ctx.controller.move_w(press=True, press_time=SLOW_STEP_PRESS, release=True)
+        self._step_forward(SLOW_STEP_PRESS)
         self._record_input()
         if turn is None:
             return self.round_wait('慢步前进', wait=SLOW_STEP_WAIT)
@@ -1262,16 +1282,24 @@ class BagelRouteWalker(BagelOperation):
         self.small_step_since = None
         self.steps = 0
 
+    def _step_forward(self, duration: float) -> None:
+        """发起一次短按前进；同种操作由输入线程自己保证不互相打断。
+
+        Args:
+            duration: 这一次按住的时长（秒）。
+        """
+        self.input_worker.step_forward(duration)
+
     def _record_input(self) -> None:
         """记录一次输入并拒绝复用旧截图。"""
         self.steps += 1
         self.last_input_frame = max(time.time(), self.last_screenshot_time)
 
     def _release_forward(self) -> None:
-        """松开前进键与冲刺键，并清卡位计时。"""
+        """松开前进键与冲刺键，并清卡位计时与步进计时。"""
         self.stuck_since = None
         self._stop_sprint()
-        self.ctx.controller.stop_moving_forward()
+        self.input_worker.stop_forward()
 
     def _adopt_screenshot(self, op: BagelOperation) -> None:
         """子操作结束后同步其最后截图。"""
@@ -1285,7 +1313,7 @@ class BagelRouteWalker(BagelOperation):
         super().handle_pause()
 
     def after_operation_done(self, result: OperationResult) -> None:
-        """退出路径统一松键，含冲刺键。"""
+        """退出路径统一松键，含冲刺键，并停掉输入线程。"""
         self._stop_sprint()
-        self.ctx.controller.stop_moving_forward()
+        self.input_worker.shutdown()
         super().after_operation_done(result)
