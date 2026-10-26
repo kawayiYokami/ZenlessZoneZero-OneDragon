@@ -284,6 +284,12 @@ class OverlayManager(QObject):
 
         hud = self._ensure_hud_window()
         hud.set_geometry(self._qt_rect_to_qrect(game_qt_rect))
+        hud.set_appearance(
+            opacity=self.config.hud_opacity / 100.0,
+            font_scale=self.config.hud_font_scale,
+            bold=self.config.hud_font_bold,
+        )
+        hud.set_theme_color(self.config.hud_theme_color)
         # off 模式下 toast 展示期（5 秒）窗口仍可见，展示结束自动隐藏
         toast_showing = time.time() < self._toast_until
         hud_visible = mode != "off" or toast_showing

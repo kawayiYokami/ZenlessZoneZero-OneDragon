@@ -272,6 +272,16 @@ class OverlayHudWindow:
             return
         self._set(prop, float(opacity))
 
+    def set_appearance(self, opacity: float, font_scale: float, bold: bool) -> None:
+        """注入外观参数：面板底色不透明度（0~1）、字号缩放系数、是否粗体。"""
+        self._set("panelOpacity", float(opacity))
+        self._set("fontScale", float(font_scale))
+        self._set("fontBold", bool(bold))
+
+    def set_theme_color(self, color: str) -> None:
+        """注入主题色（#rrggbb），标题条与状态行流光共用。"""
+        self._set("themeColor", str(color))
+
     def append_log(self, item: dict) -> None:
         self._models["logModel"].append_item(item)
 

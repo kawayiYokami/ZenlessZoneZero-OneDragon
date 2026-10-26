@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
+from enum import Enum
 from typing import Any
 
+from one_dragon.base.config.config_item import ConfigItem
 from one_dragon.base.config.yaml_config import YamlConfig
+
+
+class HudFontSizeEnum(Enum):
+    """HUD 字号档位，对应 QML 里的字号缩放系数。"""
+
+    LARGE = ConfigItem('大', 'large')
+    MEDIUM = ConfigItem('中', 'medium')
+    SMALL = ConfigItem('小', 'small')
+
+
+_HUD_FONT_SCALE_MAP: dict[str, float] = {
+    'large': 1.0,
+    'medium': 0.9,
+    'small': 0.8,
+}
+
+# 主题色默认值与校验：标题条、状态行流光都用它
+_DEFAULT_HUD_THEME_COLOR = '#ffd400'
+_HEX_COLOR_PATTERN = re.compile(r'#[0-9a-fA-F]{6}')
 
 _DEFAULT_OVERLAY_CONFIG: dict[str, Any] = {
     "vision_layer_enabled": True,
@@ -20,6 +42,10 @@ _DEFAULT_OVERLAY_CONFIG: dict[str, Any] = {
     # 档位键换过一次名：旧键 display_mode 默认 off，老配置里残留的关闭状态会让
     # overlay 永远不显示，因此改用新键，老用户与新用户都从 normal 起。
     "overlay_display_mode": "normal",
+    "hud_opacity": 100,
+    "hud_font_size": "large",
+    "hud_font_bold": True,
+    "hud_theme_color": _DEFAULT_HUD_THEME_COLOR,
     "follow_interval_ms": 120,
     "input_poll_interval_ms": 50,
     "state_poll_interval_ms": 200,
@@ -27,6 +53,10 @@ _DEFAULT_OVERLAY_CONFIG: dict[str, Any] = {
 
 _OVERLAY_SCALAR_KEYS = {
     "overlay_display_mode",
+    "hud_opacity",
+    "hud_font_size",
+    "hud_font_bold",
+    "hud_theme_color",
     "vision_layer_enabled",
     "vision_yolo_enabled",
     "vision_ocr_enabled",
@@ -86,6 +116,57 @@ class OverlayConfig(YamlConfig):
         if mode not in ("off", "normal", "debug"):
             mode = "normal"
         self._update_overlay_data("overlay_display_mode", mode)
+
+    @property
+    def hud_opacity(self) -> int:
+        """面板底色不透明度百分比，100 为纯黑不透明。"""
+        return max(10, min(100, int(self._overlay_data()["hud_opacity"])))
+
+    @hud_opacity.setter
+    def hud_opacity(self, value: int) -> None:
+        self._update_overlay_data("hud_opacity", max(10, min(100, int(value))))
+
+    @property
+    def hud_font_size(self) -> str:
+        size = str(self._overlay_data()["hud_font_size"] or "large")
+        if size not in _HUD_FONT_SCALE_MAP:
+            return "large"
+        return size
+
+    @hud_font_size.setter
+    def hud_font_size(self, value: str) -> None:
+        size = str(value or "large")
+        if size not in _HUD_FONT_SCALE_MAP:
+            size = "large"
+        self._update_overlay_data("hud_font_size", size)
+
+    @property
+    def hud_font_scale(self) -> float:
+        """字号缩放系数，由档位换算，不下发到配置。"""
+        return _HUD_FONT_SCALE_MAP[self.hud_font_size]
+
+    @property
+    def hud_font_bold(self) -> bool:
+        return bool(self._overlay_data()["hud_font_bold"])
+
+    @hud_font_bold.setter
+    def hud_font_bold(self, value: bool) -> None:
+        self._update_overlay_data("hud_font_bold", bool(value))
+
+    @property
+    def hud_theme_color(self) -> str:
+        """主题色 hex 字符串，标题条与状态行流光共用。"""
+        color = str(self._overlay_data()["hud_theme_color"] or _DEFAULT_HUD_THEME_COLOR)
+        if _HEX_COLOR_PATTERN.fullmatch(color) is None:
+            return _DEFAULT_HUD_THEME_COLOR
+        return color.lower()
+
+    @hud_theme_color.setter
+    def hud_theme_color(self, value: str) -> None:
+        color = str(value or _DEFAULT_HUD_THEME_COLOR).strip()
+        if _HEX_COLOR_PATTERN.fullmatch(color) is None:
+            color = _DEFAULT_HUD_THEME_COLOR
+        self._update_overlay_data("hud_theme_color", color.lower())
 
     @property
     def patched_capture_enabled(self) -> bool:

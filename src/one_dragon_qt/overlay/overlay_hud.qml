@@ -45,6 +45,17 @@ Window {
     property string zhFont: "Microsoft YaHei"
     property string monoFont: "Consolas"
 
+    // ============ 外观（Python 侧按配置注入，默认保持原样式） ============
+    // panelOpacity：面板底色不透明度 0~1，1 为纯黑不透明
+    // fontScale：字号缩放系数（1.0 大 / 0.9 中 / 0.8 小）
+    // fontBold：是否粗体
+    property real panelOpacity: 1.0
+    property real fontScale: 1.0
+    property bool fontBold: true
+    property color panelBg: Qt.rgba(13 / 255, 13 / 255, 13 / 255, panelOpacity)
+    // themeColor：主题色，标题条与状态行流光共用
+    property color themeColor: "#ffd400"
+
     // ============ 数据模型（Python 侧注入 OverlayListModel） ============
     // logModel / stateModel / decisionModel / perfModel
     // 由 OverlayHudWindow 通过 setContextProperty 注入，QML 不再自建 ListModel。
@@ -67,7 +78,7 @@ Window {
 
         Rectangle {
             anchors.fill: parent
-            color: "#0d0d0d"
+            color: root.panelBg
             border.color: "#323232"
             border.width: 4
             radius: 8
@@ -79,7 +90,7 @@ Window {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 34
-                color: "#ffd400"
+                color: root.themeColor
                 topLeftRadius: 8
                 topRightRadius: 8
                 Text {
@@ -88,8 +99,8 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "日志"
                     color: "#0d0d0d"
-                    font.pixelSize: 17
-                    font.bold: true
+                    font.pixelSize: Math.round(17 * root.fontScale)
+                    font.bold: root.fontBold
                     font.family: root.zhFont
                 }
                 Text {
@@ -98,8 +109,8 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "LOG"
                     color: "#0d0d0d"
-                    font.pixelSize: 12
-                    font.bold: true
+                    font.pixelSize: Math.round(12 * root.fontScale)
+                    font.bold: root.fontBold
                     font.family: root.monoFont
                 }
             }
@@ -133,8 +144,8 @@ Window {
                     Text {
                         text: model.message
                         color: "#e8e8e8"
-                        font.pixelSize: 14
-                        font.bold: true
+                        font.pixelSize: Math.round(14 * root.fontScale)
+                        font.bold: root.fontBold
                         font.family: root.monoFont
                         width: logList.width - 14
                         elide: Text.ElideRight
@@ -159,7 +170,7 @@ Window {
 
         Rectangle {
             anchors.fill: parent
-            color: "#0d0d0d"
+            color: root.panelBg
             border.color: "#323232"
             border.width: 4
             radius: 8
@@ -170,7 +181,7 @@ Window {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 34
-                color: "#ffd400"
+                color: root.themeColor
                 topLeftRadius: 8
                 topRightRadius: 8
                 Text {
@@ -179,8 +190,8 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.stateTitle
                     color: "#0d0d0d"
-                    font.pixelSize: 17
-                    font.bold: true
+                    font.pixelSize: Math.round(17 * root.fontScale)
+                    font.bold: root.fontBold
                     font.family: root.zhFont
                 }
                 Text {
@@ -189,8 +200,8 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "前台角色"
                     color: "#0d0d0d"
-                    font.pixelSize: 12
-                    font.bold: true
+                    font.pixelSize: Math.round(12 * root.fontScale)
+                    font.bold: root.fontBold
                     font.family: root.monoFont
                 }
             }
@@ -244,8 +255,8 @@ Window {
                         anchors.verticalCenter: parent.verticalCenter
                         text: model.key
                         color: "#9a9a9a"
-                        font.pixelSize: 12
-                        font.bold: true
+                        font.pixelSize: Math.round(12 * root.fontScale)
+                        font.bold: root.fontBold
                         font.family: root.zhFont
                         elide: Text.ElideRight
                     }
@@ -256,8 +267,8 @@ Window {
                         anchors.verticalCenter: parent.verticalCenter
                         text: model.value
                         color: "#00e5ff"
-                        font.pixelSize: 12
-                        font.bold: true
+                        font.pixelSize: Math.round(12 * root.fontScale)
+                        font.bold: root.fontBold
                         font.family: root.monoFont
                     }
                     Text {
@@ -267,8 +278,8 @@ Window {
                         anchors.verticalCenter: parent.verticalCenter
                         text: model.stateValue
                         color: model.valueColor
-                        font.pixelSize: 14
-                        font.bold: true
+                        font.pixelSize: Math.round(14 * root.fontScale)
+                        font.bold: root.fontBold
                         font.family: root.zhFont
                     }
                 }
@@ -291,7 +302,7 @@ Window {
 
         Rectangle {
             anchors.fill: parent
-            color: "#0d0d0d"
+            color: root.panelBg
             border.color: "#323232"
             border.width: 4
             radius: 8
@@ -302,7 +313,7 @@ Window {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 30
-                color: "#ffd400"
+                color: root.themeColor
                 topLeftRadius: 8
                 topRightRadius: 8
                 Text {
@@ -314,8 +325,8 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.decisionTitle.length > 0 ? root.decisionTitle : "决策"
                     color: "#0d0d0d"
-                    font.pixelSize: 16
-                    font.bold: true
+                    font.pixelSize: Math.round(16 * root.fontScale)
+                    font.bold: root.fontBold
                     font.family: root.zhFont
                     elide: Text.ElideRight
 
@@ -340,8 +351,8 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "DECISION"
                     color: "#0d0d0d"
-                    font.pixelSize: 11
-                    font.bold: true
+                    font.pixelSize: Math.round(11 * root.fontScale)
+                    font.bold: root.fontBold
                     font.family: root.monoFont
                 }
             }
@@ -366,8 +377,8 @@ Window {
                     Text {
                         text: model.expr
                         color: "#d8e27f"
-                        font.pixelSize: 13
-                        font.bold: true
+                        font.pixelSize: Math.round(13 * root.fontScale)
+                        font.bold: root.fontBold
                         font.family: root.monoFont
                         width: decisionList.width - 30
                         elide: Text.ElideRight
@@ -386,7 +397,7 @@ Window {
         anchors.topMargin: 4
         visible: root.perfVisible
         radius: 6
-        color: "#CC000000"
+        color: Qt.rgba(0, 0, 0, 0.8 * root.panelOpacity)
         width: perfColumn.width + 12
         height: perfColumn.height + 12
 
@@ -407,15 +418,15 @@ Window {
                     Text {
                         text: model.name
                         color: "#ffffff"
-                        font.pixelSize: 14
-                        font.bold: true
+                        font.pixelSize: Math.round(14 * root.fontScale)
+                        font.bold: root.fontBold
                         font.family: root.monoFont
                     }
                     Text {
                         text: model.avgText + "(" + model.peakText + ")ms"
                         color: "#00e5ff"
-                        font.pixelSize: 14
-                        font.bold: true
+                        font.pixelSize: Math.round(14 * root.fontScale)
+                        font.bold: root.fontBold
                         font.family: root.monoFont
                     }
                 }
@@ -549,7 +560,7 @@ Window {
         Rectangle {
             width: statusRow.implicitWidth + 32
             height: 36
-            color: "#0d0d0d"
+            color: root.panelBg
             radius: height / 2
             clip: true
             visible: statusLineText.text.length > 0
@@ -615,7 +626,7 @@ Window {
                     var flowLen = 64 / P
                     ctx.lineWidth = 3
                     ctx.lineCap = "round"
-                    ctx.strokeStyle = "#ffd400"
+                    ctx.strokeStyle = root.themeColor
                     traceArc(flowPos, flowPos + flowLen)
                     ctx.strokeStyle = "#00e5ff"
                     traceArc(flowPos + 0.5, flowPos + 0.5 + flowLen)
@@ -631,8 +642,8 @@ Window {
                     id: statusLineText
                     text: root.statusLine
                     color: "#ffffff"
-                    font.pixelSize: 17
-                    font.bold: true
+                    font.pixelSize: Math.round(17 * root.fontScale)
+                    font.bold: root.fontBold
                     font.family: root.zhFont
                 }
             }
@@ -652,7 +663,7 @@ Window {
 
         Rectangle {
             anchors.fill: parent
-            color: "#cc0d0d0d"
+            color: Qt.rgba(13 / 255, 13 / 255, 13 / 255, 0.8 * root.panelOpacity)
             radius: 22
             border.color: "#323232"
             border.width: 1
@@ -663,8 +674,8 @@ Window {
             anchors.centerIn: parent
             text: root.toastText
             color: "#ffffff"
-            font.pixelSize: 15
-            font.bold: true
+            font.pixelSize: Math.round(15 * root.fontScale)
+            font.bold: root.fontBold
             font.family: root.zhFont
         }
 
