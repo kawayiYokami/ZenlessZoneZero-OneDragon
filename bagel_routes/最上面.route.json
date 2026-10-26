@@ -3,7 +3,7 @@
  "route_id": "最上面",
  "started_at": "2026-10-25T23:14:34+08:00",
  "ended_at": "2026-10-25T23:16:03+08:00",
- "enabled": false,
+ "enabled": true,
  "points": [
   {
    "x": 606,
@@ -36,38 +36,20 @@
    "kind": "beacon"
   },
   {
-   "x": 819,
-   "y": 119,
-   "layer": "雅努斯幻境/Custom",
-   "kind": "beacon"
-  },
-  {
    "x": 875,
    "y": 142,
    "layer": "雅努斯幻境/Custom",
    "kind": "beacon"
   },
   {
-   "x": 866,
-   "y": 197,
+   "x": 865,
+   "y": 337,
    "layer": "雅努斯幻境/Custom",
    "kind": "beacon"
   },
   {
-   "x": 867,
-   "y": 282,
-   "layer": "雅努斯幻境/Custom",
-   "kind": "beacon"
-  },
-  {
-   "x": 873,
-   "y": 338,
-   "layer": "雅努斯幻境/Custom",
-   "kind": "beacon"
-  },
-  {
-   "x": 847,
-   "y": 332,
+   "x": 845,
+   "y": 330,
    "layer": "雅努斯幻境/Custom",
    "kind": "beacon"
   },
@@ -96,7 +78,7 @@
    "kind": "beacon"
   },
   {
-   "x": 939,
+   "x": 947,
    "y": 358,
    "layer": "雅努斯幻境/Custom",
    "kind": "electronic_safe"
