@@ -141,10 +141,6 @@ class OverlayManager(QObject):
         self._apply_timer_intervals()
         self._safe_follow_window()
 
-    def toggle_visibility(self) -> None:
-        self.config.visible = not self.config.visible
-        self._safe_follow_window()
-
     def capture_overlay_rgba(self):
         if self._overlay_window is None or not self._overlay_window.isVisible():
             return None
@@ -239,11 +235,11 @@ class OverlayManager(QObject):
             log.error("更新 Overlay 窗口失败", exc_info=True)
 
     def _sync_bus_enabled(self) -> None:
-        """同步调试总线开关：档位关闭或整体隐藏时，生产端跳过构造 trace 对象。"""
+        """同步调试总线开关：档位关闭时，生产端跳过构造 trace 对象。"""
         bus = getattr(self.ctx, "debug_trace_bus", None)
         if bus is None:
             return
-        bus.enabled = self.config.display_mode != "off" and self.config.visible
+        bus.enabled = self.config.display_mode != "off"
 
     def _follow_window(self) -> None:
         self._sync_bus_enabled()
@@ -280,19 +276,21 @@ class OverlayManager(QObject):
             scale_x=self.config.vision_scale_x,
             scale_y=self.config.vision_scale_y,
         )
-        overlay.set_anti_capture(self.config.display_mode != "debug")
-        overlay.set_overlay_visible(self.config.visible)
-        if self.config.visible:
+        mode = self.config.display_mode
+        overlay.set_anti_capture(mode != "debug")
+        overlay.set_overlay_visible(mode != "off")
+        if mode != "off":
             overlay.set_passthrough(not self._ctrl_interaction)
 
         hud = self._ensure_hud_window()
         hud.set_geometry(self._qt_rect_to_qrect(game_qt_rect))
         # off 模式下 toast 展示期（5 秒）窗口仍可见，展示结束自动隐藏
         toast_showing = time.time() < self._toast_until
-        hud.set_visible(self.config.visible and (self.config.display_mode != "off" or toast_showing))
-        if self.config.visible and (self.config.display_mode != "off" or toast_showing):
+        hud_visible = mode != "off" or toast_showing
+        hud.set_visible(hud_visible)
+        if hud_visible:
             hud.set_passthrough(True)
-            hud.set_anti_capture(self.config.display_mode != "debug")
+            hud.set_anti_capture(mode != "debug")
 
         self._sync_hud_panels(game_qt_rect)
 
@@ -319,7 +317,7 @@ class OverlayManager(QObject):
         for panel_name in self._iter_panel_names():
             if self._hud_window is None:
                 return
-            show_panel = self.config.visible and panel_visible_map.get(panel_name, False)
+            show_panel = panel_visible_map.get(panel_name, False)
             self._hud_window.set_panel_visible(panel_name, show_panel)
 
     def _hide_overlay(self) -> None:

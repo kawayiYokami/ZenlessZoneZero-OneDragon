@@ -12,6 +12,7 @@ from one_dragon.base.controller.pc_button.ds4_button_controller import Ds4Button
 from one_dragon.base.controller.pc_button.xbox_button_controller import XboxButtonEnum
 from one_dragon.utils import cmd_utils
 from one_dragon.utils.i18_utils import gt
+from one_dragon_qt.overlay.overlay_config import OverlayConfig
 from one_dragon_qt.widgets.column import Column
 from one_dragon_qt.widgets.combo_box import ComboBox
 from one_dragon_qt.widgets.setting_card.combo_box_setting_card import (
@@ -90,6 +91,14 @@ class SettingGameInterface(VerticalScrollInterface):
         basic_group.addSettingCard(self.hdr_btn)
 
         basic_group.addSettingCard(self._get_launch_argument_group())
+
+        self.overlay_switch = SwitchSettingCard(
+            icon=FluentIcon.DEVELOPER_TOOLS,
+            title='Overlay 调试面板',
+            content='按调试按钮（默认 F12）循环三档：normal 显示常规面板且不会被录屏捕获，debug 显示全部面板且可被录屏捕获',
+        )
+        self.overlay_switch.value_changed.connect(self._on_overlay_switch_changed)
+        basic_group.addSettingCard(self.overlay_switch)
 
         return basic_group
 
@@ -256,6 +265,8 @@ class SettingGameInterface(VerticalScrollInterface):
         self.monitor_opt.init_with_adapter(self.ctx.game_config.get_prop_adapter('monitor'))
         self.launch_argument_advance.init_with_adapter(self.ctx.game_config.get_prop_adapter('launch_argument_advance'))
 
+        self.overlay_switch.setValue(OverlayConfig().display_mode != 'off', emit_signal=False)
+
         for action, card in self._key_cards.items():
             card.init_with_adapter(self.ctx.game_config.get_prop_adapter(f'key_{action.value.value}'))
 
@@ -286,6 +297,24 @@ class SettingGameInterface(VerticalScrollInterface):
             card.setVisible(is_xbox)
         for card in self._ds4_action_cards.values():
             card.setVisible(not is_xbox)
+
+    def _on_overlay_switch_changed(self, value: bool) -> None:
+        """开关只切换档位：打开回到 normal，关闭落回 off，debug 档保留给调试按钮。"""
+        config = OverlayConfig()
+        if value:
+            if config.display_mode == 'off':
+                config.display_mode = 'normal'
+        else:
+            config.display_mode = 'off'
+        self._refresh_overlay()
+
+    def _refresh_overlay(self) -> None:
+        """配置写盘后让运行中的 Overlay 立刻按新档位刷新。"""
+        from one_dragon_qt.overlay.overlay_manager import OverlayManager
+
+        manager = OverlayManager.instance()
+        if manager is not None:
+            manager.reload_config()
 
     def _on_background_mode_changed(self, value: bool) -> None:
         """后台模式开关变更时检查 vgamepad 是否可用。"""

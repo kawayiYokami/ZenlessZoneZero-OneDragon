@@ -6,7 +6,6 @@ from typing import Any
 from one_dragon.base.config.yaml_config import YamlConfig
 
 _DEFAULT_OVERLAY_CONFIG: dict[str, Any] = {
-    "visible": True,
     "vision_layer_enabled": True,
     "vision_yolo_enabled": True,
     "vision_ocr_enabled": True,
@@ -18,15 +17,16 @@ _DEFAULT_OVERLAY_CONFIG: dict[str, Any] = {
     "vision_scale_y": 1.0,
     "patched_capture_enabled": False,
     "patched_capture_suffix": "_patched",
-    "display_mode": "off",
+    # 档位键换过一次名：旧键 display_mode 默认 off，老配置里残留的关闭状态会让
+    # overlay 永远不显示，因此改用新键，老用户与新用户都从 normal 起。
+    "overlay_display_mode": "normal",
     "follow_interval_ms": 120,
     "input_poll_interval_ms": 50,
     "state_poll_interval_ms": 200,
 }
 
 _OVERLAY_SCALAR_KEYS = {
-    "visible",
-    "display_mode",
+    "overlay_display_mode",
     "vision_layer_enabled",
     "vision_yolo_enabled",
     "vision_ocr_enabled",
@@ -74,16 +74,8 @@ class OverlayConfig(YamlConfig):
         return YamlConfig.update(self, key, value, save=save)
 
     @property
-    def visible(self) -> bool:
-        return bool(self._overlay_data()["visible"])
-
-    @visible.setter
-    def visible(self, value: bool) -> None:
-        self._update_overlay_data("visible", bool(value))
-
-    @property
     def display_mode(self) -> str:
-        mode = str(self._overlay_data()["display_mode"] or "normal")
+        mode = str(self._overlay_data()["overlay_display_mode"] or "normal")
         if mode not in ("off", "normal", "debug"):
             return "normal"
         return mode
@@ -93,7 +85,7 @@ class OverlayConfig(YamlConfig):
         mode = str(value or "normal")
         if mode not in ("off", "normal", "debug"):
             mode = "normal"
-        self._update_overlay_data("display_mode", mode)
+        self._update_overlay_data("overlay_display_mode", mode)
 
     @property
     def patched_capture_enabled(self) -> bool:
