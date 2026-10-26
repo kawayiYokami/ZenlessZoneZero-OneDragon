@@ -1,11 +1,17 @@
-"""小地图角色朝向与镜头朝向识别。
+"""小地图镜头朝向识别。
 
 流程：
-1. 按色相切出亮区，腐蚀 1px 把圆心菱形和外面扇形断开。
-2. 取距圆心最近的连通域，就是玩家菱形。拟合出它的四个顶点，
-   两条对角线交点作为菱形中心，到交点最远的顶点方向即菱形方向，
-   该距离记为半径 A。
-3. 以交点为原点取 A+3 ~ A+8 的环，环内亮区质心方向即扇形方向。
+1. 按 HSV 范围过滤切出亮区，再做腐蚀、膨胀把圆心菱形和外面扇形断开。
+   参数对应流水线 assets/image_analysis_pipelines/小地图方向识别.yml。
+2. 镜头朝向：圆心用裁剪块的几何中心（角色标记恒定落在那里，实测偏差在
+   1.5px 内），在固定半径的环里取亮区质心，质心方向即扇形方向。
+   不再需要先拟合菱形、再用菱形半径算环带。
+3. 角色朝向：保留两套算法，都算出来返回，供后续对比，当前不参与决策。
+   - 顶点法：取距圆心最近的连通域，approxPolyDP 拟合四顶点（多则合并），
+     两条对角线交点作中心，最远顶点方向即朝向。
+   - 边拟合法：把轮廓点按四边形四边分段，各用 fitLine 拟合直线，
+     相邻直线外延求交点作顶点。尖角被削平或多出 1px 粘连时，
+     直线外延交点仍落在真实几何尖顶，精度比顶点法高。
 
 角度约定：正右为 0，逆时针增加，取值 0~360。
 
@@ -20,56 +26,104 @@ import cv2
 import numpy as np
 from cv2.typing import MatLike
 
-BRIGHT_HUE_CENTER = 24
-"""亮区色相中心（OpenCV H 通道 0~180）。S/V 不设限，只靠色相区分。"""
+from one_dragon.utils import cv2_utils
 
-BRIGHT_HUE_TOLERANCE = 10
-"""亮区色相允许的上下浮动。"""
+BRIGHT_HSV_COLOR: tuple[int, int, int] = (24, 255, 255)
+"""亮区中心颜色（OpenCV H 0~179、S 0~255、V 0~255）。"""
 
-ERODE_KERNEL = np.ones((3, 3), np.uint8)
-"""腐蚀核，把菱形和扇形之间的细连接断开。"""
+BRIGHT_HSV_DIFF: tuple[int, int, int] = (10, 200, 160)
+"""亮区三通道容差。V 下限 95 把半透明扇形切在界外，菱形与扇形自动断开。"""
 
-VERTEX_EPSILON = 3
+ERODE_KERNEL_SIZE: int = 1
+"""腐蚀核大小。V 容差收到 160 后菱形与扇形已是独立连通域，1×1 等效于不处理。"""
+
+ERODE_ITERATIONS: int = 1
+"""腐蚀迭代次数。"""
+
+DILATE_KERNEL_SIZE: int = 1
+"""膨胀核大小。用 3×3 会把菱形尖角旁的亮区并进轮廓，多出顶点导致拟合失败。"""
+
+DILATE_ITERATIONS: int = 1
+"""膨胀迭代次数。"""
+
+SECTOR_INNER_RADIUS: int = 18
+SECTOR_OUTER_RADIUS: int = 26
+"""求扇形方向的环形带，单位像素，以裁剪块几何中心为圆心。
+
+内边界 18 要大于角色菱形半径（实测 15.8），外侧到 26 只取贴近角色的那一圈：
+扇形被墙切掉时，远端的缺失会把整体质心拽偏，近端受影响最小。
+"""
+
+VERTEX_EPSILON: int = 3
 """菱形顶点拟合精度。小了会把圆角切出多余顶点，大了会把真实的窄角抹平。"""
 
-RING_INNER_OFFSET = 3
-"""环形带内边界相对菱形顶点半径 A 的偏移。"""
+EDGE_FIT_MAX_DISTANCE: float = 2.5
+"""轮廓点归入某条边的最大距离，超出即视为尖角附近的过渡点。"""
 
-RING_OUTER_OFFSET = 8
-"""环形带外边界相对菱形顶点半径 A 的偏移。"""
+EDGE_FIT_MIN_POINTS: int = 4
+"""一条边至少要这么多点才拟合；少了说明该边几乎被切光。"""
 
-MIN_PIXELS = 30
+MIN_PIXELS: int = 30
 """少于这个像素数说明不是有效区域。"""
 
 
 def _bright_mask(rgb: MatLike) -> np.ndarray:
-    """按色相切出亮区。
+    """按 HSV 范围过滤切出亮区，再腐蚀、膨胀断开菱形与扇形。
 
     Args:
         rgb: 小地图 RGB 图。
 
     Returns:
-        取值 0/1 的亮区掩码。
+        取值 0/255 的亮区掩码。
     """
-    hue = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)[:, :, 0]
-    low = BRIGHT_HUE_CENTER - BRIGHT_HUE_TOLERANCE
-    high = BRIGHT_HUE_CENTER + BRIGHT_HUE_TOLERANCE
-    return ((hue >= low) & (hue <= high)).astype(np.uint8)
+    mask = cv2_utils.filter_by_color(
+        rgb, mode='hsv', hsv_color=BRIGHT_HSV_COLOR, hsv_diff=BRIGHT_HSV_DIFF
+    )
+    erode_kernel = np.ones((ERODE_KERNEL_SIZE, ERODE_KERNEL_SIZE), np.uint8)
+    mask = cv2.erode(mask, erode_kernel, iterations=ERODE_ITERATIONS)
+    dilate_kernel = np.ones((DILATE_KERNEL_SIZE, DILATE_KERNEL_SIZE), np.uint8)
+    return cv2.dilate(mask, dilate_kernel, iterations=DILATE_ITERATIONS)
 
 
-def _find_marker(mask: np.ndarray, center_x: float, center_y: float) -> np.ndarray | None:
-    """腐蚀断开后取距圆心最近的连通域，返回它的四个顶点。
+def _sector_angle(
+    mask: np.ndarray, center_x: float, center_y: float,
+) -> float | None:
+    """在固定半径的环里取亮区质心，返回其相对圆心的方向。
 
     Args:
         mask: 亮区掩码。
-        center_x: 小地图圆心 x。
-        center_y: 小地图圆心 y。
+        center_x: 圆心 x。
+        center_y: 圆心 y。
 
     Returns:
-        四个顶点坐标，拟合不出四边形时返回 None。
+        镜头朝向角度，环里点太少时返回 None。
     """
-    eroded = cv2.erode(mask, ERODE_KERNEL, iterations=1)
-    count, labels, stats, centroids = cv2.connectedComponentsWithStats(eroded, 8)
+    ys, xs = np.nonzero(mask)
+    radii = np.hypot(xs - center_x, ys - center_y)
+    keep = (radii >= SECTOR_INNER_RADIUS) & (radii < SECTOR_OUTER_RADIUS)
+    if int(keep.sum()) < MIN_PIXELS:
+        return None
+    offset_x = float(xs[keep].mean()) - center_x
+    offset_y = float(ys[keep].mean()) - center_y
+    if offset_x == 0 and offset_y == 0:
+        return None
+    return math.degrees(math.atan2(-offset_y, offset_x)) % 360
+
+
+def _marker_component(
+    mask: np.ndarray, center_x: float, center_y: float,
+) -> np.ndarray | None:
+    """取距圆心最近的那个连通域，就是角色菱形。
+
+    Args:
+        mask: 亮区掩码。
+        center_x: 圆心 x。
+        center_y: 圆心 y。
+
+    Returns:
+        0/1 掩码；找不到时返回 None。
+    """
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
 
     label = 0
     best = float('inf')
@@ -84,16 +138,41 @@ def _find_marker(mask: np.ndarray, center_x: float, center_y: float) -> np.ndarr
             label = index
     if label == 0:
         return None
+    return (labels == label).astype(np.uint8)
 
-    component = (labels == label).astype(np.uint8)
-    contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-    contour = max(contours, key=cv2.contourArea)
-    polygon = cv2.approxPolyDP(contour, VERTEX_EPSILON, True).reshape(-1, 2)
-    if len(polygon) != 4:
-        return None
-    return polygon.astype(np.float64)
+
+def _merge_to_four(polygon: np.ndarray) -> np.ndarray:
+    """把最相邻的两个顶点合并成中点，直到只剩四个顶点。
+
+    HSV 掩码边界不干净时（尖角被亮区并进来），approxPolyDP 会多切出顶点，
+    典型是尖角变成一小段平边、同一侧出现两个点。逐个吞并最近的一对，
+    最后总能回到四个顶点，避免整帧判失败。
+
+    Args:
+        polygon: approxPolyDP 拟合出的顶点，至少四个。
+
+    Returns:
+        四个顶点。原本就是四个时原样返回。
+    """
+    points = [point.astype(np.float64) for point in polygon]
+    while len(points) > 4:
+        count = len(points)
+        near_index = 0
+        near_distance = float('inf')
+        for index in range(count):
+            next_index = (index + 1) % count
+            gap = float(np.hypot(*(points[index] - points[next_index])))
+            if gap < near_distance:
+                near_distance = gap
+                near_index = index
+        next_index = (near_index + 1) % count
+        middle = (points[near_index] + points[next_index]) / 2
+        points = [
+            points[index] for index in range(count)
+            if index not in (near_index, next_index)
+        ]
+        points.insert(min(near_index, len(points)), middle)
+    return np.array(points)
 
 
 def _cross_point(
@@ -125,54 +204,199 @@ def _cross_point(
     ])
 
 
-def analyze(rgb: MatLike) -> tuple[float | None, float | None, float, tuple[float, float] | None]:
-    """一次算出菱形方向、扇形方向、菱形顶点半径与菱形中心。
+def _tip_from_vertices(
+    vertices: np.ndarray,
+) -> tuple[float, float, float, np.ndarray] | None:
+    """从四个顶点算菱形朝向。
+
+    Args:
+        vertices: 四个顶点坐标，顺序沿轮廓。
+
+    Returns:
+        (朝向角, 半径 A, 中心 x, 中心 y)，退化时返回 None。
+    """
+    origin = _cross_point(vertices[0], vertices[2], vertices[1], vertices[3])
+    if origin is None:
+        return None
+    distances = np.hypot(vertices[:, 0] - origin[0], vertices[:, 1] - origin[1])
+    tip = vertices[int(np.argmax(distances))]
+    offset_x = tip[0] - origin[0]
+    offset_y = tip[1] - origin[1]
+    if offset_x == 0 and offset_y == 0:
+        return None
+    angle = math.degrees(math.atan2(-offset_y, offset_x)) % 360
+    return angle, float(distances.max()), float(origin[0]), float(origin[1])
+
+
+def _marker_by_vertices(
+    component: np.ndarray,
+) -> tuple[float, float, float, float] | None:
+    """顶点法：approxPolyDP 拟合四顶点，对角线交点作中心。
+
+    Args:
+        component: 角色菱形的 0/1 掩码。
+
+    Returns:
+        (朝向角, 半径 A, 中心 x, 中心 y)，拟合不出四边形时返回 None。
+    """
+    contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    contour = max(contours, key=cv2.contourArea)
+    polygon = cv2.approxPolyDP(contour, VERTEX_EPSILON, True).reshape(-1, 2)
+    if len(polygon) < 4:
+        return None
+    result = _tip_from_vertices(_merge_to_four(polygon))
+    if result is None:
+        return None
+    angle, radius, origin_x, origin_y = result
+    return angle, radius, origin_x, origin_y
+
+
+def _edge_groups(
+    contour: np.ndarray, polygon: np.ndarray,
+) -> list[np.ndarray]:
+    """把轮廓点按四边形四条边分段，返回每边的点集。
+
+    Args:
+        contour: 完整轮廓点（CHAIN_APPROX_NONE）。
+        polygon: 用作分段基准的四个顶点。
+
+    Returns:
+        四组点，顺序与 polygon 的边一致。
+    """
+    points = contour.reshape(-1, 2).astype(np.float64)
+    groups: list[list[np.ndarray]] = [[] for _ in range(4)]
+    for point in points:
+        near_index = 0
+        near_distance = float('inf')
+        for index in range(4):
+            start = polygon[index]
+            end = polygon[(index + 1) % 4]
+            edge = end - start
+            length_squared = float(edge @ edge)
+            if length_squared < 1e-9:
+                continue
+            ratio = np.clip(float((point - start) @ edge) / length_squared, 0.0, 1.0)
+            distance = float(np.hypot(*(point - (start + ratio * edge))))
+            if distance < near_distance:
+                near_distance = distance
+                near_index = index
+        if near_distance < EDGE_FIT_MAX_DISTANCE:
+            groups[near_index].append(point)
+    return [np.array(group, dtype=np.float64) for group in groups]
+
+
+def _fit_line(points: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """用最小二乘拟合一条直线，并剔除偏离过远的点后重拟一次。
+
+    Args:
+        points: 该边上的轮廓点。
+
+    Returns:
+        (线上一点, 单位方向向量)；点太少时返回 None。
+    """
+    if len(points) < EDGE_FIT_MIN_POINTS:
+        return None
+    samples = points.astype(np.float32)
+    vx, vy, x0, y0 = cv2.fitLine(samples, cv2.DIST_L2, 0, 0.01, 0.01).ravel()
+    direction = np.array([float(vx), float(vy)])
+    norm = float(np.linalg.norm(direction))
+    if norm < 1e-9:
+        return None
+    direction /= norm
+    normal = np.array([-direction[1], direction[0]])
+    origin = np.array([float(x0), float(y0)])
+    offsets = np.abs((points - origin) @ normal)
+    keep = offsets < max(0.5, float(np.median(offsets)) * 2.0)
+    refined = points[keep]
+    if len(refined) >= EDGE_FIT_MIN_POINTS:
+        vx, vy, x0, y0 = cv2.fitLine(
+            refined.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01,
+        ).ravel()
+        direction = np.array([float(vx), float(vy)])
+        norm = float(np.linalg.norm(direction))
+        if norm < 1e-9:
+            return None
+        direction /= norm
+        origin = np.array([float(x0), float(y0)])
+    return origin, direction
+
+
+def _marker_by_edges(component: np.ndarray) -> tuple[float, float, float, float] | None:
+    """边拟合法：四条边分别拟合直线，相邻直线外延交点作顶点。
+
+    顶点法的顶点受像素栅格限制，只能落在整数坐标上；尖角被削平还会整个失败。
+    直线外延的交点是连续解，能落在真实几何尖顶上，精度是亚像素级的。
+
+    Args:
+        component: 角色菱形的 0/1 掩码。
+
+    Returns:
+        (朝向角, 半径 A, 中心 x, 中心 y)，任一步失败时返回 None。
+    """
+    contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        return None
+    contour = max(contours, key=cv2.contourArea)
+    approx = cv2.approxPolyDP(contour, VERTEX_EPSILON, True).reshape(-1, 2)
+    if len(approx) < 4:
+        return None
+    polygon = _merge_to_four(approx)
+
+    lines = []
+    for group in _edge_groups(contour, polygon):
+        line = _fit_line(group)
+        if line is None:
+            return None
+        lines.append(line)
+
+    vertices = []
+    for index in range(4):
+        (origin_a, direction_a) = lines[index]
+        (origin_b, direction_b) = lines[(index + 1) % 4]
+        cross = _cross_point(
+            origin_a, origin_a + direction_a, origin_b, origin_b + direction_b,
+        )
+        if cross is None:
+            return None
+        vertices.append(cross)
+    result = _tip_from_vertices(np.array(vertices))
+    if result is None:
+        return None
+    angle, radius, origin_x, origin_y = result
+    return angle, radius, origin_x, origin_y
+
+
+def analyze(
+    rgb: MatLike,
+) -> tuple[float | None, float | None, float | None, float | None, float, tuple[float, float]]:
+    """一次算出两套角色朝向、镜头朝向与圆心。
 
     Args:
         rgb: 小地图 RGB 图，正方形。
 
     Returns:
-        (角色朝向, 镜头朝向, 半径 A, 菱形中心)。算不出的项为 None，半径算不出时为 0。
+        (角色朝向·顶点法, 角色朝向·边拟合法, 镜头朝向, 菱形半径, 圆心)。
+        算不出的项为 None，半径算不出时为 0。圆心恒为裁剪块几何中心。
     """
     height, width = rgb.shape[:2]
     center_x, center_y = (width - 1) / 2, (height - 1) / 2
+    center = (center_x, center_y)
 
     mask = _bright_mask(rgb)
     if int(mask.sum()) < MIN_PIXELS:
-        return None, None, 0.0, None
+        return None, None, None, 0.0, center
 
-    polygon = _find_marker(mask, center_x, center_y)
-    if polygon is None:
-        return None, None, 0.0, None
+    sector_value = _sector_angle(mask, center_x, center_y)
 
-    # 四个顶点两两对边连线的交点，作为菱形中心
-    origin = _cross_point(polygon[0], polygon[2], polygon[1], polygon[3])
-    if origin is None:
-        return None, None, 0.0, None
+    component = _marker_component(mask, center_x, center_y)
+    if component is None:
+        return None, None, sector_value, 0.0, center
 
-    distances = np.hypot(polygon[:, 0] - origin[0], polygon[:, 1] - origin[1])
-    tip = polygon[int(np.argmax(distances))]
-    radius_a = float(distances.max())
-
-    offset_x = tip[0] - origin[0]
-    offset_y = tip[1] - origin[1]
-    if offset_x == 0 and offset_y == 0:
-        return None, None, 0.0, (float(origin[0]), float(origin[1]))
-    marker_value = math.degrees(math.atan2(-offset_y, offset_x)) % 360
-
-    # 以菱形中心为原点，取 A 之外的环
-    inner = radius_a + RING_INNER_OFFSET
-    outer = radius_a + RING_OUTER_OFFSET
-    ys, xs = np.nonzero(mask)
-    radii = np.hypot(xs - origin[0], ys - origin[1])
-    keep = (radii >= inner) & (radii < outer)
-    origin_tuple = (float(origin[0]), float(origin[1]))
-    if int(keep.sum()) < MIN_PIXELS:
-        return marker_value, None, radius_a, origin_tuple
-
-    sector_x = float(xs[keep].mean()) - origin[0]
-    sector_y = float(ys[keep].mean()) - origin[1]
-    if sector_x == 0 and sector_y == 0:
-        return marker_value, None, radius_a, origin_tuple
-    sector_value = math.degrees(math.atan2(-sector_y, sector_x)) % 360
-    return marker_value, sector_value, radius_a, origin_tuple
+    vertices_result = _marker_by_vertices(component)
+    edges_result = _marker_by_edges(component)
+    marker_vertices = vertices_result[0] if vertices_result is not None else None
+    marker_edges = edges_result[0] if edges_result is not None else None
+    radius = vertices_result[1] if vertices_result is not None else 0.0
+    return marker_vertices, marker_edges, sector_value, radius, center
