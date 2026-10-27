@@ -112,7 +112,7 @@ uv run --env-file .env ruff check --fix src/你修改的文件.py
     - **测试情况**:写清是否经过测试。测过就附测试过程 —— 用什么环境 / 数据、跑了什么、结果如何;有截图就贴截图(PR 正文可直接上传图片)。没测就明说没测、缺什么前提。
     - **是否建议 reviewer 亲自测试**:建议的,写明要复现什么、怎么测;不需要的说明理由(如纯文档 / 配置 / 注释改动)。
     - **关联**:`Closes #N`(本仓 issue)/ 测试仓 PR 用 `OneDragon-Anything/zzz-od-test#N`(跨仓全名,禁裸 `#N`)。
-  - **merge 时**:commit message = PR title + description(取整段 desc)。作者按上面写好就直接 merge;不符合规范时(贡献者没按规范写、缺 why 等),合并者 merge 时编辑 commit message(网页 squash 框)按规范编写 —— why + 改动要点 + 关联。
+  - **merge 时**:commit message = PR title + description(取整段 desc)。作者按上面写好就直接 merge;不符合规范时(贡献者没按规范写、缺 why 等),合并者 merge 时编辑 commit message(网页 squash 框)按规范编写 —— why + 改动要点 + 关联。commit message 不写「测试情况」「是否建议 reviewer 亲自测试」:这两项只在 PR 评审期有用,合并后没人再从 commit 历史里读,缺了也不算不合规范。
   - **rebase / 直推**(无 merge commit,不进 squash/merge):靠 commit 本身规范。
 - Review 关注逻辑错误、运行时崩溃、死循环、资源泄漏；不要为风格问题大改现有代码。
 - 提交 PR 后，review comment 需要逐条回复或修正。
