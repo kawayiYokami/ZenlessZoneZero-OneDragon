@@ -9,12 +9,26 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from ctypes import wintypes
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from colorama import Fore, Style, init
 
+try:
+    from one_dragon.devtools.launch_splash import (
+        LaunchError,
+        LaunchSplash,
+        ProgressReporter,
+    )
+except Exception:  # noqa: BLE001
+    # 闪屏是界面模式的附加能力，模块缺失时退化为命令行启动，别的启动器照常能用
+    ProgressReporter = Callable[[int, str], None]
+    LaunchSplash = None
+
+    class LaunchError(Exception):
+        """启动流程中需要展示给用户的失败。"""
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import (
     LoggerConfig,
@@ -281,7 +295,10 @@ def execute_python_script(
         )
         print_message("等待主界面弹出...", "INFO")
 
-def fetch_latest_code(ctx: OneDragonEnvContext) -> None:
+def fetch_latest_code(
+        ctx: OneDragonEnvContext,
+        reporter: ProgressReporter | None = None,
+) -> None:
     """
     获取最新代码
     """
@@ -313,33 +330,90 @@ def fetch_latest_code(ctx: OneDragonEnvContext) -> None:
     print_message(message, level)
 
 
-def sync_dependencies(ctx: OneDragonEnvContext) -> None:
+def sync_dependencies(
+        ctx: OneDragonEnvContext,
+        reporter: ProgressReporter | None = None,
+) -> None:
     """按需同步运行依赖。"""
+    if reporter is not None:
+        reporter(60, '正在同步运行依赖')
     print_message("开始检查运行环境...", "INFO")
     success, msg = ctx.python_service.uv_sync_runtime_dependencies()
     print_message(msg, "PASS" if success else "ERROR")
     if not success:
-        with contextlib.suppress(EOFError):
-            input("请重新启动程序；若问题仍然存在，请下载最新安装器重新配置运行环境。按回车键退出...")
-        sys.exit(1)
+        raise LaunchError('运行环境检查没有通过，请重新启动程序；仍然失败时请下载最新安装器重新配置运行环境。')
 
 
-def run_python(app_path, no_windows: bool = True, args: list[str] | None = None, piped: bool = False) -> None:
-    # 主函数
+def _silent_reporter(percent: int, text: str) -> None:
+    """没有进度窗口时的空进度上报。"""
+
+
+def _silent_wait_main_window() -> None:
+    """没有进度窗口时不需要等主界面。"""
+
+
+def _close_pyinstaller_splash() -> None:
+    """关掉打包时内置的启动画面 之后的进度交给 LaunchSplash"""
     try:
+        import pyi_splash
+    except ImportError:
+        # 不是带启动画面的打包产物 没有这个模块
+        return
+    with contextlib.suppress(Exception):
+        pyi_splash.close()
+
+
+def run_python(
+        app_path,
+        no_windows: bool = True,
+        args: list[str] | None = None,
+        piped: bool = False,
+        show_splash: bool = False,
+) -> None:
+    # 主函数
+    ctx: OneDragonEnvContext | None = None
+    _close_pyinstaller_splash()
+
+    def task(reporter: ProgressReporter, wait_main_window: Callable[[], None]) -> None:
+        nonlocal ctx
+        # 进度窗口启用后控制台会被隐藏，日志必须落到文件才能事后排查
+        _configure_runtime_logger()
         from one_dragon.version import __version__
         print_message(f"OneDragon 启动器 {__version__}", "INFO")
+
+        reporter(5, '正在校验运行目录')
         cwd = verify_working_directory()
+
+        reporter(15, '正在配置运行环境')
         from one_dragon.base.operation.one_dragon_env_context import OneDragonEnvContext
         ctx = OneDragonEnvContext(prefer_bundled_config=True)
         configure_environment(ctx, cwd)
-        fetch_latest_code(ctx)
-        sync_dependencies(ctx)
+
+        reporter(25, '正在获取最新代码')
+        fetch_latest_code(ctx, reporter)
+
+        sync_dependencies(ctx, reporter)
+
+        reporter(88, '正在启动主界面')
         execute_python_script(ctx, app_path, no_windows, args, piped)
+        # 等主界面窗口真的挂到桌面上，进度窗口才收起
+        wait_main_window()
+
+    try:
+        if show_splash and LaunchSplash is not None:
+            LaunchSplash().run(task)
+        else:
+            # 其他启动器沿用原样：直接在当前线程跑，没有进度窗口
+            task(_silent_reporter, _silent_wait_main_window)
     except SystemExit as e:
         print_message(f"程序已退出，状态码：{e.code}", "ERROR")
+        time.sleep(5)
         raise
     except Exception as e:
         print_message(f"出现未处理的异常：{e}", "ERROR")
-    finally:
         time.sleep(5)
+        raise
+    finally:
+        if ctx is not None:
+            # 子进程已经拉起，这里只留一点缓冲让控制台信息刷出
+            time.sleep(2)

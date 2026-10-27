@@ -94,6 +94,16 @@ uv run pyinstaller --noconfirm --clean "OneDragon-Installer.spec"
 uv run pyinstaller --noconfirm --clean "OneDragon-Launcher.spec"
 ```
 
+#### 启动进度窗口
+
+界面模式（`run_gui_mode`）在拉起主界面前会显示一个无边框网页窗口，用系统 WebView2 渲染启动进度，替代原先只有控制台黑框的启动体验。实现见 `src/one_dragon/devtools/launch_splash.py`。
+
+- **只服务界面模式**：`run_python` 的 `show_splash` 参数默认 `False`，只有界面模式传 `True`。一条龙模式和其他启动器入口不创建这个窗口。
+- **消失时机**：启动器在拉起主界面前记下桌面上已有的可见大窗口，之后只认「新出现的、属于本项目 python 进程的窗口」；看到它再等 1.2 秒确认首帧，就收起进度窗口。不看窗口标题，也不需要主界面配合写任何东西。
+- **降级**：缺少 pywebview、缺少 WebView2 运行库或窗口创建失败时，直接退回纯命令行输出，启动流程本身不受影响；闪屏模块缺失时 `python_launcher` 也能正常导入。
+- **控制台**：打包运行时在进度窗口出现后隐藏启动器自己的控制台黑框（仅 `sys.frozen` 时生效，源码运行不动控制台）。
+- **依赖**：`pywebview` 放在 `dependency-groups.dev`，只用于打包时收集进 exe，主界面运行时不依赖它。
+
 启动器的 `--version` 固定按 UTF-8 输出：版本描述含中文，按系统本地编码输出时，英文、日文、韩文等系统的本地编码无法表示这些字符，启动器会直接报错退出。旧版启动器仍按系统本地编码输出，因此版本查询先捕获原始字节，再依次尝试 UTF-8 与本地编码；不能依赖父 Python 的默认文本编码，也不要求用户关闭全局 UTF-8 模式。该路径只解析 stdout，stderr 的编码不应影响版本识别。
 
 ### 3.3.集成启动器（RuntimeLauncher）

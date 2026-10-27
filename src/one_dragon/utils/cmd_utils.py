@@ -8,6 +8,18 @@ from one_dragon.utils import os_utils
 from one_dragon.utils.log_utils import log
 
 
+def _no_window_flags() -> int:
+    """子进程不新开控制台窗口。
+
+    启动器以窗口程序打包，自身没有控制台；这时子进程如果按默认方式启动，
+    Windows 会给它分配一个新的控制台，而系统默认终端是 Windows Terminal 时
+    就会额外弹出一个终端标签页。
+    """
+    if platform.system() != 'Windows':
+        return 0
+    return subprocess.CREATE_NO_WINDOW
+
+
 def run_command(
     commands: list[str],
     cwd: str | None = None,
@@ -108,6 +120,9 @@ def run_command_with_code(
             stdout=output,
             stderr=output,
             check=False,
+            # 不出控制台窗口：启动器本身没有控制台，子进程默认会新建一个，
+            # 系统默认终端是 Windows Terminal 时会额外弹出标签页。
+            creationflags=_no_window_flags(),
         )
         return result.returncode
     except Exception:

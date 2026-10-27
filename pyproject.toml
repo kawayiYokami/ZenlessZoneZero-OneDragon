@@ -36,6 +36,8 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.18",
     "pyuac==0.0.3",
+    # 启动器进度窗口：打包时把 pywebview 收进 exe，主界面运行时不依赖它
+    "pywebview==6.2.1",
     "mcp>=2.0.0,<3",
     "uvicorn>=0.30.0",
     "pyright>=1.1.411",

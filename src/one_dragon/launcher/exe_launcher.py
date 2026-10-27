@@ -1,9 +1,18 @@
 import argparse
+import os
 import sys
 
 import pyuac
 
 from one_dragon.launcher.launcher_base import LauncherBase
+
+# 调试/测试用：置 1 时跳过管理员提权，直接用当前权限启动
+_SKIP_UAC_ENV = 'ONE_DRAGON_SKIP_UAC'
+
+
+def _skip_uac() -> bool:
+    """是否跳过管理员提权。只用于本机调试，正常启动不受影响。"""
+    return os.environ.get(_SKIP_UAC_ENV) == '1'
 
 
 class ExeLauncher(LauncherBase):
@@ -58,12 +67,20 @@ class ExeLauncher(LauncherBase):
             print("错误：参数 --close-game, --shutdown, --hibernate, --sleep, --instance 只能在指定 --onedragon 时使用")
             sys.exit(1)
 
-        if not pyuac.isUserAdmin():
-            pyuac.runAsAdmin(sys.argv, wait=False)
+        # 一条龙模式和界面模式都需要管理员权限：界面里运行的自动化要注入鼠标键盘输入，
+        # 而进程权限在启动时定死，只能在这一刻提权。提权后的进程再走更新同步与拉起主界面。
+        if not pyuac.isUserAdmin() and not _skip_uac():
+            try:
+                pyuac.runAsAdmin(sys.argv, wait=False)
+            except Exception:
+                # 用户在 UAC 弹窗上点了取消 这不是错误 不必把异常栈甩给用户
+                print("已取消管理员权限申请，启动中止")
+                sys.exit(1)
             sys.exit(0)
-        else:
-            if args.onedragon:
-                launch_args = self.build_launch_args(args)
-                self.run_onedragon_mode(launch_args)
-            else:
-                self.run_gui_mode()
+
+        if args.onedragon:
+            launch_args = self.build_launch_args(args)
+            self.run_onedragon_mode(launch_args)
+            return
+
+        self.run_gui_mode()
