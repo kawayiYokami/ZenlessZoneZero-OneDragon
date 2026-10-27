@@ -2,6 +2,9 @@
 import sys
 if not getattr(sys, 'frozen', False):
     import PySide6.QtGui
+    import PySide6.QtWebChannel
+    import PySide6.QtWebEngineCore
+    import PySide6.QtWebEngineWidgets
     import PySide6.QtWidgets
     import argparse
     import ast
@@ -85,7 +88,7 @@ if not getattr(sys, 'frozen', False):
     from PySide6.QtWidgets import QAbstractButton, QAbstractItemView, QAbstractScrollArea, QApplication, QComboBox, QCompleter, QDialog, QFileDialog, QFrame, QGraphicsDropShadowEffect, QGraphicsEffect, QGraphicsOpacityEffect, QGraphicsScene, QGraphicsView, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QListView, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSpacerItem, QSpinBox, QStackedWidget, QStyle, QStyledItemDelegate, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget
     from abc import ABC, abstractmethod
     from collections import deque
-    from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
     from colorama import Fore, Style, init
     from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
     from contextlib import contextmanager, suppress
@@ -105,10 +108,9 @@ if not getattr(sys, 'frozen', False):
     from html import escape
     from importlib import metadata
     from io import BytesIO
-    from itertools import count
     from logging import DEBUG
     from logging.handlers import TimedRotatingFileHandler
-    from math import asin, atan2, degrees, hypot, isfinite
+    from math import atan2, cos, degrees, hypot, isfinite, radians, sin
     from packaging import version
     from pathlib import Path, PurePosixPath, PureWindowsPath
     from pyautogui import screenshot
@@ -136,10 +138,8 @@ if not getattr(sys, 'frozen', False):
     from shapely.geometry import Polygon
     from sklearn.preprocessing import scale
     from soundcard.mediafoundation import SoundcardRuntimeWarning
-    from statistics import median
     from threading import Event, Lock, RLock
-    from time import perf_counter
-    from types import MappingProxyType, ModuleType, TracebackType
+    from types import ModuleType, TracebackType
     from typing import Any, Callable, ClassVar, Dict, IO, Iterable, List, Literal, NamedTuple, Optional, Protocol, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast
     from urllib.parse import urlencode, urlparse
     from uuid import NAMESPACE_URL, uuid4, uuid5
