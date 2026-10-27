@@ -84,6 +84,8 @@ class BagelRunOverlay(QWidget):
     PADDING = 8
     LINE_GAP = 2
     MAP_GAP = 6
+    WIDTH: int = 250
+    TEXT_LINE_COUNT: int = 4
 
     def __init__(self) -> None:
         """创建无边框置顶窗口，不抢占游戏焦点。"""
@@ -104,6 +106,7 @@ class BagelRunOverlay(QWidget):
         self._drag_offset: QPoint | None = None
         self._font: QFont = QFont('Consolas', 10)
         self._font.setBold(True)
+        self.setFixedSize(*self._content_size())
 
         self._layer_name: str | None = None
         self._layer_pixmap: QPixmap | None = None
@@ -136,8 +139,8 @@ class BagelRunOverlay(QWidget):
         """
         if lines == self._lines:
             return
-        self._lines = lines
-        self._resize_preserving_position()
+        self._lines = list(lines)
+        self.setToolTip('\n'.join(lines))
         self.update()
 
     def set_layer(self, layer_name: str, image_path: Path) -> None:
@@ -232,41 +235,26 @@ class BagelRunOverlay(QWidget):
                 return screen
         return QGuiApplication.primaryScreen()
 
-    def _resize_preserving_position(self) -> None:
-        """内容变化后调整尺寸；右边界保持不动，贴角时不跑位。"""
-        if not self._placed:
-            return
-        right = self.x() + self.width()
-        width, height = self._content_size()
-        self.resize(width, height)
-        self.move(right - width, self.y())
-
     def _content_size(self) -> tuple[int, int]:
-        """文本行在上、自绘小地图在下，宽度取两者较大者。"""
-        metrics = QFontMetrics(self._font)
-        line_height = metrics.height() + self.LINE_GAP
-        text_width = max(
-            (metrics.horizontalAdvance(line) for line in self._lines),
-            default=0,
-        ) + self.PADDING * 2
-        text_height = len(self._lines) * line_height + self.PADDING * 2
-        width = max(text_width, MAP_SIZE + self.PADDING * 2)
-        return width, text_height + self.MAP_GAP + MAP_SIZE + self.PADDING
+        """固定四行文本区和地图区，尺寸不随决策长度或行数变化。"""
+        text_height = self._text_height(QFontMetrics(self._font))
+        return self.WIDTH, text_height + self.MAP_GAP + MAP_SIZE + self.PADDING
 
     def paintEvent(self, event: QPaintEvent) -> None:
         """绘制半透明底、文本行与自绘小地图。"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setFont(self._font)
-        width, height = self._content_size()
-        painter.fillRect(0, 0, width, height, BACKDROP)
+        painter.fillRect(self.rect(), BACKDROP)
 
         metrics = painter.fontMetrics()
         text_height = self._text_height(metrics)
         painter.setPen(TEXT_COLOR)
         y = self.PADDING + metrics.ascent()
-        for line in self._lines:
-            painter.drawText(self.PADDING, y, line)
+        text_width = self.width() - self.PADDING * 2
+        for line in self._lines[:self.TEXT_LINE_COUNT]:
+            visible = metrics.elidedText(line, Qt.TextElideMode.ElideRight, text_width)
+            painter.drawText(self.PADDING, y, visible)
             y += metrics.height() + self.LINE_GAP
 
         self._paint_map(painter, text_height)
@@ -274,7 +262,7 @@ class BagelRunOverlay(QWidget):
     def _text_height(self, metrics: QFontMetrics) -> int:
         """文本区高度，与 _content_size 用同一口径。"""
         line_height = metrics.height() + self.LINE_GAP
-        return len(self._lines) * line_height + self.PADDING * 2
+        return self.TEXT_LINE_COUNT * line_height + self.PADDING * 2
 
     def _paint_map(self, painter: QPainter, offset_y: int) -> None:
         """画出取景范围内的层底图、路线、走过点和当前位置。

@@ -190,13 +190,15 @@ def decision_lines(snapshot: dict[str, object]) -> list[str]:
         snapshot: 执行器给出的状态字典。
 
     Returns:
-        逐行文本：决策、路线进度、当前目标。
+        逐行文本：节点、状态、路线进度、当前目标。
     """
     cursor = int(snapshot.get('cursor') or 0)
     total = int(snapshot.get('total') or 0)
     route_id = str(snapshot.get('route_id') or '')
     points = snapshot.get('points') or []
-    lines = [f'决策 {snapshot.get("decision") or "准备中"}']
+    # 决策文字是「节点 · 状态」，状态里也可能带「·」，只按第一个拆成两行。
+    node, _, status = str(snapshot.get('decision') or '准备中').partition(' · ')
+    lines = [f'节点 {node}', f'状态 {status or "—"}']
     lines.append(f'路线 {route_id} · {cursor}/{total}')
     distance = snapshot.get('distance')
     distance_text = '—' if distance is None else f'{float(distance):.0f}px'
