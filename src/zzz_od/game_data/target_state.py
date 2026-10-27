@@ -151,7 +151,7 @@ DETECTION_TASKS: List[DetectionTask] = [
         task_id="boss_avatar",
         pipeline_name=None,
         area_name="首领头像",
-        interval=10.0,
+        interval=5.0,
         is_async=True,
         state_definitions=[
             TargetStateDef(

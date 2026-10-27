@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 
 _battle_state_check_executor = ThreadPoolExecutor(thread_name_prefix='od_battle_state_check', max_workers=16)
 
+BTN_BAN_CHECK_INTERVAL: float = 0.2  # 按键禁用的识别间隔秒
+
 
 class AutoBattleContext:
 
@@ -87,6 +89,8 @@ class AutoBattleContext:
 
         # 按键禁用状态的首次识别时间 禁用期间不刷新 用于判断已经禁用了多久
         self._btn_ban_first_time: dict[str, float] = {}
+        self._last_btn_ban_time: float = 0
+        self._last_btn_ban_result: dict[str, bool] = {}
 
     def init_auto_op(
         self,
@@ -556,20 +560,13 @@ class AutoBattleContext:
         """
         normal_attack_available: bool = self.is_normal_attack_btn_available(screen)
 
-        # 三个按钮各自判断 自己的可用图标匹配不到时 才去匹配该按钮的禁用图标
+        # 三个按钮各自判断 按钮禁用时中心显示灰白 X 只看圆心区域 外圈进度环不参与
         # 禁用的按钮图标变了 模板匹配不到 不能当成离开战斗 否则战斗结束识别会被误触发
-        special_attack_available: bool = self.is_btn_icon_available(
-            screen, self.area_btn_special, ('btn_special_attack_1', 'btn_special_attack_2'))
-        ultimate_available: bool = self.is_btn_icon_available(
-            screen, self.area_btn_ultimate, ('btn_ultimate_1', 'btn_ultimate_2'))
-
-        ban_check_list: list[tuple[str, ScreenArea, str]] = []
-        if not normal_attack_available:
-            ban_check_list.append((BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value, self.area_btn_normal, 'btn_ban_normal_attack'))
-        if not special_attack_available:
-            ban_check_list.append((BattleStateEnum.STATUS_SPECIAL_BAN.value, self.area_btn_special, 'btn_ban_special_attack'))
-        if not ultimate_available:
-            ban_check_list.append((BattleStateEnum.STATUS_ULTIMATE_BAN.value, self.area_btn_ultimate, 'btn_ban_ultimate'))
+        ban_check_list: list[tuple[str, ScreenArea, str]] = [
+            (BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value, self.area_btn_normal, 'btn_ban_normal_attack'),
+            (BattleStateEnum.STATUS_SPECIAL_BAN.value, self.area_btn_special, 'btn_ban_special_attack'),
+            (BattleStateEnum.STATUS_ULTIMATE_BAN.value, self.area_btn_ultimate, 'btn_ban_ultimate'),
+        ]
 
         ban_result: dict[str, bool] = self.check_btn_ban(screen, ban_check_list)
         in_battle: bool = normal_attack_available or ban_result.get(BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value, False)
@@ -1070,31 +1067,18 @@ class AutoBattleContext:
                                          threshold=0.9)
         return mrl.max is not None
 
-    def is_btn_icon_available(self, screen: MatLike, area: ScreenArea, template_ids: tuple[str, ...]) -> bool:
-        """
-        识别按钮位置是否还能匹配到可用图标 任一模板命中即算可用
-        :param screen: 游戏画面
-        :param area: 按钮区域
-        :param template_ids: 该按钮可用状态的模板ID 通常一个是未充能 一个是充能完成
-        :return: 是否匹配到可用图标
-        """
-        part = cv2_utils.crop_image_only(screen, area.rect)
-        for template_id in template_ids:
-            mrl = self.ctx.tm.match_template(part, 'battle', template_id, threshold=0.9)
-            if mrl.max is not None:
-                return True
-        return False
-
     def check_btn_ban(self, screen: MatLike,
                       ban_check_list: list[tuple[str, ScreenArea, str]]) -> dict[str, bool]:
         """
-        识别按键是否处于禁用态 禁用时按钮位置显示的是 X 图标
+        识别按键是否处于禁用态 禁用时按钮中心显示灰白 X
         :param screen: 游戏画面
         :param ban_check_list: 需要识别的 (状态名, 按钮区域, 模板ID) 列表
         :return: 状态名 -> 是否禁用
         """
-        if len(ban_check_list) == 0:
-            return {}
+        now = time.time()
+        if now - self._last_btn_ban_time < BTN_BAN_CHECK_INTERVAL:
+            return self._last_btn_ban_result
+        self._last_btn_ban_time = now
 
         future_list: list[Future] = []
         for _, area, template_id in ban_check_list:
@@ -1111,6 +1095,7 @@ class AutoBattleContext:
             except Exception:
                 log.error('识别按键禁用状态失败 %s', state_name, exc_info=True)
 
+        self._last_btn_ban_result = result
         return result
 
     def _update_btn_ban_states(self, ban_result: dict[str, bool], screenshot_time: float) -> list[StateRecord]:
