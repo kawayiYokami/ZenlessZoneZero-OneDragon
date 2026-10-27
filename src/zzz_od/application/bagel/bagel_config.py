@@ -81,7 +81,7 @@ class BagelConfig(ApplicationConfig):
     @property
     def sell_interval(self) -> int:
         """本任务多少次非空入仓后出售；失败局带回物资也计入。"""
-        return self.get('sell_interval', 1)
+        return self.get('sell_interval', 5)
 
     @sell_interval.setter
     def sell_interval(self, value: int) -> None:
