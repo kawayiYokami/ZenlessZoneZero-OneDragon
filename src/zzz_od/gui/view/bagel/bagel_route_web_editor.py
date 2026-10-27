@@ -16,10 +16,11 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QObject, QRect, Qt, QTimer, QUrl, Signal, Slot
-from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtWebEngineCore import QWebEngineSettings
-from PySide6.QtWebEngineWidgets import QWebEngineView
+import PySide6.QtWebChannel as QtWebChannel
+import PySide6.QtWebEngineCore as QtWebEngineCore
+import PySide6.QtWebEngineWidgets as QtWebEngineWidgets
+from PySide6 import QtCore
+from PySide6.QtCore import QObject, QRect, Qt, QTimer, QUrl, Signal
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
@@ -131,7 +132,7 @@ class BagelEditorBridge(QObject):
     command = Signal(str, str)
     """(命令名, JSON 参数)。"""
 
-    @Slot(str, str)
+    @QtCore.Slot(str, str)
     def send(self, cmd: str, payload: str) -> None:
         """网页发来一条命令。
 
@@ -241,20 +242,20 @@ class BagelRouteEditor(QDialog):
         bar_layout.addWidget(self._build_key_hint(bar))
         layout.addWidget(bar)
 
-        self.view: QWebEngineView = QWebEngineView(self)
+        self.view: QtWebEngineWidgets.QWebEngineView = QtWebEngineWidgets.QWebEngineView(self)
         settings = self.view.settings()
         settings.setAttribute(
-            QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True,
+            QtWebEngineCore.QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True,
         )
         settings.setAttribute(
-            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False,
+            QtWebEngineCore.QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False,
         )
         self.view.loadFinished.connect(self._on_page_loaded)
         layout.addWidget(self.view, 1)
 
         self.bridge: BagelEditorBridge = BagelEditorBridge(self)
         self.bridge.command.connect(self._on_command)
-        self.channel: QWebChannel = QWebChannel(self.view.page())
+        self.channel: QtWebChannel.QWebChannel = QtWebChannel.QWebChannel(self.view.page())
         self.channel.registerObject('bagelBridge', self.bridge)
         self.view.page().setWebChannel(self.channel)
 

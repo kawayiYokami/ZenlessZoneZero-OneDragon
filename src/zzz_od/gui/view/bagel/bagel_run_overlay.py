@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import PySide6.QtGui as QtGui
 from PySide6.QtCore import QPoint, QPointF, QRect, Qt
 from PySide6.QtGui import (
     QColor,
@@ -25,7 +26,6 @@ from PySide6.QtGui import (
     QPaintEvent,
     QPen,
     QPixmap,
-    QScreen,
 )
 from PySide6.QtWidgets import QWidget
 
@@ -227,7 +227,7 @@ class BagelRunOverlay(QWidget):
             ),
         )
 
-    def _screen_for_game(self) -> QScreen | None:
+    def _screen_for_game(self) -> QtGui.QScreen | None:
         """取游戏窗口所在的屏幕，找不到时退回主屏。"""
         if self._game_rect is not None:
             screen = QGuiApplication.screenAt(self._game_rect.center())

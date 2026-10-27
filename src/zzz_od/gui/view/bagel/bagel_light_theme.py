@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QColor, QPalette
+import PySide6.QtGui as QtGui
+from PySide6.QtGui import QColor
 from qfluentwidgets import Theme, qconfig, setTheme
 
 if TYPE_CHECKING:
@@ -26,28 +27,28 @@ def apply_light_palette(widget: QWidget) -> None:
     """
     palette = widget.palette()
     for role in (
-        QPalette.ColorRole.Window,
-        QPalette.ColorRole.Button,
-        QPalette.ColorRole.AlternateBase,
-        QPalette.ColorRole.ToolTipBase,
-        QPalette.ColorRole.Base,
+        QtGui.QPalette.ColorRole.Window,
+        QtGui.QPalette.ColorRole.Button,
+        QtGui.QPalette.ColorRole.AlternateBase,
+        QtGui.QPalette.ColorRole.ToolTipBase,
+        QtGui.QPalette.ColorRole.Base,
     ):
         palette.setColor(role, QColor('#ffffff'))
     for role in (
-        QPalette.ColorRole.WindowText,
-        QPalette.ColorRole.Text,
-        QPalette.ColorRole.ButtonText,
-        QPalette.ColorRole.ToolTipText,
+        QtGui.QPalette.ColorRole.WindowText,
+        QtGui.QPalette.ColorRole.Text,
+        QtGui.QPalette.ColorRole.ButtonText,
+        QtGui.QPalette.ColorRole.ToolTipText,
     ):
         palette.setColor(role, QColor('#202020'))
     for role in (
-        QPalette.ColorRole.WindowText,
-        QPalette.ColorRole.Text,
-        QPalette.ColorRole.ButtonText,
+        QtGui.QPalette.ColorRole.WindowText,
+        QtGui.QPalette.ColorRole.Text,
+        QtGui.QPalette.ColorRole.ButtonText,
     ):
-        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor('#9a9a9a'))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor('#0f6cbd'))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor('#ffffff'))
+        palette.setColor(QtGui.QPalette.ColorGroup.Disabled, role, QColor('#9a9a9a'))
+    palette.setColor(QtGui.QPalette.ColorRole.Highlight, QColor('#0f6cbd'))
+    palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QColor('#ffffff'))
     widget.setPalette(palette)
     widget.setAutoFillBackground(True)
 
