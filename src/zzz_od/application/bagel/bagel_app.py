@@ -261,6 +261,7 @@ class BagelApp(ZApplication):
         try:
             walker = BagelRouteWalker(
                 self.ctx, blueprint_priority=self.config.blueprint_priority,
+                single_route=True,
             )
         except ValueError as error:
             return self.round_fail(f'路线执行器初始化失败：{error}')

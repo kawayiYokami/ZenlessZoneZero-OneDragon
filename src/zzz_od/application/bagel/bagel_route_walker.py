@@ -313,14 +313,15 @@ class BagelRouteWalker(BagelOperation):
 
     def __init__(
         self, ctx: ZContext, blueprint_priority: bool = True,
-        route_id: str | None = None,
+        route_id: str | None = None, single_route: bool = False,
     ) -> None:
         """加载路线并准备定位。
 
         Args:
             ctx: 运行上下文。
             blueprint_priority: 入箱时蓝图是否优先。
-            route_id: 只跑这一条路线；None 表示跑全部。
+            route_id: 指定路线用于试跑；None 表示从启用路线中选择起点。
+            single_route: 锚定后只执行选中的路线，正式应用用它避免跨出生点直线接入。
 
         Raises:
             ValueError: 一条路线都没有，或指定路线不存在时构造失败。
@@ -339,6 +340,7 @@ class BagelRouteWalker(BagelOperation):
             if not routes:
                 raise ValueError('没有启用中的贝果路线，先在编辑器里打开路线开关')
         self.routes: list[BagelRoute] = routes
+        self.single_route: bool = single_route
         self.blueprint_priority: bool = blueprint_priority
         self.locator: MultiMapLocator = MultiMapLocator(load_map_locators())
         self.route_index: int = 0
@@ -524,6 +526,9 @@ class BagelRouteWalker(BagelOperation):
         except AnchorMissError as error:
             log.info('贝果锚点：%s', error)
             return self.round_fail(self.STATUS_ANCHOR_MISS)
+        if self.single_route:
+            self.routes = [self.routes[route_index]]
+            route_index = 0
         self._enter_point(route_index, point_index)
         log.info(
             '贝果锚点：路线 %s 第 %s 点，共 %s 点',
