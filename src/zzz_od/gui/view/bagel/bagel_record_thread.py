@@ -18,10 +18,8 @@ if TYPE_CHECKING:
 
     from PySide6.QtWidgets import QWidget
 
-    from zzz_od.application.bagel.bagel_route_recorder import (
-        BagelPointRecorder,
-        BagelRoutePoint,
-    )
+    from zzz_od.application.bagel.bagel_route_model import BagelRoutePoint
+    from zzz_od.application.bagel.bagel_route_recorder import BagelPointRecorder
 
 
 class BagelRecordThread(QThread):

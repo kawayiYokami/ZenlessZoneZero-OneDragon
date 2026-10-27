@@ -6,15 +6,16 @@
 按键沿用插件那套：
 - 1 途径点、2 电子保险箱、3 机械保险箱、4 普通箱子、5 门、6 电梯，按下即在当前位置打一个点。
 - 退格删掉上一个点。
+
+录制前必须选定出生点：首个点只接受该出生点识别半径内的途径点。
+停止后保存为绑定该出生点的自定义路线，路线数据定义与写盘见
+``bagel_route_model`` 与 ``bagel_route_store``。
 """
 
 from __future__ import annotations
 
 import ctypes
-import json
 import time
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from threading import Event
 from typing import TYPE_CHECKING, Any
@@ -22,8 +23,21 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from pynput import keyboard
 
-from one_dragon.utils import cv2_utils, os_utils
+from one_dragon.utils import cv2_utils
 from one_dragon.utils.log_utils import log
+from zzz_od.application.bagel.bagel_route_model import (
+    BEACON,
+    KIND_LABELS,
+    POINT_KINDS,
+    BagelRoute,
+    BagelRoutePoint,
+    BagelSpawnPoint,
+    now_iso,
+)
+from zzz_od.application.bagel.bagel_route_store import (
+    BagelRouteConfigError,
+    BagelRouteStore,
+)
 from zzz_od.game_data.map_locator.map_locator import MultiMapLocator, load_map_locators
 from zzz_od.game_data.map_locator.minimap_angle import analyze
 
@@ -34,12 +48,6 @@ if TYPE_CHECKING:
 
     from one_dragon.base.geometry.rectangle import Rect
     from zzz_od.context.zzz_context import ZContext
-
-ROUTE_VERSION = 1
-"""路线文件格式版本。字段含义变化时递增。"""
-
-ROUTE_DIR_NAME = 'bagel_routes'
-"""路线文件目录，位于工作目录下，不进版本库。"""
 
 MINIMAP_AREA = ('贝果-局内', '定位小地图')
 """小地图裁剪区域，与导航共用同一份建档。"""
@@ -56,310 +64,8 @@ SHAKE_TOLERANCE = 1
 FOREGROUND_WAIT_SECONDS = 3.0
 """切到游戏前台的最长等待秒数。"""
 
-POINT_MIN_DISTANCE = 8.0
-"""同类型点与上一个点的最小间距；原地重复按不产生新点。"""
-
 UNDO_KEY = 'backspace'
 """删除上一个点的按键。"""
-
-POINT_KINDS: dict[str, tuple[str, str]] = {
-    '1': ('beacon', '途径点'),
-    '2': ('electronic_safe', '电子保险箱'),
-    '3': ('mechanical_safe', '机械保险箱'),
-    '4': ('box', '普通箱子'),
-    '5': ('door', '门'),
-    '6': ('elevator', '电梯'),
-}
-"""打点键到（类型标识, 中文名）的映射。"""
-
-ELEVATOR: str = 'elevator'
-"""电梯类型标识。进门后可能出楼层选项，也可能不出。"""
-
-ELEVATOR_EXIT_FORWARD: str = 'forward'
-ELEVATOR_EXIT_BACKWARD: str = 'backward'
-"""电梯出来时朝哪个方向走。"""
-
-KIND_ALIASES: dict[str, str] = {
-    'briefcase': 'box',
-}
-"""旧路线文件里的类型名到当前类型名；改名后仍能读回。"""
-
-KIND_LABELS: dict[str, str] = dict(POINT_KINDS.values())
-"""类型标识到中文名，供界面与网页显示。"""
-
-KIND_COLORS: dict[str, str] = {
-    'beacon': '#2233b4',
-    'electronic_safe': '#d97400',
-    'mechanical_safe': '#8b3fc4',
-    'box': '#1f8a4c',
-    'door': '#238495',
-    'elevator': '#bc2f5e',
-}
-"""类型标识到标注色，与网页画点用的颜色是同一套。
-
-电子=橙、机械=紫、普通箱=绿是语义色，其余三类按色相环拉开，
-任意两类的色相至少差 41 度，肉眼可辨。
-"""
-
-
-@dataclass(frozen=True)
-class BagelRoutePoint:
-    """一个打点：全局坐标、所在分层与类型。
-
-    点按打点顺序排列，顺序本身就是路线，不需要额外的连线数据。
-    电梯点额外带两项进出电梯的参数。
-    """
-
-    x: float
-    y: float
-    layer: str
-    kind: str
-    elevator_option: str = ''
-    """电梯要选的楼层文字，如「负二层站台」；空表示不选（直接进门）。"""
-    elevator_exit: str = 'forward'
-    """出电梯往哪个方向走：forward 前进、backward 后退。"""
-
-    def to_dict(self) -> dict[str, Any]:
-        """生成可写入 JSON 的点。"""
-        data: dict[str, Any] = {
-            'x': round(self.x),
-            'y': round(self.y),
-            'layer': self.layer,
-            'kind': self.kind,
-        }
-        if self.kind == ELEVATOR:
-            data['elevator_option'] = self.elevator_option
-            data['elevator_exit'] = self.elevator_exit
-        return data
-
-
-class BagelRoute:
-    """一条打点路线：有序点位，顺序即路径。"""
-
-    def __init__(self, route_id: str) -> None:
-        """
-        Args:
-            route_id: 路线标识，同时用作文件名。
-        """
-        self.route_id: str = route_id
-        self.started_at: str = datetime.now().astimezone().isoformat(timespec='seconds')
-        self.ended_at: str | None = None
-        self.enabled: bool = True
-        """是否启用：关闭的路线执行时当作不存在，编辑器里照旧显示。"""
-        self.points: list[BagelRoutePoint] = []
-
-    def append_point(self, point: BagelRoutePoint) -> bool:
-        """追加一个点；同类型且与上一个点太近时忽略。
-
-        Args:
-            point: 待追加的点。
-
-        Returns:
-            真正加入时返回 True。
-        """
-        if self.points:
-            last = self.points[-1]
-            if (
-                last.kind == point.kind
-                and last.layer == point.layer
-                and ((last.x - point.x) ** 2 + (last.y - point.y) ** 2)
-                < POINT_MIN_DISTANCE ** 2
-            ):
-                return False
-        self.points.append(point)
-        return True
-
-    def pop_point(self) -> BagelRoutePoint | None:
-        """删掉最后一个点。
-
-        Returns:
-            被删掉的点；没有点时返回 None。
-        """
-        if not self.points:
-            return None
-        return self.points.pop()
-
-    def to_dict(self) -> dict[str, Any]:
-        """生成待写入的数据。"""
-        return {
-            'version': ROUTE_VERSION,
-            'route_id': self.route_id,
-            'started_at': self.started_at,
-            'ended_at': self.ended_at,
-            'enabled': self.enabled,
-            'points': [point.to_dict() for point in self.points],
-        }
-
-    def save(self, path: Path) -> Path:
-        """写入并读回核对点数。
-
-        Args:
-            path: 目标文件路径。
-
-        Returns:
-            实际写入的路径。
-
-        Raises:
-            ValueError: 读回点数与内存不一致。
-            OSError: 写盘失败。
-        """
-        if self.ended_at is None:
-            self.ended_at = datetime.now().astimezone().isoformat(timespec='seconds')
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(self.to_dict(), ensure_ascii=False, indent=1), encoding='utf-8',
-        )
-        reloaded = BagelRoute.load(path)
-        if len(reloaded.points) != len(self.points):
-            raise ValueError(
-                f'路线文件读回点数不一致：写入 {len(self.points)}，读回 {len(reloaded.points)}'
-            )
-        return path
-
-    @classmethod
-    def load(cls, path: Path) -> BagelRoute:
-        """读回一份路线文件。
-
-        Args:
-            path: 路线文件路径。
-
-        Returns:
-            还原后的路线。
-
-        Raises:
-            ValueError: 版本不支持或数据不完整。
-        """
-        data = json.loads(path.read_text(encoding='utf-8'))
-        if data.get('version') != ROUTE_VERSION:
-            raise ValueError(f'不支持的路线文件版本：{data.get("version")}')
-        route = cls(str(data['route_id']))
-        route.started_at = data['started_at']
-        route.ended_at = data.get('ended_at')
-        route.enabled = bool(data.get('enabled', True))
-        # 旧文件没有 enabled 字段，按启用处理。
-        route.points = [
-            BagelRoutePoint(
-                float(round(item['x'])), float(round(item['y'])), str(item['layer']),
-                KIND_ALIASES.get(str(item['kind']), str(item['kind'])),
-                elevator_option=str(item.get('elevator_option', '')),
-                elevator_exit=str(item.get('elevator_exit', ELEVATOR_EXIT_FORWARD)),
-            )
-            for item in data['points']
-        ]
-        return route
-
-
-def route_dir() -> Path:
-    """返回路线文件目录，不存在时创建。
-
-    Returns:
-        工作目录下的路线目录。
-    """
-    directory = Path(os_utils.get_work_dir()) / ROUTE_DIR_NAME
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
-
-
-def list_routes(enabled_only: bool = False) -> list[BagelRoute]:
-    """读出全部路线，损坏的文件跳过并记日志。
-
-    Args:
-        enabled_only: 只返回启用中的路线；执行侧用它把关闭的路线当作不存在。
-
-    Returns:
-        按开始时间排列的路线列表。
-    """
-    routes: list[BagelRoute] = []
-    for path in sorted(route_dir().glob('*.route.json')):
-        try:
-            route = BagelRoute.load(path)
-        except (OSError, ValueError, KeyError) as error:
-            log.warning('跳过损坏的贝果路线文件 %s：%s', path.name, error)
-            continue
-        if enabled_only and not route.enabled:
-            continue
-        routes.append(route)
-    return routes
-
-
-def set_route_enabled(route_id: str, enabled: bool) -> bool:
-    """开关一条路线并写回文件。
-
-    Args:
-        route_id: 路线标识。
-        enabled: True 启用、False 关闭。
-
-    Returns:
-        真的改动了文件时返回 True；文件不存在或状态未变返回 False。
-
-    Raises:
-        OSError: 写盘失败。
-    """
-    path = route_dir() / f'{route_id}.route.json'
-    if not path.is_file():
-        return False
-    route = BagelRoute.load(path)
-    if route.enabled == enabled:
-        return False
-    route.enabled = enabled
-    route.save(path)
-    return True
-
-
-def delete_route(route_id: str) -> bool:
-    """删除一条路线的文件。
-
-    Args:
-        route_id: 路线标识，同时是文件名主干。
-
-    Returns:
-        真正删掉文件时返回 True；文件不存在返回 False。
-    """
-    path = route_dir() / f'{route_id}.route.json'
-    if not path.is_file():
-        return False
-    path.unlink()
-    return True
-
-
-ILLEGAL_NAME_CHARS = '\\/:*?"<>|'
-"""文件名里不能出现的字符，与 Windows 限制一致。"""
-
-
-def rename_route(route_id: str, new_id: str) -> str:
-    """把一条路线改名，同时改文件名。
-
-    路线标识就是文件名主干，所以改名等于改文件。改名后旧标识立即失效。
-
-    Args:
-        route_id: 原路线标识。
-        new_id: 新路线标识。
-
-    Returns:
-        实际使用的新标识。
-
-    Raises:
-        ValueError: 新名字非法、原文件不存在或目标已存在。
-        OSError: 改名失败。
-    """
-    new_id = new_id.strip()
-    if not new_id:
-        raise ValueError('名字不能为空')
-    if any(ch in new_id for ch in ILLEGAL_NAME_CHARS):
-        raise ValueError(f'名字不能含这些字符：{ILLEGAL_NAME_CHARS}')
-    if new_id in ('.', '..'):
-        raise ValueError('名字不合法')
-    old_path = route_dir() / f'{route_id}.route.json'
-    new_path = route_dir() / f'{new_id}.route.json'
-    if not old_path.is_file():
-        raise ValueError(f'路线不存在：{route_id}')
-    if new_path.exists():
-        raise ValueError(f'已经有同名路线：{new_id}')
-    route = BagelRoute.load(old_path)
-    route.route_id = new_id
-    route.save(new_path)
-    old_path.unlink()
-    return new_id
 
 
 def is_foreground(hwnd: int) -> bool:
@@ -383,7 +89,9 @@ class BagelPointRecorder:
     def __init__(
         self,
         ctx: ZContext,
-        route_id: str,
+        name: str,
+        spawn: BagelSpawnPoint,
+        activate: bool = False,
         on_point: Callable[[BagelRoutePoint], None] | None = None,
         on_undo: Callable[[], None] | None = None,
         on_status: Callable[[str], None] | None = None,
@@ -395,7 +103,9 @@ class BagelPointRecorder:
         """
         Args:
             ctx: 已初始化的上下文。
-            route_id: 本次录制的路线标识。
+            name: 保存时使用的路线显示名称。
+            spawn: 路线绑定的出生点，首个点必须在它的识别半径内。
+            activate: 保存后是否开启这条路线。
             on_point: 每打下一个点回调一次。
             on_undo: 每删掉一个点回调一次。
             on_status: 阶段变化回调。
@@ -405,7 +115,9 @@ class BagelPointRecorder:
             on_stats: 每帧回调定位统计，字段见 ``_build_stats``。
         """
         self.ctx: ZContext = ctx
-        self.route_id: str = route_id
+        self.name: str = name
+        self.spawn: BagelSpawnPoint = spawn
+        self.activate: bool = activate
         self.on_point: Callable[[BagelRoutePoint], None] = on_point or (lambda _p: None)
         self.on_undo: Callable[[], None] = on_undo or (lambda: None)
         self.on_status: Callable[[str], None] = on_status or (lambda _t: None)
@@ -418,8 +130,8 @@ class BagelPointRecorder:
         )
         self.on_stats: Callable[[dict[str, Any]], None] = on_stats or (lambda _s: None)
         self.stop_requested: Event = Event()
-        self.route: BagelRoute = BagelRoute(route_id)
-        self.saved_path: Path | None = None
+        self.route: BagelRoute = self._new_route()
+        self.saved_route: BagelRoute | None = None
         self.failure: str | None = None
         self.stop_reason: str = ''
 
@@ -454,7 +166,7 @@ class BagelPointRecorder:
             self.failure = f'缺少画面区域：{MINIMAP_AREA[0]}/{MINIMAP_AREA[1]}'
             return
 
-        self.route = BagelRoute(self.route_id)
+        self.route = self._new_route()
         try:
             self.on_status('正在载入底图')
             locators = load_map_locators()
@@ -466,7 +178,7 @@ class BagelPointRecorder:
                 self.failure = '游戏窗口未切到前台，录制未开始'
                 return
             self._start_key_listener()
-            self.on_status('录制中，1-6 打点，退格删上一个点')
+            self.on_status(f'录制中，先在{self.spawn.name}按 1 打首个途径点')
             self.stop_reason = self._sample_loop(hwnd, area.pc_rect)
         except Exception as error:
             log.error('贝果路线打点异常', exc_info=True)
@@ -479,12 +191,32 @@ class BagelPointRecorder:
             self.failure = '没有打下任何点，未生成文件'
             return
         try:
-            self.saved_path = self.route.save(route_dir() / f'{self.route_id}.route.json')
-        except (OSError, ValueError) as error:
+            self.saved_route = BagelRouteStore().create_custom_route(
+                self.name, self.spawn.spawn_id, points=list(self.route.points),
+                activate=self.activate, started_at=self.route.started_at,
+            )
+        except (BagelRouteConfigError, ValueError) as error:
             log.error('贝果路线打点保存失败', exc_info=True)
             self.failure = f'保存失败：{error}'
             return
         self.on_status(self.stop_reason)
+
+    def _new_route(self) -> BagelRoute:
+        """录制中的内存路线；标识在保存时由存储模块生成。"""
+        return BagelRoute(
+            route_id='', name=self.name, spawn_id=self.spawn.spawn_id, started_at=now_iso(),
+        )
+
+    def _first_point_problem(self, point: BagelRoutePoint) -> str | None:
+        """首个点的限制：必须是出生点识别半径内、同一分层的途径点。"""
+        if point.kind != BEACON:
+            return f'首个点必须是途径点（按 1），当前是{KIND_LABELS.get(point.kind, point.kind)}'
+        if point.layer != self.spawn.layer:
+            return f'首个点不在{self.spawn.name}所在分层'
+        distance = self.spawn.distance_to(point.x, point.y)
+        if distance > self.spawn.radius:
+            return f'首个点距{self.spawn.name} {distance:.0f}px，需在 {self.spawn.radius:.0f}px 内'
+        return None
 
     def _sample_loop(self, hwnd: int, rect: Rect) -> str:
         """定位循环，只在手动停止时结束；切出游戏时暂停定位但不停止录制。
@@ -666,6 +398,11 @@ class BagelPointRecorder:
             if kind is None:
                 continue
             point = BagelRoutePoint(float(center[0]), float(center[1]), layer, kind[0])
+            if not self.route.points:
+                problem = self._first_point_problem(point)
+                if problem is not None:
+                    self.on_status(problem)
+                    continue
             if self.route.append_point(point):
                 self.on_point(point)
                 self.on_status(f'已打 {len(self.route.points)} 点 · {kind[1]}')

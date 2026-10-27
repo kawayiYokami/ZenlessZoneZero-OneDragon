@@ -1,7 +1,8 @@
-"""在编辑器里试跑一条路线：切到游戏，按打点顺序走一遍，不再继续下一条。
+"""在编辑器里试跑一条路线：切到游戏，按打点顺序走一遍，不衔接其他路线。
 
-这是给路线本身做的自检工具，不参与正式跑图：正式跑图由 BagelApp 调起
-同样的 BagelRouteWalker，走全部路线并衔接结算。
+这是给路线本身做的自检工具，不参与正式跑图，也不改变正式运行的开启选择：
+正式跑图由 BagelApp 调起同样的 BagelRouteWalker 并衔接结算。关闭的路线也可以
+试跑，但角色必须站在该路线绑定的出生点。
 
 试跑期间挂一个执行态悬浮窗，显示自绘小地图、当前决策与路线进度。
 """
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QThread, Signal
 
 from one_dragon.utils.log_utils import log
+from zzz_od.application.bagel.bagel_route_model import BagelRouteRef
 from zzz_od.application.bagel.bagel_route_recorder import is_foreground
 from zzz_od.application.bagel.bagel_route_walker import BagelRouteWalker
 from zzz_od.game_data.map_locator.map_locator import load_map_locators
@@ -46,17 +48,17 @@ class BagelRouteTestThread(QThread):
     """(是否成功, 结论文案)。"""
 
     def __init__(
-        self, ctx: ZContext, route_id: str, parent: QWidget | None = None,
+        self, ctx: ZContext, route_ref: BagelRouteRef, parent: QWidget | None = None,
     ) -> None:
         """
         Args:
             ctx: 运行上下文。
-            route_id: 要试跑的路线标识。
+            route_ref: 要试跑的路线。
             parent: Qt 父对象。
         """
         super().__init__(parent)
         self.ctx: ZContext = ctx
-        self.route_id: str = route_id
+        self.route_ref: BagelRouteRef = route_ref
         self._stop_requested: Event = Event()
         self._walker: BagelRouteWalker | None = None
         self._layer_images: dict[str, Path] = {}
@@ -69,10 +71,12 @@ class BagelRouteTestThread(QThread):
                 return
             self.status_changed.emit('试跑中，按打点顺序移动')
             self._layer_images = {item.name: item.image_path for item in load_map_locators()}
-            self._walker = BagelRouteWalker(self.ctx, route_id=self.route_id)
+            # 先占用运行状态再创建执行器：执行器一创建就启动输入线程，
+            # 占用失败时不能留下没人收尾的线程。
             if not self.ctx.run_context.start_running():
                 self.done.emit(False, '当前有其他功能在运行，请先结束它再试跑')
                 return
+            self._walker = BagelRouteWalker(self.ctx, route_ref=self.route_ref)
             result = self._run_with_state()
         except ValueError as error:
             self.done.emit(False, str(error))
@@ -92,7 +96,8 @@ class BagelRouteTestThread(QThread):
             points = len(self._walker.routes[0].points) if self._walker and self._walker.routes else 0
             self.done.emit(True, f'试跑完成，{points} 点走完：{result.status}')
             return
-        self.done.emit(False, f'试跑失败：{result.status}')
+        detail = f'：{result.data}' if isinstance(result.data, str) and result.data else ''
+        self.done.emit(False, f'试跑失败：{result.status}{detail}')
 
     def _run_with_state(self):
         """跑执行器，同时按固定间隔把状态推给悬浮窗。
@@ -194,12 +199,12 @@ def decision_lines(snapshot: dict[str, object]) -> list[str]:
     """
     cursor = int(snapshot.get('cursor') or 0)
     total = int(snapshot.get('total') or 0)
-    route_id = str(snapshot.get('route_id') or '')
+    route_name = str(snapshot.get('route_name') or snapshot.get('route_id') or '')
     points = snapshot.get('points') or []
     # 决策文字是「节点 · 状态」，状态里也可能带「·」，只按第一个拆成两行。
     node, _, status = str(snapshot.get('decision') or '准备中').partition(' · ')
     lines = [f'节点 {node}', f'状态 {status or "—"}']
-    lines.append(f'路线 {route_id} · {cursor}/{total}')
+    lines.append(f'路线 {route_name} · {cursor}/{total}' if route_name else '路线 识别出生点中')
     distance = snapshot.get('distance')
     distance_text = '—' if distance is None else f'{float(distance):.0f}px'
     if 0 <= cursor < len(points):

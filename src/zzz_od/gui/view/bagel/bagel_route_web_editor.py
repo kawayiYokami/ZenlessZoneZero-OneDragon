@@ -1,8 +1,10 @@
 """贝果路线编辑器：顶部是 Python 按钮栏，下面是网页。
 
-网页负责显示底图、全部路线与选中路线的点位；Python 负责录制与写盘。
-两边只走单向推送：Python 把路线数据与录制中的实时状态推给网页，
-网页不反向调用 Python，避免通道两端的状态互相踩。
+网页负责显示底图、出生点、路线与节点草稿，并收集用户操作；Python 负责
+路线文件与开启选择的写入、录制、试跑和定位。网页通过 ``bagelBridge.send``
+把命令交给 Python，Python 校验并执行后用 ``onResult`` 回复，再用 ``setData``
+推送最新数据。默认路线只读、自定义路线的保存与开启互斥都在 Python 侧
+（``BagelRouteStore``）再检查一次，不依赖网页隐藏按钮。
 
 页面用 ``setHtml`` 加载并把 baseUrl 指向工作目录，这样页面里的相对路径
 能直接读到 ``assets/game_data/map_locator`` 下的底图与清单。
@@ -11,7 +13,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -29,22 +30,21 @@ from qfluentwidgets import (
 
 from one_dragon.utils import os_utils
 from one_dragon.utils.log_utils import log
-from zzz_od.application.bagel.bagel_route_recorder import (
-    ELEVATOR,
-    ELEVATOR_EXIT_BACKWARD,
-    ELEVATOR_EXIT_FORWARD,
+from zzz_od.application.bagel.bagel_route_model import (
     KIND_COLORS,
-    KIND_LABELS,
     POINT_KINDS,
-    BagelPointRecorder,
     BagelRoute,
     BagelRoutePoint,
-    delete_route,
+    BagelRouteRef,
+    BagelSpawnPoint,
+)
+from zzz_od.application.bagel.bagel_route_recorder import (
+    BagelPointRecorder,
     is_foreground,
-    list_routes,
-    rename_route,
-    route_dir,
-    set_route_enabled,
+)
+from zzz_od.application.bagel.bagel_route_store import (
+    BagelRouteConfigError,
+    BagelRouteStore,
 )
 from zzz_od.gui.view.bagel.bagel_light_theme import (
     apply_light_palette,
@@ -122,110 +122,28 @@ class _KindDot(QLabel):
 
 
 class BagelEditorBridge(QObject):
-    """网页调用 Python 的入口：删除路线、试跑路线、保存编辑后的点位。
+    """网页调用 Python 的唯一入口。
 
-    网页通过 QWebChannel 调用，删除由 Python 删文件后重新推列表，
-    试跑由 Python 起后台线程按打点顺序走一遍，网页只负责显示状态，
-    编辑后的点位由 Python 校验并写回同一个路线文件。
+    网页把命令名与 JSON 参数交给 ``send``，这里只转成信号，由编辑器在界面线程里
+    校验并执行，避免在网页通道的调用栈里做文件操作。
     """
 
-    deleted = Signal(str, bool)
-    """(路线标识, 是否真的删掉)。"""
-
-    test_requested = Signal(str)
-    """(要试跑的路线标识)。"""
-
-    save_requested = Signal(str, str)
-    """(路线标识, 点位 JSON)，由界面线程写盘。"""
-
-    renamed = Signal(str, str)
-    """(原标识, 新标识)，失败时新标识为空串。"""
-
-    toggled = Signal(str, bool, bool)
-    """(路线标识, 是否启用, 是否真的改了)。"""
-
-    locate_requested = Signal(int)
-    """(要替换坐标的点序号)，网页点了某一行的定位按钮。"""
-
-    @Slot(str)
-    def deleteRoute(self, route_id: str) -> None:
-        """删除一条路线并广播结果。
-
-        Args:
-            route_id: 路线标识。
-        """
-        ok = delete_route(route_id)
-        log.info('贝果路线删除 %s：%s', route_id, '成功' if ok else '文件不存在')
-        self.deleted.emit(route_id, ok)
+    command = Signal(str, str)
+    """(命令名, JSON 参数)。"""
 
     @Slot(str, str)
-    def renameRoute(self, route_id: str, new_id: str) -> None:
-        """给一条路线改名。
+    def send(self, cmd: str, payload: str) -> None:
+        """网页发来一条命令。
 
         Args:
-            route_id: 原路线标识。
-            new_id: 新路线标识。
+            cmd: 命令名，见 ``BagelRouteEditor._on_command``。
+            payload: JSON 参数，含 ``request_id``。
         """
-        try:
-            actual = rename_route(route_id, new_id)
-        except (OSError, ValueError) as error:
-            log.warning('贝果路线改名失败 %s -> %s：%s', route_id, new_id, error)
-            self.renamed.emit(route_id, '')
-            return
-        log.info('贝果路线改名 %s -> %s', route_id, actual)
-        self.renamed.emit(route_id, actual)
-
-    @Slot(str, bool)
-    def setRouteEnabled(self, route_id: str, enabled: bool) -> None:
-        """开关一条路线，关闭后执行时不生效。
-
-        Args:
-            route_id: 路线标识。
-            enabled: True 启用、False 关闭。
-        """
-        try:
-            changed = set_route_enabled(route_id, enabled)
-        except (OSError, ValueError, KeyError) as error:
-            log.warning('贝果路线开关失败 %s -> %s：%s', route_id, enabled, error)
-            self.toggled.emit(route_id, not enabled, False)
-            return
-        log.info('贝果路线 %s 已%s', route_id, '启用' if enabled else '关闭')
-        self.toggled.emit(route_id, enabled, changed)
-
-    @Slot(int)
-    def locatePoint(self, index: int) -> None:
-        """请求切到游戏定位一次，用结果替换第 index 个点的坐标。
-
-        Args:
-            index: 路线内点的下标，从 0 开始。
-        """
-        self.locate_requested.emit(index)
-
-    @Slot(str)
-    def testRoute(self, route_id: str) -> None:
-        """请求试跑一条路线。
-
-        Args:
-            route_id: 路线标识。
-        """
-        self.test_requested.emit(route_id)
-
-    @Slot(str, str)
-    def saveRoute(self, route_id: str, points_json: str) -> None:
-        """网页编辑后请求保存。
-
-        只把原始数据转给界面线程，写盘与校验都在界面线程里做，
-        避免在网页通道的调用栈里做文件操作。
-
-        Args:
-            route_id: 路线标识。
-            points_json: 编辑后的点位数组 JSON。
-        """
-        self.save_requested.emit(route_id, points_json)
+        self.command.emit(cmd, payload)
 
 
 class BagelRouteEditor(QDialog):
-    """路线编辑器；录制与写盘在 Python，显示在网页。"""
+    """路线编辑器；写盘、录制、试跑在 Python，显示与编辑草稿在网页。"""
 
     def __init__(self, ctx: ZContext, parent: QWidget | None = None) -> None:
         """
@@ -235,6 +153,7 @@ class BagelRouteEditor(QDialog):
         """
         super().__init__(parent)
         self.ctx: ZContext = ctx
+        self.store: BagelRouteStore = BagelRouteStore()
         self.recorder: BagelPointRecorder | None = None
         self.thread: Any = None
         self.test_thread: Any = None
@@ -242,8 +161,9 @@ class BagelRouteEditor(QDialog):
         self._locate_index: int = -1
         """正在定位替换的点序号；-1 表示没有进行中的定位。"""
         self.run_overlay: BagelRunOverlay | None = None
-        self._recording_route: BagelRoute | None = None
         self._page_ready: bool = False
+        self._close_confirmed: bool = False
+        """网页已确认没有未保存修改，可以真正关闭。"""
         self._shown_layer: str | None = None
         self._layer_origins: dict[str, tuple[int, int]] = _layer_origins()
         self.overlay: BagelRecordOverlay | None = None
@@ -257,7 +177,7 @@ class BagelRouteEditor(QDialog):
         self._previous_theme: Theme = enter_light_theme()
         apply_light_palette(self)
         self.setWindowTitle('贝果路线编辑器')
-        self.resize(1280, 800)
+        self.resize(1360, 820)
         self._build_ui()
 
     def _build_key_hint(self, bar: QWidget) -> QWidget:
@@ -302,17 +222,22 @@ class BagelRouteEditor(QDialog):
         bar_layout.setContentsMargins(16, 8, 16, 8)
         bar_layout.setSpacing(8)
 
-        self.start_button: PrimaryPushButton = PrimaryPushButton('录制路线', bar)
-        self.start_button.clicked.connect(self._start_recording)
+        self.create_button: PrimaryPushButton = PrimaryPushButton('新增路线', bar)
+        self.create_button.clicked.connect(lambda: self._run_js('window.bagelEditor.openCreate();'))
+        bar_layout.addWidget(self.create_button)
+        self.start_button: PushButton = PushButton('录制路线', bar)
+        self.start_button.clicked.connect(lambda: self._run_js('window.bagelEditor.openRecord();'))
         bar_layout.addWidget(self.start_button)
+        self.manage_button: PushButton = PushButton('路线管理', bar)
+        self.manage_button.clicked.connect(lambda: self._run_js('window.bagelEditor.openManage();'))
+        bar_layout.addWidget(self.manage_button)
         self.stop_button: PushButton = PushButton('停止录制', bar)
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self._stop_recording)
         bar_layout.addWidget(self.stop_button)
         bar_layout.addSpacing(12)
         self.status_label: BodyLabel = BodyLabel('就绪', bar)
-        bar_layout.addWidget(self.status_label)
-        bar_layout.addStretch(1)
+        bar_layout.addWidget(self.status_label, 1)
         bar_layout.addWidget(self._build_key_hint(bar))
         layout.addWidget(bar)
 
@@ -328,12 +253,7 @@ class BagelRouteEditor(QDialog):
         layout.addWidget(self.view, 1)
 
         self.bridge: BagelEditorBridge = BagelEditorBridge(self)
-        self.bridge.deleted.connect(self._on_route_deleted)
-        self.bridge.test_requested.connect(self._start_test)
-        self.bridge.save_requested.connect(self._on_save_requested)
-        self.bridge.renamed.connect(self._on_route_renamed)
-        self.bridge.toggled.connect(self._on_route_toggled)
-        self.bridge.locate_requested.connect(self._start_locate)
+        self.bridge.command.connect(self._on_command)
         self.channel: QWebChannel = QWebChannel(self.view.page())
         self.channel.registerObject('bagelBridge', self.bridge)
         self.view.page().setWebChannel(self.channel)
@@ -347,100 +267,210 @@ class BagelRouteEditor(QDialog):
         self.view.setHtml(html, base)
 
     def _on_page_loaded(self, ok: bool) -> None:
-        """页面载入完成后推一次路线列表。"""
+        """页面载入完成后推一次数据。"""
         if not ok:
             self.status_label.setText('页面载入失败')
             return
         self._page_ready = True
-        self._refresh_routes()
+        self._push_data()
 
     def _run_js(self, script: str) -> None:
         """页面没准备好时直接丢弃，避免刷一堆控制台报错。"""
         if self._page_ready:
             self.view.page().runJavaScript(script)
 
-    def _refresh_routes(self) -> None:
-        """把磁盘上的全部路线推给网页。"""
-        try:
-            routes = list_routes()
-        except OSError as error:
-            log.error('读取贝果路线失败', exc_info=True)
-            self.status_label.setText(f'读取路线失败：{error}')
-            return
-        payload = json.dumps([_route_json(route) for route in routes], ensure_ascii=False)
-        self._run_js(f'window.bagelEditor.setRoutes({payload});')
+    def _call_js(self, name: str, *args: Any) -> None:
+        """调用网页 ``window.bagelEditor`` 上的方法，参数按 JSON 传入。"""
+        params = ', '.join(json.dumps(arg, ensure_ascii=False) for arg in args)
+        self._run_js(f'window.bagelEditor.{name}({params});')
 
-    def _on_route_deleted(self, route_id: str, ok: bool) -> None:
-        """网页请求删除后刷新列表并提示结果。
+    def _set_buttons(self) -> None:
+        """按录制、试跑状态切换顶栏按钮。"""
+        busy = self.recorder is not None or self.test_thread is not None
+        for button in (self.create_button, self.start_button, self.manage_button):
+            button.setEnabled(not busy)
+        self.stop_button.setEnabled(self.recorder is not None)
+
+    # ---------- 数据推送与命令 ----------
+
+    def _push_data(self) -> None:
+        """把出生点、路线与开启状态推给网页。
+
+        配置损坏时仍推送出生点和路线供查看，开启状态全部显示为关闭，写入命令会报告错误。
+        """
+        problems: dict[str, str] = {}
+        try:
+            catalog = self.store.load_catalog()
+            spawns = catalog.spawns
+            routes = catalog.routes
+            active = {route.ref for route in routes if catalog.is_active(route)}
+            for spawn in spawns:
+                problem = catalog.selection_problem(spawn.spawn_id)
+                if problem is not None:
+                    problems[spawn.spawn_id] = problem
+            if catalog.errors:
+                self.status_label.setText('；'.join(catalog.errors))
+        except BagelRouteConfigError as error:
+            log.error('读取贝果路线配置失败：%s', error)
+            self.status_label.setText(f'路线配置无法使用：{error}')
+            try:
+                spawns = self.store.load_spawns()
+            except BagelRouteConfigError:
+                spawns = []
+            routes = self.store.load_routes()[0]
+            active = set()
+        payload = {
+            'spawns': [
+                dict(spawn.to_json(), problem=problems.get(spawn.spawn_id, '')) for spawn in spawns
+            ],
+            'routes': [route.to_json(route.ref in active) for route in routes],
+        }
+        self._call_js('setData', payload)
+
+    def _reply(self, request_id: Any, ok: bool, message: str, data: Any = None) -> None:
+        """回复网页的一条命令，并同步到状态栏。"""
+        if message:
+            self.status_label.setText(message)
+        self._call_js('onResult', request_id, ok, message, data)
+
+    def _busy_reason(self) -> str | None:
+        """录制、试跑、定位进行中时拒绝会改变数据或占用游戏的命令。"""
+        if self.recorder is not None:
+            return '正在录制，请先停止录制'
+        if self.test_thread is not None:
+            return '正在试跑，请等试跑结束'
+        if self.locate_thread is not None:
+            return '定位还在进行'
+        return None
+
+    def _on_command(self, cmd: str, payload: str) -> None:
+        """执行网页发来的命令并回复结果。
 
         Args:
-            route_id: 被删除的路线标识。
-            ok: 是否真的删掉了文件。
+            cmd: 命令名。
+            payload: JSON 参数。
         """
-        self.status_label.setText(
-            f'已删除 {route_id}' if ok else f'路线文件不存在：{route_id}',
+        try:
+            args = json.loads(payload)
+        except json.JSONDecodeError:
+            log.error('贝果路线编辑器收到无法解析的命令 %s', cmd)
+            return
+        request_id = args.get('request_id')
+        if cmd == 'close':
+            self._reply(request_id, True, '')
+            self._close_confirmed = True
+            self.close()
+            return
+        busy = self._busy_reason()
+        if busy is not None:
+            self._reply(request_id, False, busy)
+            return
+        handlers = {
+            'save': self._cmd_save,
+            'activate': self._cmd_activate,
+            'create': self._cmd_create,
+            'copy': self._cmd_copy,
+            'rename': self._cmd_rename,
+            'delete': self._cmd_delete,
+            'record': self._cmd_record,
+            'test': self._cmd_test,
+            'locate': self._cmd_locate,
+        }
+        handler = handlers.get(cmd)
+        if handler is None:
+            self._reply(request_id, False, f'不支持的命令：{cmd}')
+            return
+        try:
+            message, data = handler(args)
+        except (BagelRouteConfigError, ValueError, KeyError, TypeError) as error:
+            log.warning('贝果路线编辑器命令 %s 失败：%s', cmd, error)
+            self._push_data()
+            self._reply(request_id, False, str(error))
+            return
+        self._push_data()
+        self._reply(request_id, True, message, data)
+
+    def _cmd_save(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """保存自定义路线的节点草稿；默认路线由存储模块拒绝。"""
+        raw = args['points']
+        if not isinstance(raw, list):
+            raise ValueError('点位不是数组')
+        points = [BagelRoutePoint.from_dict(item) for item in raw]
+        route = self.store.save_custom_route(str(args['route_id']), points)
+        log.info('贝果路线「%s」已保存 %s 点', route.name, len(points))
+        return f'已保存「{route.name}」· {len(points)} 点', None
+
+    def _cmd_activate(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """设置出生点当前开启的路线；ref 为 null 表示关闭。"""
+        spawn_id = str(args['spawn_id'])
+        ref = None if args.get('ref') is None else BagelRouteRef.from_json(args['ref'])
+        self.store.set_active_route(spawn_id, ref)
+        catalog = self.store.load_catalog()
+        spawn = catalog.spawn(spawn_id)
+        name = spawn.name if spawn is not None else spawn_id
+        if ref is None:
+            log.info('贝果出生点 %s 已关闭全部路线', name)
+            return f'{name}已关闭路线，抽到时退出重开', None
+        route = catalog.route(ref)
+        log.info('贝果出生点 %s 开启路线 %s', name, ref)
+        return f'{name}已开启「{route.name if route else ref.route_id}」', None
+
+    def _cmd_create(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """新增一条自定义路线，首点取出生点坐标。"""
+        route = self.store.create_custom_route(
+            str(args['name']), str(args['spawn_id']), activate=bool(args.get('activate')),
         )
-        self._refresh_routes()
+        log.info('贝果新增自定义路线「%s」（%s）', route.name, route.ref)
+        return f'已新增「{route.name}」', route.ref.to_json()
 
-    def _on_route_renamed(self, old_id: str, new_id: str) -> None:
-        """改名后刷新列表，并让网页把选中项切到新名字。
+    def _cmd_copy(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """复制路线为新的自定义路线，副本关闭。"""
+        source = BagelRouteRef.from_json(args['ref'])
+        route = self.store.copy_route(source, str(args['name']))
+        log.info('贝果路线 %s 已复制为「%s」（%s）', source, route.name, route.ref)
+        return f'已复制为「{route.name}」，副本未开启', route.ref.to_json()
 
-        Args:
-            old_id: 原路线标识。
-            new_id: 新路线标识；空串表示改名失败。
-        """
-        if not new_id:
-            self.status_label.setText(f'改名失败：{old_id}')
-            self._refresh_routes()
-            return
-        self.status_label.setText(f'已改名：{old_id} → {new_id}')
-        self._refresh_routes()
+    def _cmd_rename(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """修改自定义路线的显示名称。"""
+        route = self.store.rename_custom_route(str(args['route_id']), str(args['name']))
+        log.info('贝果路线 %s 改名为「%s」', route.ref, route.name)
+        return f'已改名为「{route.name}」', None
 
-    def _on_route_toggled(self, route_id: str, enabled: bool, changed: bool) -> None:
-        """路线开关写盘后刷新列表。
+    def _cmd_delete(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """删除自定义路线；开启中的先关闭。"""
+        route_id = str(args['route_id'])
+        self.store.delete_custom_route(route_id)
+        log.info('贝果自定义路线 %s 已删除', route_id)
+        return '已删除路线', None
 
-        Args:
-            route_id: 路线标识。
-            enabled: 网页请求的目标状态。
-            changed: 是否真的改动了文件。
-        """
-        if not changed:
-            self.status_label.setText(f'路线开关未改动：{route_id}')
-        else:
-            self.status_label.setText(
-                f'{route_id} 已{"启用" if enabled else "关闭"}'
-                + ('' if enabled else '，执行时跳过这条路线'),
-            )
-        self._refresh_routes()
+    def _cmd_record(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """开始录制一条绑定出生点的自定义路线。"""
+        name = str(args['name']).strip()
+        catalog = self.store.load_catalog()
+        spawn = catalog.spawn(str(args['spawn_id']))
+        if spawn is None:
+            raise ValueError('请选择出生点')
+        if not name:
+            raise ValueError('路线名称不能为空')
+        if any(route.name == name for route in catalog.routes):
+            raise ValueError(f'已经有同名路线：{name}')
+        self._start_recording(name, spawn, bool(args.get('activate')))
+        return f'正在准备录制「{name}」', None
 
-    def _on_save_requested(self, route_id: str, points_json: str) -> None:
-        """网页编辑后写回路线文件。
+    def _cmd_test(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """试跑一条路线；关闭的路线也可以试跑。"""
+        ref = BagelRouteRef.from_json(args['ref'])
+        route = self.store.load_route(ref)
+        self._start_test(route)
+        return f'正在切到游戏，准备试跑「{route.name}」', None
 
-        只覆盖点位，路线标识与时间戳沿用原文件；写盘前校验每个点
-        的坐标与类型，任何一条不合法就整体放弃，避免把路线写坏。
+    def _cmd_locate(self, args: dict[str, Any]) -> tuple[str, Any]:
+        """切到游戏定位一次，结果写进网页草稿。"""
+        index = int(args['index'])
+        self._start_locate(index)
+        return f'正在切到游戏定位第 {index + 1} 点…', None
 
-        Args:
-            route_id: 路线标识。
-            points_json: 编辑后的点位数组 JSON。
-        """
-        path = route_dir() / f'{route_id}.route.json'
-        if not path.is_file():
-            self.status_label.setText(f'路线文件不存在，无法保存：{route_id}')
-            return
-        try:
-            raw = json.loads(points_json)
-            if not isinstance(raw, list):
-                raise ValueError('点位不是数组')
-            points = [_parse_point(item) for item in raw]
-            route = BagelRoute.load(path)
-            route.points = points
-            route.save(path)
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            log.error('保存贝果路线 %s 失败：%s', route_id, error)
-            self.status_label.setText(f'保存失败：{error}')
-            return
-        self.status_label.setText(f'已保存 {route_id} · {len(points)} 点')
-        log.info('贝果路线 %s 编辑后已保存 %s 点', route_id, len(points))
+    # ---------- 定位 ----------
 
     def _start_locate(self, index: int) -> None:
         """切到游戏定位一次，把结果写到第 index 个点。
@@ -448,12 +478,6 @@ class BagelRouteEditor(QDialog):
         Args:
             index: 要替换坐标的点序号，从 0 开始。
         """
-        if self.locate_thread is not None:
-            self.status_label.setText('定位还在进行')
-            return
-        if self.recorder is not None:
-            self.status_label.setText('正在录制，先停止录制再定位')
-            return
         from zzz_od.gui.view.bagel.bagel_locate_thread import BagelLocateThread
 
         thread = BagelLocateThread(self.ctx, self)
@@ -462,7 +486,6 @@ class BagelRouteEditor(QDialog):
         thread.status_changed.connect(self.status_label.setText)
         thread.done.connect(self._on_locate_done)
         thread.finished.connect(self._clear_locate_thread)
-        self.status_label.setText(f'正在切到游戏定位第 {index + 1} 点…')
         thread.start()
 
     def _clear_locate_thread(self) -> None:
@@ -472,7 +495,7 @@ class BagelRouteEditor(QDialog):
     def _on_locate_done(
         self, ok: bool, message: str, layer_name: str, global_xy: object,
     ) -> None:
-        """把定位结果写回选中的点，并刷新网页上的坐标。
+        """把定位结果写进网页草稿；保存后才写入文件。
 
         Args:
             ok: 是否定位成功。
@@ -482,36 +505,31 @@ class BagelRouteEditor(QDialog):
         """
         index = self._locate_index
         self._locate_index = -1
-        if not ok or global_xy is None:
-            self.status_label.setText(message)
-            return
         self.status_label.setText(message)
-        coords = json.dumps([round(global_xy[0]), round(global_xy[1])])
-        name = json.dumps(layer_name, ensure_ascii=False)
-        self._run_js(f'window.bagelEditor.setPointPosition({index}, {name}, {coords});')
+        if not ok or not isinstance(global_xy, tuple):
+            return
+        self._call_js(
+            'setPointPosition', index, layer_name, [round(global_xy[0]), round(global_xy[1])],
+        )
 
-    def _start_test(self, route_id: str) -> None:
-        """在游戏里试跑一条路线：站在起点附近，按打点顺序走一遍。
+    # ---------- 试跑 ----------
+
+    def _start_test(self, route: BagelRoute) -> None:
+        """在游戏里试跑一条路线：角色站在绑定出生点附近，按节点顺序走一遍。
 
         Args:
-            route_id: 要试跑的路线标识。
+            route: 要试跑的已保存路线。
         """
-        if self.test_thread is not None:
-            self.status_label.setText('已有试跑在进行')
-            return
-        if self.recorder is not None:
-            self.status_label.setText('正在录制，先停止录制再试跑')
-            return
         from zzz_od.gui.view.bagel.bagel_route_test_thread import BagelRouteTestThread
 
-        thread = BagelRouteTestThread(self.ctx, route_id, self)
+        thread = BagelRouteTestThread(self.ctx, route.ref, self)
         self.test_thread = thread
         thread.status_changed.connect(self._on_test_status)
         thread.overlay_state.connect(self._on_run_state)
         thread.done.connect(self._on_test_done)
         thread.finished.connect(self._clear_test_thread)
-        self.status_label.setText(f'正在切到游戏，准备试跑 {route_id}')
-        self.start_button.setEnabled(False)
+        self._set_buttons()
+        self._call_js('setBusy', {'trial': True})
         thread.start()
 
     def _on_run_state(self, snapshot: object) -> None:
@@ -558,9 +576,8 @@ class BagelRouteEditor(QDialog):
         self.status_label.setText(text)
 
     def _on_test_done(self, success: bool, message: str) -> None:
-        """试跑结束显示结论，并恢复按钮。"""
+        """试跑结束显示结论。"""
         self.status_label.setText(message)
-        self.start_button.setEnabled(True)
         log.info('贝果路线试跑结束：%s', message)
 
     def _clear_test_thread(self) -> None:
@@ -568,16 +585,24 @@ class BagelRouteEditor(QDialog):
         if self.test_thread is not None:
             self.test_thread.wait()
         self.test_thread = None
-        self.start_button.setEnabled(True)
+        self._set_buttons()
+        self._call_js('setBusy', {'trial': False})
 
-    def _start_recording(self) -> None:
-        """开始录制；路线标识按时间戳自动生成。"""
-        if self.recorder is not None:
-            return
-        route_id = f'route_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+    # ---------- 录制 ----------
+
+    def _start_recording(self, name: str, spawn: BagelSpawnPoint, activate: bool) -> None:
+        """开始录制；停止后保存为绑定出生点的自定义路线。
+
+        Args:
+            name: 路线显示名称。
+            spawn: 绑定的出生点。
+            activate: 保存后是否开启。
+        """
         recorder = BagelPointRecorder(
             self.ctx,
-            route_id,
+            name,
+            spawn,
+            activate=activate,
             on_point=self._on_point,
             on_undo=self._on_undo,
             on_status=self._on_status,
@@ -585,10 +610,8 @@ class BagelRouteEditor(QDialog):
             on_position=self._on_position,
         )
         self.recorder = recorder
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.status_label.setText('正在准备…')
-        self._run_js(f'window.bagelEditor.startRecording({json.dumps(route_id)});')
+        self._set_buttons()
+        self._call_js('startRecording', name)
         self.overlay = BagelRecordOverlay()
         self.overlay.set_lines(['定位中...'])
         self.overlay.set_recording(True)
@@ -617,11 +640,7 @@ class BagelRouteEditor(QDialog):
 
     def _on_point(self, point: BagelRoutePoint) -> None:
         """把一个点推给网页，同时画到悬浮窗上。"""
-        self._run_js(
-            'window.bagelEditor.addPoint('
-            + json.dumps(_point_json(point), ensure_ascii=False)
-            + ');'
-        )
+        self._call_js('addPoint', point.to_dict())
         if self.overlay is not None:
             layer = self._layer_origins.get(point.layer)
             if layer is not None:
@@ -631,7 +650,7 @@ class BagelRouteEditor(QDialog):
 
     def _on_undo(self) -> None:
         """删掉上一个点后让网页同步移除，悬浮窗按剩余点重画。"""
-        self._run_js('window.bagelEditor.popPoint();')
+        self._call_js('popPoint')
         if self.overlay is not None and self.recorder is not None:
             self.overlay.clear_points()
             for point in self.recorder.route.points:
@@ -665,11 +684,11 @@ class BagelRouteEditor(QDialog):
         if self.overlay is not None:
             self.overlay.set_position(local_xy)
         if local_xy is None:
-            self._run_js('window.bagelEditor.setPosition(null, null);')
+            self._call_js('setPosition', None, None)
             return
-        layer = json.dumps(self._shown_layer, ensure_ascii=False)
-        coords = json.dumps([round(local_xy[0], 1), round(local_xy[1], 1)])
-        self._run_js(f'window.bagelEditor.setPosition({layer}, {coords});')
+        self._call_js(
+            'setPosition', self._shown_layer, [round(local_xy[0], 1), round(local_xy[1], 1)],
+        )
 
     def _on_angles(self, sector: float | None, marker: float | None) -> None:
         """把朝向推给悬浮窗的罗盘。"""
@@ -713,33 +732,47 @@ class BagelRouteEditor(QDialog):
         self.overlay.set_game_rect(_game_window_rect(self.ctx))
 
     def _on_recording_done(self, success: bool, message: str) -> None:
-        """收尾：撤掉悬浮窗、恢复按钮、刷新路线列表。"""
+        """收尾：撤掉悬浮窗、恢复按钮、刷新数据并选中新路线。"""
         self._overlay_timer.stop()
         if self.overlay is not None:
             self.overlay.hide()
             self.overlay.deleteLater()
             self.overlay = None
         self.status_label.setText(message)
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
         if self.thread is not None:
             self.thread.wait(3000)
         self.thread = None
+        saved = self.recorder.saved_route if self.recorder is not None else None
         self.recorder = None
-        self._run_js('window.bagelEditor.stopRecording();')
-        if success:
-            self._refresh_routes()
+        self._set_buttons()
+        self._push_data()
+        self._call_js('stopRecording', saved.ref.to_json() if saved is not None else None)
+        if saved is not None:
+            log.info('贝果路线录制保存为「%s」（%s），%s 点', saved.name, saved.ref, len(saved.points))
         else:
-            log.info('贝果路线录制未成功：%s', message)
+            log.info('贝果路线录制未保存：%s', message)
 
     def closeEvent(self, event: Any) -> None:
-        """关窗时先停录制。"""
+        """关窗前让网页确认未保存的修改；确认后再停录制、恢复主题。"""
+        if self._page_ready and not self._close_confirmed:
+            event.ignore()
+            self.view.page().runJavaScript(
+                'window.bagelEditor.requestClose()', 0, self._on_close_requested,
+            )
+            return
         if self.recorder is not None:
             self.recorder.request_stop()
             if self.thread is not None:
                 self.thread.wait(5000)
         restore_theme(self._previous_theme)
         super().closeEvent(event)
+
+    def _on_close_requested(self, result: object) -> None:
+        """网页脚本出错没有接手关闭时直接关闭，避免窗口关不掉。"""
+        if result is not True:
+            log.warning('贝果路线编辑器网页未响应关闭请求，直接关闭')
+            self._close_confirmed = True
+            self.close()
 
 
 def _fmt_angle(value: float | None) -> str:
@@ -791,71 +824,3 @@ def _game_window_rect(ctx: ZContext) -> QRect | None:
     if rect is None:
         return None
     return QRect(rect.x1, rect.y1, rect.width, rect.height)
-
-
-def _point_json(point: BagelRoutePoint) -> dict[str, Any]:
-    """点的网页表示。"""
-    data: dict[str, Any] = {
-        'x': point.x,
-        'y': point.y,
-        'layer': point.layer,
-        'kind': point.kind,
-    }
-    if point.kind == ELEVATOR:
-        data['elevator_option'] = point.elevator_option
-        data['elevator_exit'] = point.elevator_exit
-    return data
-
-
-COORDINATE_LIMIT = 4000.0
-"""编辑落点的坐标上限，防止网页传来离谱数值把路线写坏。"""
-
-
-def _parse_point(item: Any) -> BagelRoutePoint:
-    """校验网页传来的一条点位。
-
-    Args:
-        item: 网页点位对象。
-
-    Returns:
-        校验后的点。
-
-    Raises:
-        ValueError: 字段缺失、类型不支持或坐标越界。
-    """
-    if not isinstance(item, dict):
-        raise ValueError('点位不是对象')
-    kind = str(item['kind'])
-    if kind not in KIND_LABELS:
-        raise ValueError(f'不支持的点的类型：{kind}')
-    layer = str(item['layer'])
-    if not layer:
-        raise ValueError('点位缺少分层')
-    x = float(item['x'])
-    y = float(item['y'])
-    if not (-COORDINATE_LIMIT <= x <= COORDINATE_LIMIT):
-        raise ValueError(f'x 越界：{x}')
-    if not (-COORDINATE_LIMIT <= y <= COORDINATE_LIMIT):
-        raise ValueError(f'y 越界：{y}')
-    option = str(item.get('elevator_option', '')).strip()
-    exit_direction = str(item.get('elevator_exit', ELEVATOR_EXIT_FORWARD))
-    if exit_direction not in (ELEVATOR_EXIT_FORWARD, ELEVATOR_EXIT_BACKWARD):
-        raise ValueError(f'电梯出梯方向不支持：{exit_direction}')
-    if kind != ELEVATOR:
-        option = ''
-        exit_direction = ELEVATOR_EXIT_FORWARD
-    return BagelRoutePoint(
-        round(x), round(y), layer, kind,
-        elevator_option=option, elevator_exit=exit_direction,
-    )
-
-
-def _route_json(route: BagelRoute) -> dict[str, Any]:
-    """整条路线的网页表示；点的顺序就是路线，不需要额外连线。"""
-    return {
-        'route_id': route.route_id,
-        'started_at': route.started_at,
-        'enabled': route.enabled,
-        'points': [_point_json(point) for point in route.points],
-        'kinds': KIND_LABELS,
-    }
