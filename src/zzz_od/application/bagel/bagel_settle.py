@@ -42,6 +42,8 @@ class BagelSettleWarehouse(BagelOperation):
         self.deposit_status: str = BagelDeposit.STATUS_EMPTY
         self.sale_completed: bool = False
         self.retry_deposit: bool = False
+        self.sale_coins: int | None = None
+        """本次各步出售获得的齿轮硬币合计；任一步读不到即为 None，只用于统计日志。"""
 
     def handle_init(self) -> None:
         """同一操作再次运行也不能沿用上次出售结果。"""
@@ -49,6 +51,7 @@ class BagelSettleWarehouse(BagelOperation):
         self.deposit_status = BagelDeposit.STATUS_EMPTY
         self.sale_completed = False
         self.retry_deposit = False
+        self.sale_coins = None
 
     def _deposit(self, retry: bool = False) -> OperationResult:
         """启动核对全部携带物，正常结算核对安全箱；共用出售和重试次数限制。"""
@@ -104,6 +107,7 @@ class BagelSettleWarehouse(BagelOperation):
         reason = '残留物资' if self.retry_deposit else '仓库已满' if pair[0] >= pair[1] else '到期或正常结束'
         log.info('贝果结算：出售原因=%s，步骤=%s；安全箱占用=%s，仓库=%s/%s，需重试入仓=%s',
                  reason, len(self.filter_groups), occupied, pair[0], pair[1], self.retry_deposit)
+        self.sale_coins = 0
         for index, areas in enumerate(self.filter_groups, start=1):
             log.info('贝果出售步骤：%s/%s，筛选=%s', index, len(self.filter_groups),
                      '、'.join(name.removeprefix('筛选-') for name in areas))
@@ -115,6 +119,9 @@ class BagelSettleWarehouse(BagelOperation):
             if result.status not in (BagelCleanWarehouse.STATUS_DONE, BagelCleanWarehouse.STATUS_SKIPPED):
                 return self.round_fail(f'第 {index} 步出售未完成确认（{result.status}），停止并保留现场')
             log.info('贝果仓库清理第 %s 步完成：%s', index, result.status)
+            if result.status == BagelCleanWarehouse.STATUS_DONE:
+                coins = result.data.get('sale_coins') if isinstance(result.data, dict) else None
+                self.sale_coins = None if coins is None or self.sale_coins is None else self.sale_coins + coins
         self.sale_completed = True
         return self.round_success(self.deposit_status)
 
@@ -150,4 +157,6 @@ class BagelSettleWarehouse(BagelOperation):
         if pair is None:
             return self.round_retry('结算后无法核对仓库容量，停止前再看一帧', wait=0.5)
         log.info('贝果结算核验：安全箱已空，仓库 %s/%s，允许结束结算', pair[0], pair[1])
-        return self.round_success(self.deposit_status, data={'sale_completed': self.sale_completed})
+        return self.round_success(self.deposit_status, data={
+            'sale_completed': self.sale_completed, 'sale_coins': self.sale_coins,
+        })

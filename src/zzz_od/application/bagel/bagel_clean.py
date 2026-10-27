@@ -15,6 +15,7 @@ from zzz_od.application.bagel.bagel_screen import (
     read_area,
 )
 from zzz_od.application.bagel.bagel_slots import safe_occupied_indices
+from zzz_od.application.bagel.bagel_stats import parse_value
 
 if TYPE_CHECKING:
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
@@ -55,6 +56,8 @@ class BagelCleanWarehouse(BagelOperation):
         self._pending_filter: str | None = None
         self._filter_clicked_at: float = 0
         self._filter_missing_frames: int = 0
+        self.sale_coins: int | None = None
+        """「获得」弹窗上的齿轮硬币数，只用于统计日志；读不到为 None。"""
 
     def handle_init(self) -> None:
         """每次执行清空勾选进度。"""
@@ -66,6 +69,7 @@ class BagelCleanWarehouse(BagelOperation):
         self._pending_filter = None
         self._filter_clicked_at = 0
         self._filter_missing_frames = 0
+        self.sale_coins = None
 
     def _has_area(self, area_name: str) -> bool:
         """当前帧是否命中仓库指定文字区。"""
@@ -302,10 +306,14 @@ class BagelCleanWarehouse(BagelOperation):
             log.info('贝果出售核验：筛选命中=%s件；仓库占用=%s -> %s，安全箱占用=%s -> %s；已回到仓库',
                      self._filter_count, self._warehouse_before, warehouse_after,
                      self._safe_before, safe_after)
-            return self.round_success(self.STATUS_DONE)
+            return self.round_success(self.STATUS_DONE, data={'sale_coins': self.sale_coins})
         if self._has_area('出售获得标题') and self._has_area('出售获得货币'):
             if self.node_clicked:
                 return self.round_wait('等待关闭出售获得提示', wait=0.5)
+            if self.sale_coins is None:
+                self.sale_coins = parse_value(read_area(
+                    self.ctx, self.last_screenshot, '贝果-仓库', '出售获得数量',
+                ))
             result = self.round_by_find_and_click_area(
                 self.last_screenshot, '贝果-仓库', '出售获得确认',
                 pre_delay=0.15, retry_wait=0.5,

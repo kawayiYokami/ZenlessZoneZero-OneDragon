@@ -216,6 +216,12 @@ area_list:
   - 445
   text: 获得
   lcs_percent: 0.8
+- area_name: 出售获得数量
+  pc_rect:
+  - 860
+  - 576
+  - 1060
+  - 614
 - area_name: 出售获得货币
   pc_rect:
   - 910

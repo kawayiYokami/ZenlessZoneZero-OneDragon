@@ -375,6 +375,20 @@
     - 206
     - 1734
     - 407
+  - area_name: 调查收益
+    area_type: none
+    pc_rect:
+    - 1785
+    - 355
+    - 1915
+    - 405
+  - area_name: 本次调查收益
+    area_type: none
+    pc_rect:
+    - 585
+    - 982
+    - 700
+    - 1036
   - area_name: 交互提示
     area_type: none
     pc_rect:
@@ -1022,6 +1036,13 @@
     - 445
     text: 获得
     lcs_percent: 0.8
+  - area_name: 出售获得数量
+    area_type: none
+    pc_rect:
+    - 860
+    - 576
+    - 1060
+    - 614
   - area_name: 出售获得货币
     area_type: text
     pc_rect:

@@ -23,6 +23,18 @@ area_list:
   - 206
   - 1734
   - 407
+- area_name: 调查收益
+  pc_rect:
+  - 1785
+  - 355
+  - 1915
+  - 405
+- area_name: 本次调查收益
+  pc_rect:
+  - 585
+  - 982
+  - 700
+  - 1036
 - area_name: 交互提示
   pc_rect:
   - 1285

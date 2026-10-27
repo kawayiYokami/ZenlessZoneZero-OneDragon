@@ -5,9 +5,11 @@ from typing import TYPE_CHECKING
 
 from one_dragon.base.controller.drag_timing import DragTiming
 from one_dragon.base.geometry.point import Point
+from one_dragon.base.geometry.rectangle import Rect
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.log_utils import log
+from zzz_od.application.bagel import bagel_screen
 from zzz_od.application.bagel.bagel_item_vision import (
     ACTION_FILL,
     ACTION_SWAP,
@@ -32,6 +34,11 @@ from zzz_od.application.bagel.bagel_slots import (
     swap_visually_ok,
     transfer_visually_ok,
 )
+from zzz_od.application.bagel.bagel_stats import (
+    BagelSafeLedger,
+    parse_quantity,
+    parse_survey,
+)
 
 if TYPE_CHECKING:
     from cv2.typing import MatLike
@@ -50,6 +57,10 @@ _DEST_LABEL: dict[str, str] = {
 # 源格物品搬不动时返回的状态。节点边声明和返回值共用同一个常量：两处写错的字符串
 # 不会报错，只会让框架找不到下一个节点、把「跳过这一格」静默当成整步结束。
 _STATUS_SKIP_SLOT: str = '跳过不入箱的格子'
+# 安全箱格子下方数量文字的纵向范围与半宽，按局内 1080p 画面。
+_SAFE_QUANTITY_TOP: int = 922
+_SAFE_QUANTITY_BOTTOM: int = 952
+_SAFE_QUANTITY_HALF_WIDTH: int = 45
 
 
 class BagelStoreSafe(BagelOperation):
@@ -84,10 +95,20 @@ class BagelStoreSafe(BagelOperation):
     # 亮度和有效角标同时满足后，先留出揭示收尾时间，再用新截图复核。
     ITEM_READY_DELAY: float = 0.1
 
-    def __init__(self, ctx: ZContext, blueprint_priority: bool = True) -> None:
-        """按传入的优先级收集当前容器，不关闭面板，也不补做交互。"""
+    def __init__(
+        self, ctx: ZContext, blueprint_priority: bool = True,
+        ledger: BagelSafeLedger | None = None,
+    ) -> None:
+        """按传入的优先级收集当前容器，不关闭面板，也不补做交互。
+
+        Args:
+            ctx: 运行上下文。
+            blueprint_priority: 蓝图是否优先入箱。
+            ledger: 本局安全箱价值账本；给定时顺带记录物品与推算价值，只用于统计日志。
+        """
         super().__init__(ctx, op_name='贝果-装入安全箱', timeout_seconds=90)
         self.blueprint_priority: bool = blueprint_priority
+        self.ledger: BagelSafeLedger | None = ledger
         self.moved: int = 0
         self.acted: bool = False
         self._pending_before: MatLike | None = None
@@ -158,6 +179,7 @@ class BagelStoreSafe(BagelOperation):
             assert centers is not None
             self._result_centers = centers
             self._panel_wait_rounds = 0
+            self._observe_survey_value()
             return None
         self._panel_wait_rounds += 1
         if self._panel_wait_rounds < self.PANEL_WAIT_ROUNDS_LIMIT:
@@ -294,6 +316,7 @@ class BagelStoreSafe(BagelOperation):
                 return self._wait_for_safe_slots()
             self._safe_unknown_rounds = 0
             status = self.STATUS_DONE if self.moved or self.acted else self.STATUS_EMPTY
+            self._record_safe_items()
             return self.round_success(status, data={'moved': self.moved})
         safe = inspect_safe_slots(screen)
         if safe is None:
@@ -318,6 +341,7 @@ class BagelStoreSafe(BagelOperation):
                 return loading_wait
             if not self._search_complete():
                 return self.round_wait('等待新的搜查结果', wait=0.3)
+            self._record_safe_items()
             return self.round_success(self.STATUS_DONE, data={'moved': self.moved})
         if choice.kind == ACTION_SWAP:
             if not self._search_complete():
@@ -330,6 +354,7 @@ class BagelStoreSafe(BagelOperation):
                     '贝果入箱：结果格 %s 已对换，不再将换出的物品换回',
                     choice.source_index + 1,
                 )
+                self._record_safe_items()
                 return self.round_success(self.STATUS_DONE, data={'moved': self.moved})
         source = self._result_centers[choice.source_index]
         destination = _DEST_CENTERS[choice.kind][choice.dest_index]
@@ -365,6 +390,8 @@ class BagelStoreSafe(BagelOperation):
             _DEST_LABEL[choice.kind], choice.dest_index + 1, destination.tuple(),
             destination_item, self.blueprint_priority,
         )
+        if self.ledger is not None:
+            self.ledger.start_transfer(choice.kind == ACTION_SWAP, choice.dest_index)
         self._drag_item(source, destination)
         return self.round_success('已拖拽一件', wait=0.7)
 
@@ -459,7 +486,9 @@ class BagelStoreSafe(BagelOperation):
         return self.round_fail(self.STATUS_ROUND_FAILED, data=reason)
 
     def _clear_pending(self) -> None:
-        """丢掉这一次拖拽的前后对照。"""
+        """丢掉这一次拖拽的前后对照；未确认入箱的账本登记一并撤销。"""
+        if self.ledger is not None:
+            self.ledger.cancel_transfer()
         self._pending_before = None
         self._pending_source = None
         self._pending_source_index = None
@@ -501,6 +530,7 @@ class BagelStoreSafe(BagelOperation):
         if kind == ACTION_SWAP and destination_index not in safe.occupied:
             return self.round_fail('对换后安全箱目标格不再占用，停止并保留现场')
         if destination_index in safe.occupied and self._drag_visually_ok(kind, before, source, destination):
+            self._confirm_ledger_transfer()
             self._clear_pending()
             self._drag_repeated = 0
             self._left_grid_waited = False
@@ -538,6 +568,7 @@ class BagelStoreSafe(BagelOperation):
         if kind == ACTION_FILL and dest_now and not slot_occupied(before, destination):
             # 面板已通过稳定检查，目标格由空变有即可确认填空成功。
             # 源格可能误识别为占用，不能因此对已占用的目标再次拖拽。
+            self._confirm_ledger_transfer()
             self._clear_pending()
             self._drag_repeated = 0
             self._left_grid_waited = False
@@ -566,6 +597,43 @@ class BagelStoreSafe(BagelOperation):
             return self._skip_and_reselect(source_index, '对换重拖后两格外观仍未变化')
         self._clear_pending()
         return self._give_up('入箱画面无变化，源格和目标格都没动')
+
+    def _confirm_ledger_transfer(self) -> None:
+        """入箱已确认，账本里的这次拖拽转为待结算。"""
+        if self.ledger is not None:
+            self.ledger.confirm_transfer()
+
+    def _observe_survey_value(self) -> None:
+        """读面板底栏「本次调查收益」交给账本；只用于统计，读不到不影响装箱。"""
+        if self.ledger is None:
+            return
+        try:
+            text = bagel_screen.read_area(self.ctx, self.last_screenshot, '贝果-局内', '本次调查收益')
+        except Exception:
+            log.error('读取本次调查收益失败，本次不计入统计', exc_info=True)
+            text = ''
+        self.ledger.observe(*parse_survey(text))
+
+    def _record_safe_items(self) -> None:
+        """记下装箱结束时安全箱各格的类型、品质与数量；只用于统计日志。"""
+        if self.ledger is None:
+            return
+        try:
+            safe = inspect_safe_slots(self.last_screenshot)
+            if safe is None:
+                return
+            items: dict[int, tuple[str, str, int]] = {}
+            for mark in inspect_occupied(self.last_screenshot, SAFE_SLOT_CENTERS, safe.occupied):
+                rect = Rect(
+                    mark.center.x - _SAFE_QUANTITY_HALF_WIDTH, _SAFE_QUANTITY_TOP,
+                    mark.center.x + _SAFE_QUANTITY_HALF_WIDTH, _SAFE_QUANTITY_BOTTOM,
+                )
+                texts = self.ctx.ocr_service.get_ocr_result_list(image=self.last_screenshot, rect=rect)
+                quantity = parse_quantity(''.join(item.data for item in texts))
+                items[mark.index] = (mark.item_type, mark.quality, quantity)
+            self.ledger.slot_items = items
+        except Exception:
+            log.error('记录安全箱物品失败，本次不计入统计', exc_info=True)
 
     def _drag_item(self, source: Point, destination: Point) -> None:
         """先按住再移动，给游戏时间抓起物品，避免拖成结果列表滚动。"""

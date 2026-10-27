@@ -28,6 +28,7 @@ from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils import cal_utils, cv2_utils, str_utils
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
+from zzz_od.application.bagel import bagel_screen
 from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
 from zzz_od.application.bagel.bagel_input_worker import BagelInputWorker
 from zzz_od.application.bagel.bagel_operation import BagelOperation
@@ -39,6 +40,7 @@ from zzz_od.application.bagel.bagel_route_recorder import (
     is_foreground,
     list_routes,
 )
+from zzz_od.application.bagel.bagel_stats import BagelSafeLedger, parse_value
 from zzz_od.application.bagel.bagel_store import BagelStoreSafe
 from zzz_od.application.bagel.bagel_unlock_safe import BagelUnlockSafe
 from zzz_od.game_data.map_locator.map_locator import (
@@ -395,6 +397,10 @@ class BagelRouteWalker(BagelOperation):
         """上次为推进对话而点按的时刻，控制每秒一次。"""
         self.input_worker: BagelInputWorker = BagelInputWorker(ctx)
         """按键单独线程：主线投递即返回；同种操作不打断自己，不同操作打断旧的。"""
+        self.ledger: BagelSafeLedger = BagelSafeLedger()
+        """本局安全箱物品与推算价值，只用于统计日志。"""
+        self.survey_value: int | None = None
+        """最近一次关闭搜查面板后从 HUD 读到的调查收益，只用于统计日志。"""
 
     def state_snapshot(self) -> dict[str, object]:
         """给悬浮窗用的执行状态快照。
@@ -947,7 +953,7 @@ class BagelRouteWalker(BagelOperation):
     @operation_node(name='收集入箱')
     def collect(self) -> OperationRoundResult:
         """逐件装入安全箱。"""
-        op = BagelStoreSafe(self.ctx, blueprint_priority=self.blueprint_priority)
+        op = BagelStoreSafe(self.ctx, blueprint_priority=self.blueprint_priority, ledger=self.ledger)
         result = op.execute()
         self._adopt_screenshot(op)
         if result.success:
@@ -962,6 +968,7 @@ class BagelRouteWalker(BagelOperation):
         result = op.execute()
         self._adopt_screenshot(op)
         if result.success:
+            self._read_survey_value()
             return self.round_success('已关闭面板')
         return self.round_recoverable_fail(f'关闭面板失败：{result.status}')
 
@@ -1597,6 +1604,20 @@ class BagelRouteWalker(BagelOperation):
         self._stop_sprint()
         self.input_worker.stop_forward()
         self.input_worker.stop_backward()
+
+    def _read_survey_value(self) -> None:
+        """关闭面板回到局内后读 HUD 调查收益；读到的值视为已停住，交给账本结算。"""
+        try:
+            value = parse_value(bagel_screen.read_area(
+                self.ctx, self.last_screenshot, '贝果-局内', '调查收益',
+            ))
+        except Exception:
+            log.error('读取调查收益失败，本次不计入统计', exc_info=True)
+            return
+        if value is None:
+            return
+        self.survey_value = value
+        self.ledger.settle(value)
 
     def _adopt_screenshot(self, op: BagelOperation) -> None:
         """子操作结束后同步其最后截图。"""
