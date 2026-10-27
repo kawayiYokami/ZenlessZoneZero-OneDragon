@@ -1,9 +1,10 @@
 {
- "version": 1,
+ "version": 2,
  "route_id": "改建工程区-默认",
+ "name": "改建工程区-默认",
+ "spawn_id": "janus_construction",
  "started_at": "2026-10-25T23:14:34+08:00",
  "ended_at": "2026-10-25T23:16:03+08:00",
- "enabled": false,
  "points": [
   {
    "x": 606,

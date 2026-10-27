@@ -1,9 +1,10 @@
 {
- "version": 1,
+ "version": 2,
  "route_id": "录像店-默认",
+ "name": "录像店-默认",
+ "spawn_id": "janus_video_store",
  "started_at": "2026-10-25T23:34:41+08:00",
  "ended_at": "2026-10-25T23:35:16+08:00",
- "enabled": true,
  "points": [
   {
    "x": 830,
