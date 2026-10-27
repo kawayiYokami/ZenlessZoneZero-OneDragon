@@ -1159,8 +1159,8 @@ class BagelRouteWalker(BagelOperation):
         stuck = self._check_stuck(position, point, controller_angle)
         if stuck is not None:
             return stuck
-        self._record_input()
-        self.input_worker.hold_forward()
+        if self.input_worker.hold_forward():
+            self._record_input()
         self._set_sprint(hypot(point.x - position[0], point.y - position[1]))
         if turn is None:
             return self.round_wait('冲刺前进' if self.sprinting else '按住前进')

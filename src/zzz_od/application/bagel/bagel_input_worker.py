@@ -269,14 +269,16 @@ class BagelInputWorker:
 
     # ---------- 主线投递 ----------
 
-    def hold_forward(self) -> None:
-        """持续前进，取消旧短按的截止时刻。"""
+    def hold_forward(self) -> bool:
+        """持续前进并取消旧短按；返回是否改变了前进意图。"""
         with self._forward_lock:
             if self._stopping:
-                return
+                return False
+            changed = not self._forward_want or self._forward_step_duration is not None
             self._forward_step_duration = None
             self._forward_step_until = None
             self._forward_want = True
+            return changed
 
     def stop_forward(self) -> None:
         """请求松开前进，并取消尚未结束的短按。"""
