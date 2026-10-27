@@ -24,6 +24,8 @@ class BagelUnlockSafe(BagelContainerOperation):
 
     STATUS_READY: str = '已打开光圈解锁界面'
     STATUS_UNLOCKED: str = '电子保险箱搜索完成'
+    INTERRUPT_CONFIRM_SECONDS: float = 0.5
+    """解锁与搜查特征均消失后，持续确认局内画面的最短时间。"""
 
     def __init__(
         self, ctx: ZContext, phase: str = 'full', recovery: ContainerRecovery | None = None,
@@ -38,6 +40,8 @@ class BagelUnlockSafe(BagelContainerOperation):
         self.hits_done: int = 0
         self.ring_armed: bool = False
         self.unlock_started: bool = False
+        self.search_hud_since: float | None = None
+        """等待搜查时首次确认回到局内的截图时间；用于排除面板过渡。"""
         self.on_unlock_ready: Callable[[], None] | None = on_unlock_ready
 
     def handle_init(self) -> None:
@@ -46,6 +50,7 @@ class BagelUnlockSafe(BagelContainerOperation):
         self.hits_done = 0
         self.ring_armed = False
         self.unlock_started = False
+        self.search_hud_since = None
 
     def _notify_unlock_ready(self) -> None:
         """首次进入解锁或搜查时通知执行器交互已完成。"""
@@ -165,9 +170,18 @@ class BagelUnlockSafe(BagelContainerOperation):
         if self._search_ready():
             return self.round_success(self.STATUS_UNLOCKED)
         if self.round_by_find_area(self.last_screenshot, '贝果-局内', '电子保险箱标题').is_success:
+            self.search_hud_since = None
             return self.round_wait('等待电子保险箱搜查状态', wait=0.5)
         if self.round_by_find_area(self.last_screenshot, '贝果-局内', '大保险解锁提示').is_success:
+            self.search_hud_since = None
             return self.round_wait('解锁中，等待进入搜查', wait=0.5)
+        if self.round_by_find_area(self.last_screenshot, '战斗画面', '按键-普通攻击').is_success:
+            if self.search_hud_since is None:
+                self.search_hud_since = self.last_screenshot_time
+            elif self.last_screenshot_time - self.search_hud_since >= self.INTERRUPT_CONFIRM_SECONDS:
+                return self.round_recoverable_fail('解锁被打断，已返回局内')
+            return self.round_wait('疑似解锁中断，复核局内画面', wait=0.5)
+        self.search_hud_since = None
         return self.round_wait('等待电子保险箱面板', wait=0.5)
 
 

@@ -240,6 +240,12 @@ class BagelInputWorker:
         """主线意图：是否该一直按住前进。"""
         self._forward_down: bool = False
         """实际状态：W 键现在是否真的按着。两者不一致时才发键。"""
+        self._forward_step_duration: float | None = None
+        """当前短按的时长；从请求被接收到实际松键期间保留。"""
+        self._forward_step_until: float | None = None
+        """从实际按下开始计算的短按截止时刻，使用单调时钟。"""
+        self._forward_released_at: float = 0.0
+        """最近一次实际松键的系统时间，用于判断截图是否晚于动作。"""
         self._forward_lock: threading.Lock = threading.Lock()
         self._backward_want: bool = False
         """主线意图：是否该一直按住后退（S）。电梯进出要用。"""
@@ -264,33 +270,55 @@ class BagelInputWorker:
     # ---------- 主线投递 ----------
 
     def hold_forward(self) -> None:
-        """希望一直按住前进；线程会把它对齐到真实按键状态。"""
+        """持续前进，取消旧短按的截止时刻。"""
         with self._forward_lock:
+            if self._stopping:
+                return
+            self._forward_step_duration = None
+            self._forward_step_until = None
             self._forward_want = True
 
     def stop_forward(self) -> None:
-        """松开前进。"""
+        """请求松开前进，并取消尚未结束的短按。"""
         with self._forward_lock:
             self._forward_want = False
+            self._forward_step_duration = None
+            self._forward_step_until = None
 
-    def step_forward(self, duration: float) -> None:
-        """短按一次前进，按满时长自动松开。
+    def step_forward(self, duration: float) -> bool:
+        """请求一次短按；已有短按时拒绝新请求，不排队或延长。
 
-        短按通过与按住同一条状态通道实现：先要求按住，到点再要求松开，
-        所以它和转向也互不打断。
+        前进线程从实际按下开始计时，到期后松键。切换到持续前进或停止
+        会取消该截止时刻，不创建可能影响后续输入的独立定时器。
 
         Args:
-            duration: 按住时长（秒）。
-        """
-        self.hold_forward()
-        timer = threading.Timer(duration, self._release_after_step)
-        timer.daemon = True
-        timer.start()
+            duration: 按住时长（秒），必须大于零。
 
-    def _release_after_step(self) -> None:
-        """短按到点：只有没被别人要求继续按住时才松开。"""
+        Returns:
+            是否接受本次请求。
+        """
+        if duration <= 0:
+            raise ValueError('前进短按时长必须大于零')
         with self._forward_lock:
-            self._forward_want = False
+            if self._stopping or self._forward_step_duration is not None:
+                return False
+            self._forward_step_duration = duration
+            self._forward_step_until = None
+            self._forward_want = True
+            return True
+
+    def forward_step_active(self) -> bool:
+        """是否还有尚未完成的前进短按，包含等待实际按下的请求。"""
+        with self._forward_lock:
+            return self._forward_step_duration is not None
+
+    @property
+    def forward_released_at(self) -> float | None:
+        """前进已停止时返回最近松键时间；仍持键或有待执行请求时返回 None。"""
+        with self._forward_lock:
+            if self._forward_want or self._forward_down:
+                return None
+            return self._forward_released_at
 
     def hold_backward(self) -> None:
         """希望一直按住后退（S）；线程会把它对齐到真实按键状态。"""
@@ -311,7 +339,7 @@ class BagelInputWorker:
         self._turn_channel.submit(angle)
 
     def idle(self) -> bool:
-        """所有通道都空闲：转向没在转，即时动作也没有排队或执行中的。
+        """转向与即时动作是否空闲；前进短按状态需单独检查。
 
         转向由线程异步下发，投递返回不代表转完。只有等到真正空闲时
         截到的画面才反映这次转向的结果，此刻读角度才可信。
@@ -362,8 +390,7 @@ class BagelInputWorker:
     def shutdown(self) -> None:
         """停止全部通道并松开前进；退出路径必须调用。"""
         self._stopping = True
-        with self._forward_lock:
-            self._forward_want = False
+        self.stop_forward()
         self._forward_thread.join(timeout=1.0)
         self._backward_thread.join(timeout=1.0)
         self._turn_channel.stop()
@@ -378,24 +405,46 @@ class BagelInputWorker:
     # ---------- 前进通道 ----------
 
     def _forward_loop(self) -> None:
-        """每周期把前进键对齐到意图状态。
+        """对齐前进键，并在实际按下后计时完成短按。
 
-        检查、发键、写账本都在同一把锁内完成：即时通道的
-        _ensure_forward_down 也会补按，两边若各自「先看后按」，
-        会重复发一次按下，账本也可能被旧值覆盖。
+        状态检查、发键和时间记录共用一把锁。持续前进改为短按时，先
+        实际松键再重新按下；停止或新移动方式会取消旧截止时刻。
         """
         while not self._stopping:
             with self._forward_lock:
-                want = self._forward_want
-                if want != self._forward_down:
-                    try:
+                try:
+                    if (
+                        self._forward_step_until is not None
+                        and time.monotonic() >= self._forward_step_until
+                    ):
+                        self._forward_want = False
+                        self._forward_step_until = None
+                    starting_step = (
+                        self._forward_step_duration is not None
+                        and self._forward_step_until is None
+                        and self._forward_want
+                    )
+                    if starting_step and self._forward_down:
+                        self.ctx.controller.move_w(release=True)
+                        self._forward_down = False
+                        self._forward_released_at = time.time()
+                    want = self._forward_want
+                    if want != self._forward_down:
                         if want:
                             self.ctx.controller.move_w(press=True)
                         else:
                             self.ctx.controller.move_w(release=True)
+                            self._forward_released_at = time.time()
                         self._forward_down = want
-                    except Exception:
-                        log.error('贝果输入线程切换前进键失败', exc_info=True)
+                    if (
+                        starting_step and self._forward_down
+                        and self._forward_step_duration is not None
+                    ):
+                        self._forward_step_until = time.monotonic() + self._forward_step_duration
+                    if not self._forward_want and not self._forward_down:
+                        self._forward_step_duration = None
+                except Exception:
+                    log.error('贝果输入线程切换前进键失败', exc_info=True)
             time.sleep(SLEEP_SLICE)
 
     def _backward_loop(self) -> None:
@@ -446,6 +495,8 @@ class BagelInputWorker:
             try:
                 self.ctx.controller.move_w(press=True)
                 self._forward_down = True
+                if self._forward_step_duration is not None:
+                    self._forward_step_until = time.monotonic() + self._forward_step_duration
             except Exception:
                 log.error('贝果冲刺前补按前进键失败', exc_info=True)
 

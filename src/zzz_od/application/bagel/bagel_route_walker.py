@@ -3,9 +3,9 @@
 读取 ``bagel_routes`` 目录下的打点路线，入场后定位一次，在全部路线的
 途径点中找 100px 内最近者作为锚点；之后游标顺序推进：
 
-- 下一格是途径点：正常导航，进入 5px 到达半径即算路过。
-- 下一格是箱类：小碎步靠近，出现 F 提示后按类型交互——电子保险箱走光圈
-  解锁，机械保险箱长按 F，普通箱子、门、电梯点按。
+- 下一格是途径点：正常导航，进入 3px 到达半径即算路过。
+- 下一格是箱类：按距离慢步或碎步靠近。当前目标是电子保险箱时，进入
+  15px 后保持 0.08 秒短步；可信提示出现后松键，按类型交互。
 - 一条路线走完：原地判断现场有无交互物，没有就切换到下一条最近路线；
   全部走完后由应用层走既有退出结算链。
 
@@ -95,6 +95,9 @@ BEACON_SLOW_RADIUS: float = 10.0
 BOX_SMALL_STEP_RADIUS: float = 3.0
 """箱子碎步半径：进到它以内用碎步（用户给定 3px）。"""
 
+ELECTRONIC_SMALL_STEP_RADIUS: float = 15.0
+"""电子保险箱短步半径：进入后保持短步，直到当前目标结束。"""
+
 BOX_WAIT_RADIUS: float = 1.9
 """箱子原地等待半径：距离小于 1.9px 就停步原地等提示（用户给定）。
 
@@ -115,7 +118,7 @@ SLOW_STEP_PRESS: float = 0.5
 """慢步单次按压时长（秒）：比碎步长，一次走得多一点（用户给定 0.5）。"""
 
 SLOW_STEP_WAIT: float = 0.1
-"""慢步走完停一下的时长（秒），形成走走停停的节奏（用户给定 0.1）。"""
+"""慢步投递后重新观察的间隔（秒）；短按未结束时不叠发下一步。"""
 
 TURN_FRACTION: float = 1.0
 """每轮转向取偏差的几成（用户给定：一次直接转到目标角度）。
@@ -358,6 +361,8 @@ class BagelRouteWalker(BagelOperation):
         self.stuck_steps: int = 0
         """当前点已经侧移了几次，进入新点时清零。"""
         self.target_wait_since: float | None = None
+        self.electronic_small_steps: bool = False
+        """当前电子保险箱已进入短步阶段，定位回到半径外时也不恢复长步。"""
         self.small_step_since: float | None = None
         """进入 3px 碎步段的起始时刻，用于碎步超时判定。"""
         self.point_started_at: float | None = None
@@ -690,7 +695,6 @@ class BagelRouteWalker(BagelOperation):
 
     @node_from(from_name='锚点定位', status='已锚定')
     @node_from(from_name='点调度', status='下一格是途径点')
-    @node_from(from_name='导航移动', status='提示已出现')
     @node_from(from_name='切换路线', status='切换路线')
     @operation_node(name='导航移动', mute=True)
     def navigate(self) -> OperationRoundResult:
@@ -705,20 +709,7 @@ class BagelRouteWalker(BagelOperation):
     @node_from(from_name='点调度', status='下一格是箱类')
     @operation_node(name='碎步移动', mute=True)
     def small_step(self) -> OperationRoundResult:
-        """小碎步逼近箱类点，等待 F 提示。"""
-        point = self._current_point()
-        if point is None:
-            return self.round_success('路线走完')
-        kind = self._nearby_kind()
-        if kind is not None:
-            position = self.locate() or self.position
-            if position is None:
-                return self.round_retry('提示出现但定位失败', wait=0.2)
-            if hypot(point.x - position[0], point.y - position[1]) > INTERACTION_TRUST_DISTANCE:
-                return self.round_wait('提示过早，继续碎步', wait=0.15)
-            self._release_forward()
-            self.current_kind = kind
-            return self.round_success('出现交互提示')
+        """按距离逼近箱类点，统一检查到位、提示与单点超时。"""
         return self._move_toward()
 
     # ---------- 交互 ----------
@@ -869,7 +860,7 @@ class BagelRouteWalker(BagelOperation):
         """松开后退键。"""
         self.input_worker.stop_backward()
 
-    @node_from(from_name='碎步移动', status='出现交互提示')
+    @node_from(from_name='碎步移动', status='提示已出现')
     @node_from(from_name='导航移动', status='提示已出现')
     @operation_node(name='按类型交互')
     def interact(self) -> OperationRoundResult:
@@ -1009,12 +1000,23 @@ class BagelRouteWalker(BagelOperation):
         self.locate_misses = 0
         self.locate_miss_since = None
         self.last_position = position
+        distance = hypot(point.x - position[0], point.y - position[1])
+        if (
+            point.kind == 'electronic_safe'
+            and distance <= ELECTRONIC_SMALL_STEP_RADIUS
+            and not self.electronic_small_steps
+        ):
+            self.electronic_small_steps = True
+            self._release_forward()
+            log.info(
+                '贝果电子保险箱进入短步阶段：距离 %.1fpx，半径 %.0fpx，按压 %.2fs',
+                distance, ELECTRONIC_SMALL_STEP_RADIUS, SMALL_STEP_PRESS,
+            )
         if not self.input_worker.idle():
             # 转向还在线程里转，此刻截到的画面是转之前的，读出的角度不能采信。
             return self.round_wait('等待转向落地', wait=0.02)
         if self.last_input_frame is not None and self.last_screenshot_time <= self.last_input_frame:
             return self.round_wait('等待动作后的新截图', wait=0.05)
-        distance = hypot(point.x - position[0], point.y - position[1])
         if distance <= SPRINT_DISTANCE and self.sprinting:
             self._exit_sprint()
         if point.kind == BEACON:
@@ -1032,21 +1034,22 @@ class BagelRouteWalker(BagelOperation):
             if distance <= BEACON_SLOW_RADIUS:
                 return self._slow_step(point, position)
             return self._cruise(point, position)
-        # 箱类：3px 外慢步，3px 内碎步，1.9px 内原地等提示。
-        # 碎步阶段边走边检测提示，提示一出现就转入交互。
-        prompt = self._prompt_stop(point, distance)
+        # 电子保险箱进入 15px 后保持短步；其他箱类仍在 3px 内使用碎步。
+        # 可信提示出现就转入交互，不要求先走到原地等待半径。
+        prompt = self._prompt_stop(distance)
         if prompt is not None:
             return prompt
         if distance < BOX_WAIT_RADIUS:
             self.small_step_since = None
             return self._wait_here(point)
+        self.target_wait_since = None
         if distance <= BOX_SMALL_STEP_RADIUS:
             timeout = self._check_small_step_timeout()
             if timeout is not None:
                 return timeout
             return self._short_step()
         self.small_step_since = None
-        return self._slow_step(point, position)
+        return self._slow_step(point, position, short_press=self.electronic_small_steps)
 
     def _wait_here(self, point: BagelRoutePoint) -> OperationRoundResult:
         """已站在箱子上：原地不动，等提示出现或超时跳到下一个点。
@@ -1058,11 +1061,6 @@ class BagelRouteWalker(BagelOperation):
             point: 当前游标点。
         """
         self._release_forward()
-        kind = self._nearby_kind()
-        if kind is not None:
-            self.current_kind = kind
-            self.target_wait_since = None
-            return self.round_success('提示已出现')
         if self.target_wait_since is None:
             self.target_wait_since = time.monotonic()
             return self.round_wait('原地等待交互提示', wait=0.2)
@@ -1076,25 +1074,19 @@ class BagelRouteWalker(BagelOperation):
             return self.round_success('跳过此点')
         return self.round_wait('原地等待交互提示', wait=0.2)
 
-    def _prompt_stop(self, point: BagelRoutePoint, distance: float) -> OperationRoundResult | None:
-        """移动中发现交互提示就立刻停步，转入交互。
+    def _prompt_stop(self, distance: float) -> OperationRoundResult | None:
+        """可信提示出现后松键并转入交互，不另做停稳复核。
 
         Args:
-            point: 当前游标点。
-            distance: 距目标点距离，用于判断提示是否可信。
+            distance: 当前可靠定位到目标点的距离。
 
         Returns:
-            停步结果；没有提示时返回 None 让调用方继续移动。
+            允许交互的结果；未识别到可信提示时返回 None。
         """
         kind = self._nearby_kind()
-        if kind is None:
+        if kind is None or distance > INTERACTION_TRUST_DISTANCE:
             return None
         self._release_forward()
-        if distance > INTERACTION_TRUST_DISTANCE:
-            log.info(
-                '贝果提示出现在 %.0fpx 外，不采信：%s', distance, self.decision,
-            )
-            return None
         self.current_kind = kind
         self.target_wait_since = None
         return self.round_success('提示已出现')
@@ -1326,6 +1318,16 @@ class BagelRouteWalker(BagelOperation):
             return None
         return float(max(int(magnitude * TURN_FRACTION), 1))
 
+    def _prepare_forward_step(self) -> OperationRoundResult | None:
+        """上一短按结束并取得松键后的截图，才允许发起下一步。"""
+        if self.input_worker.forward_step_active():
+            return self.round_wait('等待本次前进短按结束', wait=0.02)
+        self._release_forward()
+        released_at = self.input_worker.forward_released_at
+        if released_at is None or self.last_screenshot_time <= released_at:
+            return self.round_wait('等待松键后的新截图', wait=0.02)
+        return None
+
     def _short_step(self) -> OperationRoundResult:
         """近距离移动：不停下来对准，直接短按前进。
 
@@ -1336,11 +1338,14 @@ class BagelRouteWalker(BagelOperation):
         方向真的偏了也不怕：走一步后距离变大，自然回到慢步分支去对准。
         超时由调用方 _check_small_step_timeout 管，这里只负责迈步。
         """
+        ready = self._prepare_forward_step()
+        if ready is not None:
+            return ready
         limited = self._fail_if_action_limit()
         if limited is not None:
             return limited
-        self._release_forward()
-        self._step_forward(SMALL_STEP_PRESS)
+        if not self._step_forward(SMALL_STEP_PRESS):
+            return self.round_wait('等待前进短按可用', wait=0.02)
         self._record_input()
         return self.round_wait('短步前进')
 
@@ -1375,15 +1380,22 @@ class BagelRouteWalker(BagelOperation):
 
     def _slow_step(
         self, point: BagelRoutePoint, position: tuple[float, float],
+        short_press: bool = False,
     ) -> OperationRoundResult:
-        """慢步移动：按得比碎步久一点，走一段停一下。
+        """按目标方向步进，电子箱短步阶段使用更短的按压时间。
 
-        用于两类场合：途径点最后 10px 内，以及箱子 5px 外。
-        比碎步快、比巡航稳，靠近目标时不会一冲而过。
+        偏差超过 10 度时停车转向，其余情况允许在这一步同时微调。
+        每步结束后使用新截图重新判断，避免多次短按相互覆盖。
 
-        转向同样按 10 度分界（WALK_TURN_ANGLE）：超过就停车转，
-        10 度以内边走边修，不为对准而放弃这一步。
+        Args:
+            point: 当前目标点。
+            position: 当前可靠定位。
+            short_press: 是否使用 0.08 秒短步；否则使用 0.5 秒慢步。
         """
+        ready = self._prepare_forward_step()
+        if ready is not None:
+            return ready
+        action = '短步' if short_press else '慢步'
         angle = self.player_angle()
         miss = self._angle_miss_result(angle)
         if miss is not None:
@@ -1394,28 +1406,27 @@ class BagelRouteWalker(BagelOperation):
         angle_diff = cal_utils.angle_delta(controller_angle, target_angle)
         turn = self._turn_step(angle_diff)
         if turn is not None and abs(angle_diff) > WALK_TURN_ANGLE:
-            # 大偏差：停车转，转到位再走。
-            self._release_forward()
             effective = turn if angle_diff > 0 else -turn
             self._send_turn(effective)
             return self.round_wait(
-                f'慢步停车转向 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
+                f'{action}停车转向 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
                 wait=TURN_INTERVAL,
             )
         limited = self._fail_if_action_limit()
         if limited is not None:
             return limited
-        self._release_forward()
-        self._step_forward(SLOW_STEP_PRESS)
+        duration = SMALL_STEP_PRESS if short_press else SLOW_STEP_PRESS
+        if not self._step_forward(duration):
+            return self.round_wait('等待前进短按可用', wait=0.02)
         self._record_input()
+        wait = None if short_press else SLOW_STEP_WAIT
         if turn is None:
-            return self.round_wait('慢步前进', wait=SLOW_STEP_WAIT)
-        # 小偏差：先迈这一步，再顺手修一下角度。
+            return self.round_wait(f'{action}前进', wait=wait)
         effective = turn if angle_diff > 0 else -turn
         self._send_turn(effective)
         return self.round_wait(
-            f'慢步前进并微调 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
-            wait=SLOW_STEP_WAIT,
+            f'{action}前进并微调 {angle_diff:.0f}度 · 本轮 {effective:+.0f}度',
+            wait=wait,
         )
 
     @staticmethod
@@ -1552,6 +1563,7 @@ class BagelRouteWalker(BagelOperation):
         self.mechanical_hold_until = None
         self.mechanical_retried = False
         self.target_wait_since = None
+        self.electronic_small_steps = False
         self.small_step_since = None
         self.steps = 0
         self.stuck_since = None
@@ -1559,13 +1571,13 @@ class BagelRouteWalker(BagelOperation):
         self.elevator_phase = None
         self.elevator_since = None
 
-    def _step_forward(self, duration: float) -> None:
-        """发起一次短按前进；同种操作由输入线程自己保证不互相打断。
+    def _step_forward(self, duration: float) -> bool:
+        """请求一次前进短按，返回输入线程是否接受。
 
         Args:
             duration: 这一次按住的时长（秒）。
         """
-        self.input_worker.step_forward(duration)
+        return self.input_worker.step_forward(duration)
 
     def _record_input(self) -> None:
         """记录一次输入并拒绝复用旧截图。"""
