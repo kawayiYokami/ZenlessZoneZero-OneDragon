@@ -268,8 +268,10 @@ class BagelApp(ZApplication):
         if walker.last_screenshot is not None:
             self.last_screenshot = walker.last_screenshot
             self.last_screenshot_time = walker.last_screenshot_time
-        if outcome.success and outcome.status == BagelRouteWalker.STATUS_DONE:
-            return self.round_success()
+        if outcome.success:
+            if outcome.status == BagelRouteWalker.STATUS_DONE:
+                return self.round_success(BagelRouteWalker.STATUS_DONE)
+            return self.round_fail('路线执行提前结束，未确认全部路线完成', data=outcome.status)
         if not outcome.success and outcome.status == BagelRouteWalker.STATUS_ANCHOR_MISS:
             # 锚点失败是「这局出生点不在任何路线上」，属于换一局重开，
             # 不是整体失败；走非支持出生点那条退出重开的路。
@@ -282,7 +284,18 @@ class BagelApp(ZApplication):
             return self.round_fail(BagelOperation.STATUS_ROUND_FAILED, data=reason)
         return self.round_by_op_result(outcome)
 
-    @node_from(from_name='执行局内流程')
+    @node_from(from_name='执行局内流程', status=BagelRouteWalker.STATUS_DONE)
+    @operation_node(name='正常局退出', screenshot_before_round=False)
+    def exit_after_success(self) -> OperationRoundResult:
+        """路线完整结束后退出到仓库；退出失败时不入仓或计成功。"""
+        release_flow_inputs(self.ctx)
+        operation = BagelExit(self.ctx)
+        result = operation.execute()
+        self.last_screenshot = operation.last_screenshot
+        self.last_screenshot_time = operation.last_screenshot_time
+        return self.round_by_op_result(result)
+
+    @node_from(from_name='正常局退出')
     @operation_node(name='结算仓库', screenshot_before_round=False)
     def settle(self) -> OperationRoundResult:
         """只有安全箱有物且确实入仓才计成功；空箱局仍要返回入口。"""
