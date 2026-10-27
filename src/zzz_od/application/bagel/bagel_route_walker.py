@@ -1,13 +1,16 @@
 """贝果路线执行状态机：按打点顺序走到最后。
 
-读取 ``bagel_routes`` 目录下的打点路线，入场后定位一次，在全部路线的
-途径点中找 100px 内最近者作为锚点；之后游标顺序推进：
+入场后先识别出生点：连续 2 次新截图命中同一个已登记出生点才确认，最多
+观察 10 秒。正式运行执行该出生点当前开启的路线；试跑执行指定路线，但角色
+也必须站在该路线绑定的出生点。确认后从路线第 1 点开始，游标顺序推进：
 
 - 下一格是途径点：正常导航，进入 3px 到达半径即算路过。
 - 下一格是箱类：按距离慢步或碎步靠近。当前目标是电子保险箱时，进入
   15px 后保持 0.08 秒短步；可信提示出现后松键，按类型交互。
-- 一条路线走完：原地判断现场有无交互物，没有就切换到下一条最近路线；
-  全部走完后由应用层走既有退出结算链。
+- 路线走完：原地判断现场有无交互物，没有就结束；由应用层走既有退出结算链。
+
+出生点不在已登记范围内、或出生点没有开启路线时，返回 ``STATUS_ANCHOR_MISS``，
+由应用层退出重开。
 
 导航与交互复用旧实现里与旧流程解耦的部分：分层定位、朝向识别、转向
 补偿、光圈解锁、逐件入箱、关闭面板。旧流程（flow.yml 步骤、写死的
@@ -32,13 +35,27 @@ from zzz_od.application.bagel import bagel_screen
 from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
 from zzz_od.application.bagel.bagel_input_worker import BagelInputWorker
 from zzz_od.application.bagel.bagel_operation import BagelOperation
-from zzz_od.application.bagel.bagel_route_recorder import (
+from zzz_od.application.bagel.bagel_route_model import (
+    BEACON,
     ELEVATOR,
     ELEVATOR_EXIT_BACKWARD,
     BagelRoute,
     BagelRoutePoint,
-    is_foreground,
-    list_routes,
+    BagelRouteRef,
+    BagelSpawnPoint,
+    check_route_start,
+)
+from zzz_od.application.bagel.bagel_route_recorder import is_foreground
+from zzz_od.application.bagel.bagel_route_store import (
+    BagelRouteConfigError,
+    BagelRouteStore,
+)
+from zzz_od.application.bagel.bagel_spawn import (
+    SPAWN_AMBIGUOUS,
+    SPAWN_HIT,
+    SPAWN_MISS,
+    BagelSpawnMatch,
+    match_spawn,
 )
 from zzz_od.application.bagel.bagel_stats import BagelSafeLedger, parse_value
 from zzz_od.application.bagel.bagel_store import BagelStoreSafe
@@ -57,9 +74,6 @@ if TYPE_CHECKING:
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
     from zzz_od.context.zzz_context import ZContext
 
-BEACON: str = 'beacon'
-"""途径点：纯路点，路过即可，不交互。"""
-
 ELEVATOR_OPTION_TAP_SECONDS: float = 1.0
 """电梯选项还没出现时，点一次屏幕中间推进对话的间隔（用户给定每秒一次）。"""
 
@@ -76,8 +90,11 @@ ELEVATOR_PHASE_CLICK_OPTION: str = 'click_option'
 ELEVATOR_PHASE_EXIT: str = 'exit'
 """电梯四个阶段的标识：进门、等选项、点选项、出电梯。"""
 
-ANCHOR_DISTANCE: float = 100.0
-"""锚点半径：初始定位后与途径点的最大距离（用户给定）。"""
+SPAWN_CONFIRM_FRAMES: int = 2
+"""出生点识别需要连续几次新截图得出相同结论。"""
+
+SPAWN_OBSERVE_SECONDS: float = 10.0
+"""出生点识别的最长观察时间（秒）；期间不移动角色。"""
 
 ARRIVE_RADIUS: float = 3.0
 """到达半径：3px 内算到点（用户给定）。"""
@@ -235,17 +252,6 @@ PICKUP_WORDS: tuple[str, ...] = ('药粉', '拾取')
 """可拾取物而非容器的提示词；按 F 会捡起地上的东西，不能当箱子处理。"""
 
 
-class AnchorMissError(Exception):
-    """锚点半径内没有途径点，无法开始执行。"""
-
-
-def route_map_id(route: BagelRoute) -> str:
-    """路线首个点所在层的地图标识。"""
-    if not route.points:
-        return ''
-    return route.points[0].layer.split('/')[0]
-
-
 def _closest_on_segment(
     start: BagelRoutePoint, end: BagelRoutePoint, position: tuple[float, float],
 ) -> tuple[float, float]:
@@ -268,86 +274,57 @@ def _closest_on_segment(
     return (start.x + t * dx, start.y + t * dy)
 
 
-def anchor_index(
-    routes: list[BagelRoute], position: tuple[float, float], map_id: str,
-) -> tuple[int, int]:
-    """只认路线第一个点作为锚点，且它必须是途径点。
-
-    不做「就近接入」：中途接入会从路线中段甚至终点开始走，前面的路段
-    整个被跳过。只比较每条路线的第 1 点。
-
-    Args:
-        routes: 参与选择的路线列表。
-        position: 当前全局坐标。
-        map_id: 当前所在地图标识，只比较同地图的路线。
-
-    Returns:
-        (路线下标, 0)。
-
-    Raises:
-        AnchorMissError: 没有任何路线的起点在锚点半径内。
-    """
-    nearest: tuple[float, int] | None = None
-    for route_index, route in enumerate(routes):
-        if route_map_id(route) != map_id:
-            continue
-        if not route.points:
-            continue
-        first = route.points[0]
-        if first.kind != BEACON:
-            continue
-        distance = hypot(first.x - position[0], first.y - position[1])
-        if distance > ANCHOR_DISTANCE:
-            continue
-        if nearest is None or distance < nearest[0]:
-            nearest = (distance, route_index)
-    if nearest is None:
-        raise AnchorMissError(f'路线起点都不在 {ANCHOR_DISTANCE:.0f}px 内')
-    return nearest[1], 0
-
-
 class BagelRouteWalker(BagelOperation):
     """按打点顺序执行路线，箱类按类型交互。"""
 
-    STATUS_ANCHOR_MISS: str = '附近没有途径点，退出重开'
+    STATUS_ANCHOR_MISS: str = '出生点没有可执行路线，退出重开'
+    STATUS_SPAWN_FAILED: str = '出生点识别失败'
+    STATUS_CONFIG_INVALID: str = '路线配置无效'
     STATUS_NOT_FOREGROUND: str = '游戏不在前台，已停止'
-    STATUS_DONE: str = '全部路线走完'
+    STATUS_DONE: str = '路线走完'
 
     def __init__(
         self, ctx: ZContext, blueprint_priority: bool = True,
-        route_id: str | None = None, single_route: bool = False,
+        route_ref: BagelRouteRef | None = None,
     ) -> None:
-        """加载路线并准备定位。
+        """加载出生点清单并准备定位。
 
         Args:
             ctx: 运行上下文。
             blueprint_priority: 入箱时蓝图是否优先。
-            route_id: 指定路线用于试跑；None 表示从启用路线中选择起点。
-            single_route: 锚定后只执行选中的路线，正式应用用它避免跨出生点直线接入。
+            route_ref: 试跑时指定的路线，关闭的路线也可以试跑；None 表示正式运行，
+                识别出生点后执行该出生点当前开启的路线。
 
         Raises:
-            ValueError: 一条路线都没有，或指定路线不存在时构造失败。
+            ValueError: 出生点清单无法读取，或指定路线不存在、损坏、绑定的出生点未登记。
         """
         super().__init__(ctx, op_name='贝果-路线执行', timeout_seconds=-1)
-        all_routes = list_routes()
-        if route_id is not None:
-            # 指定路线用于试跑：关闭的路线不执行，直接说明原因。
-            routes = [route for route in all_routes if route.route_id == route_id]
-            if not routes:
-                raise ValueError(f'路线不存在：{route_id}')
-            if not routes[0].enabled:
-                raise ValueError(f'路线 {route_id} 已关闭，先在编辑器里打开开关')
-        else:
-            routes = [route for route in all_routes if route.enabled]
-            if not routes:
-                raise ValueError('没有启用中的贝果路线，先在编辑器里打开路线开关')
-        self.routes: list[BagelRoute] = routes
-        self.single_route: bool = single_route
+        self.store: BagelRouteStore = BagelRouteStore()
+        try:
+            self.spawns: list[BagelSpawnPoint] = self.store.load_spawns()
+            self.trial_route: BagelRoute | None = (
+                None if route_ref is None else self.store.load_route(route_ref)
+            )
+        except BagelRouteConfigError as error:
+            raise ValueError(str(error)) from error
+        if self.trial_route is not None and not any(
+            spawn.spawn_id == self.trial_route.spawn_id for spawn in self.spawns
+        ):
+            raise ValueError(f'路线绑定的出生点未登记：{self.trial_route.spawn_id}')
+        self.routes: list[BagelRoute] = []
+        """本局执行的路线快照；识别出生点后才确定，只含一条。"""
+        self.spawn: BagelSpawnPoint | None = None
+        """本局识别到的出生点。"""
+        self.spawn_started_at: float | None = None
+        """出生点识别的起始时刻。"""
+        self.spawn_last_match: BagelSpawnMatch | None = None
+        """上一帧的出生点匹配结论；定位失败时清空。"""
+        self.spawn_streak: int = 0
+        """连续得出相同出生点结论的新截图次数。"""
         self.blueprint_priority: bool = blueprint_priority
         self.locator: MultiMapLocator = MultiMapLocator(load_map_locators())
         self.route_index: int = 0
         self.cursor: int = 0
-        self.finished_routes: set[str] = set()
         self.current_kind: str | None = None
         self.f_pressed: bool = False
         self.mechanical_hold_until: float | None = None
@@ -418,6 +395,8 @@ class BagelRouteWalker(BagelOperation):
         return {
             'decision': self.decision,
             'route_id': route.route_id if route is not None else '',
+            'route_name': route.name if route is not None else '',
+            'spawn_name': self.spawn.name if self.spawn is not None else '',
             'route_index': self.route_index,
             'route_count': len(self.routes),
             'cursor': self.cursor,
@@ -519,27 +498,76 @@ class BagelRouteWalker(BagelOperation):
 
     # ---------- 节点 ----------
 
-    @operation_node(name='锚点定位', is_start_node=True)
+    @operation_node(name='出生点识别', is_start_node=True)
     def anchor(self) -> OperationRoundResult:
-        """定位一次，找锚点半径内最近途径点作为起点。"""
+        """识别出生点并确定本局路线，期间不移动角色。
+
+        每轮使用新截图定位一次。连续 ``SPAWN_CONFIRM_FRAMES`` 次得出相同结论才采用；
+        定位缺失或命中多个出生点时等下一帧，超过 ``SPAWN_OBSERVE_SECONDS`` 仍无结论则失败，
+        不按路线顺序任取一条。
+        """
+        now = time.monotonic()
+        if self.spawn_started_at is None:
+            self.spawn_started_at = now
+        if now - self.spawn_started_at > SPAWN_OBSERVE_SECONDS:
+            reason = '定位失败' if self.spawn_last_match is None else self.spawn_last_match.describe()
+            log.warning('贝果出生点识别：%.0f 秒内没有稳定结论（%s）', SPAWN_OBSERVE_SECONDS, reason)
+            return self.round_fail(self.STATUS_SPAWN_FAILED, data=reason)
         position = self.locate()
         if position is None:
-            return self.round_retry('定位失败，重试', wait=0.3)
-        try:
-            route_index, point_index = anchor_index(
-                self.routes, position, self.last_map_id or '',
+            self.spawn_last_match = None
+            self.spawn_streak = 0
+            return self.round_wait('定位失败，等下一帧', wait=0.2)
+        match = match_spawn(self.spawns, self.last_map_id or '', position)
+        self.spawn_streak = self.spawn_streak + 1 if match.same_as(self.spawn_last_match) else 1
+        self.spawn_last_match = match
+        if match.kind == SPAWN_AMBIGUOUS or self.spawn_streak < SPAWN_CONFIRM_FRAMES:
+            return self.round_wait(match.describe(), wait=0.2)
+        if match.kind == SPAWN_MISS:
+            log.info(
+                '贝果出生点识别：位置 (%.0f,%.0f) 不在任何已登记出生点范围内',
+                position[0], position[1],
             )
-        except AnchorMissError as error:
-            log.info('贝果锚点：%s', error)
             return self.round_fail(self.STATUS_ANCHOR_MISS)
-        if self.single_route:
-            self.routes = [self.routes[route_index]]
-            route_index = 0
-        self._enter_point(route_index, point_index)
+        if match.kind != SPAWN_HIT or match.spawn is None:
+            return self.round_fail(self.STATUS_SPAWN_FAILED, data=match.describe())
+        return self._start_route_at(match.spawn)
+
+    def _start_route_at(self, spawn: BagelSpawnPoint) -> OperationRoundResult:
+        """按识别到的出生点确定路线快照，并从第 1 点开始。
+
+        Args:
+            spawn: 已确认的出生点。
+        """
+        self.spawn = spawn
+        if self.trial_route is not None:
+            route = self.trial_route
+            if route.spawn_id != spawn.spawn_id:
+                bound = next(
+                    (item.name for item in self.spawns if item.spawn_id == route.spawn_id),
+                    route.spawn_id,
+                )
+                return self.round_fail(
+                    self.STATUS_SPAWN_FAILED,
+                    data=f'角色在{spawn.name}，路线「{route.name}」绑定的是{bound}',
+                )
+        else:
+            try:
+                route = self.store.active_route(spawn.spawn_id)
+            except BagelRouteConfigError as error:
+                log.error('贝果出生点 %s 的路线配置无效：%s', spawn.name, error)
+                return self.round_fail(self.STATUS_CONFIG_INVALID, data=str(error))
+            if route is None:
+                log.info('贝果出生点识别：%s 没有开启的路线', spawn.name)
+                return self.round_fail(self.STATUS_ANCHOR_MISS)
+        problem = check_route_start(route, spawn)
+        if problem is not None:
+            return self.round_fail(self.STATUS_CONFIG_INVALID, data=f'路线「{route.name}」{problem}')
+        self.routes = [route]
+        self._enter_point(0, 0)
         log.info(
-            '贝果锚点：路线 %s 第 %s 点，共 %s 点',
-            self.routes[route_index].route_id, point_index + 1,
-            len(self.routes[route_index].points),
+            '贝果出生点识别：%s，执行路线「%s」（%s），共 %s 点',
+            spawn.name, route.name, route.ref, len(route.points),
         )
         return self.round_success('已锚定')
 
@@ -665,48 +693,16 @@ class BagelRouteWalker(BagelOperation):
         return self._interact_by_kind(kind)
 
     @node_from(from_name='现场交互判断', status='现场无交互物')
-    @operation_node(name='切换路线')
-    def switch_route(self) -> OperationRoundResult:
-        """切到下一条还没走的路线，从它的第 1 点开始；没有剩余则结束。
-
-        不做「就近接入」：只比较每条路线的起点，接入点永远是第 1 点。
-        中途接入会从路线中段甚至终点点开始，前面的路段整个被跳过。
-        """
-        self.finished_routes.add(self.routes[self.route_index].route_id)
-        remaining = [
-            route for route in self.routes
-            if route.route_id not in self.finished_routes
-        ]
-        if not remaining:
-            log.info('贝果路线执行：%s 条路线全部走完', len(self.routes))
-            return self.round_success(self.STATUS_DONE)
-        position = self.locate() or self.position
-        if position is None:
-            return self.round_retry('切换路线前定位失败', wait=0.3)
-        nearest: tuple[float, int] | None = None
-        for route_index, route in enumerate(self.routes):
-            if route.route_id in self.finished_routes:
-                continue
-            if route_map_id(route) != self.last_map_id:
-                continue
-            if not route.points:
-                continue
-            first = route.points[0]
-            if first.kind != BEACON:
-                continue
-            distance = hypot(first.x - position[0], first.y - position[1])
-            if nearest is None or distance < nearest[0]:
-                nearest = (distance, route_index)
-        if nearest is None:
-            return self.round_fail('剩余路线没有可用的起点途径点，无法切换')
-        self._enter_point(nearest[1], 0)
-        return self.round_success('切换路线')
+    @operation_node(name='路线结束')
+    def finish_route(self) -> OperationRoundResult:
+        """本局只执行一条路线，走完且现场没有交互物即结束。"""
+        log.info('贝果路线执行：路线「%s」走完', self.routes[self.route_index].name)
+        return self.round_success(self.STATUS_DONE)
 
     # ---------- 导航 ----------
 
-    @node_from(from_name='锚点定位', status='已锚定')
+    @node_from(from_name='出生点识别', status='已锚定')
     @node_from(from_name='点调度', status='下一格是途径点')
-    @node_from(from_name='切换路线', status='切换路线')
     @operation_node(name='导航移动', mute=True)
     def navigate(self) -> OperationRoundResult:
         """朝当前点移动；途径点 3px 到达，箱类见到提示就停。
@@ -1513,6 +1509,8 @@ class BagelRouteWalker(BagelOperation):
 
     def _previous_point(self) -> BagelRoutePoint | None:
         """上一个点；路线起点没有上一个点时返回 None。"""
+        if not self.routes:
+            return None
         route = self.routes[self.route_index]
         if self.cursor <= 0:
             return None
@@ -1553,7 +1551,9 @@ class BagelRouteWalker(BagelOperation):
         return self.round_recoverable_fail('单点输入达到上限')
 
     def _current_point(self) -> BagelRoutePoint | None:
-        """当前路线游标处的点。"""
+        """当前路线游标处的点；还没确定路线时返回 None。"""
+        if not self.routes:
+            return None
         route = self.routes[self.route_index]
         if self.cursor >= len(route.points):
             return None

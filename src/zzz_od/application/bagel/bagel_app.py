@@ -18,7 +18,10 @@ from zzz_od.application.bagel.bagel_operation import (
     is_bagel_result,
 )
 from zzz_od.application.bagel.bagel_return import BagelReturn
-from zzz_od.application.bagel.bagel_route_recorder import list_routes
+from zzz_od.application.bagel.bagel_route_store import (
+    BagelRouteConfigError,
+    BagelRouteStore,
+)
 from zzz_od.application.bagel.bagel_route_walker import BagelRouteWalker
 from zzz_od.application.bagel.bagel_run_flow import release_flow_inputs
 from zzz_od.application.bagel.bagel_settle import BagelSettleWarehouse
@@ -38,8 +41,8 @@ class BagelApp(ZApplication):
     """支持出生点收集并按成功入仓局数循环。"""
 
     STATUS_SKIP: str = '非支持出生点，退出重开'
-    STATUS_ANCHOR_SKIP: str = '附近没有途径点，退出重开'
-    STATUS_A: str = '录像店复活点，开始收集'
+    STATUS_ANCHOR_SKIP: str = '出生点没有可执行路线，退出重开'
+    STATUS_A: str = '已进入局内，开始识别出生点'
 
     def __init__(
         self, ctx: ZContext, config: BagelConfig, record: BagelRunRecord,
@@ -197,14 +200,24 @@ class BagelApp(ZApplication):
         name='检查贝果运行条件', is_start_node=True, screenshot_before_round=False,
     )
     def check_ready(self) -> OperationRoundResult:
-        """校验配置和路线；是否零携带由入场时的当前画面确认。"""
+        """校验配置和路线选择；是否零携带由入场时的当前画面确认。
+
+        路线选择无效时拒绝开始，不自动换成其他路线。
+        """
         try:
             self.config.validate()
-            routes = list_routes(enabled_only=True)
-            if not routes:
-                raise ValueError('没有启用中的贝果路线，先在编辑器里打开路线开关')
-        except (OSError, ValueError) as error:
+            catalog = BagelRouteStore().load_catalog()
+            problems = catalog.selection_problems()
+            if problems:
+                raise ValueError('；'.join(problems))
+            if catalog.active_count() == 0:
+                raise ValueError('没有开启的贝果路线，先在路线编辑器里为出生点开启路线')
+        except (OSError, ValueError, BagelRouteConfigError) as error:
             return self.round_fail(f'贝果配置无效：{error}')
+        for spawn in catalog.spawns:
+            ref = catalog.active_ref(spawn.spawn_id)
+            route = catalog.route(ref) if ref is not None else None
+            log.info('贝果出生点 %s：%s', spawn.name, f'开启「{route.name}」' if route is not None else '未开启路线')
         bagel_usage.log_start(self.config)
         return self.round_success()
 
@@ -267,19 +280,19 @@ class BagelApp(ZApplication):
         if area is None:
             return self.round_fail('缺少贝果定位小地图区域')
         self.attempts += 1
-        # 出生锚定由路线执行器完成：这里只确认画面是贝果局内并可以开始。
+        # 出生点识别由路线执行器完成：这里只确认画面是贝果局内并可以开始。
         self.matched_map_id = 'route_walker'
-        log.info('第 %s 次入场成功，交给路线执行器锚定最近途径点', self.attempts)
+        log.info('第 %s 次入场成功，交给路线执行器识别出生点', self.attempts)
         return self.round_success(self.STATUS_A)
 
     @node_from(from_name='识别出生点', status=STATUS_SKIP)
     @node_from(from_name='执行局内流程', status=STATUS_ANCHOR_SKIP)
     @operation_node(name='退出非支持局', screenshot_before_round=False)
     def exit_unsupported(self) -> OperationRoundResult:
-        """出生点不在任何路线上：空跑退出，失败时留图。
+        """出生点没有可执行路线：空跑退出，失败时留图。
 
-        锚点失败也走这里——那是「这局出生点没落在任何路线的锚点半径内」，
-        等于非支持出生点，退出去重开，不计成功、不消耗整体重试次数。
+        路线执行器识别到的出生点不在已登记范围内，或该出生点没有开启路线时也走这里，
+        退出去重开，不计成功、不消耗整体重试次数。
         """
         self._stats.set_outcome(bagel_stats.OUTCOME_UNSUPPORTED)
         self._stats.set_income(0)
@@ -302,12 +315,11 @@ class BagelApp(ZApplication):
     @node_from(from_name='识别出生点', status=STATUS_A)
     @operation_node(name='执行局内流程', screenshot_before_round=False)
     def run_flow(self) -> OperationRoundResult:
-        """按打点路线执行；锚定与推进由路线执行器负责。"""
+        """按出生点开启的路线执行；出生点识别与推进由路线执行器负责。"""
         self._stats.begin_phase(bagel_stats.PHASE_ROUTE)
         try:
             walker = BagelRouteWalker(
                 self.ctx, blueprint_priority=self.config.blueprint_priority,
-                single_route=True,
             )
         except ValueError as error:
             return self.round_fail(f'路线执行器初始化失败：{error}')
@@ -322,9 +334,15 @@ class BagelApp(ZApplication):
                 return self.round_success(BagelRouteWalker.STATUS_DONE)
             return self.round_fail('路线执行提前结束，未确认全部路线完成', data=outcome.status)
         if not outcome.success and outcome.status == BagelRouteWalker.STATUS_ANCHOR_MISS:
-            # 锚点失败是「这局出生点不在任何路线上」，属于换一局重开，
+            # 出生点不在已登记范围内或没有开启路线，属于换一局重开，
             # 不是整体失败；走非支持出生点那条退出重开的路。
             return self.round_success(self.STATUS_ANCHOR_SKIP)
+        if not outcome.success and outcome.status == BagelRouteWalker.STATUS_SPAWN_FAILED:
+            # 出生点识别没有稳定结论：按失败局退出，消耗一次整体重试。
+            reason = f'{outcome.status}：{outcome.data}' if outcome.data else outcome.status
+            return self.round_fail(BagelOperation.STATUS_ROUND_FAILED, data=reason)
+        if not outcome.success and outcome.status == BagelRouteWalker.STATUS_CONFIG_INVALID:
+            return self.round_fail(f'贝果路线配置无效：{outcome.data}')
         if not outcome.success and (
             isinstance(outcome.data, BagelRecoverableFailure)
             or outcome.status == self.STATUS_TIMEOUT
