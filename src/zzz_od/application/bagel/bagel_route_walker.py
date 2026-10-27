@@ -992,6 +992,8 @@ class BagelRouteWalker(BagelOperation):
             # 定位丢失立刻停步：继续按着前进会走到不知道哪里去，
             # 恢复定位后再接着走。判失败要等满 10 秒，给降级搜索留时间。
             self._release_forward()
+            if self.is_bagel_result():
+                return self.round_fail(self.STATUS_DEFEATED)
             if self.last_position is None:
                 return self.round_retry('起步定位失败，重试', wait=0.3)
             if self.locate_miss_since is None:
