@@ -43,24 +43,62 @@ area_list:
   - 140
   - 1745
   - 195
-  text: 武备箱
-  lcs_percent: 1.0
+  text: 箱
+  lcs_percent: 0.9
+- area_name: 搜查容器标题_包
+  pc_rect:
+  - 1290
+  - 140
+  - 1745
+  - 195
+  text: 包
+  lcs_percent: 0.9
+- area_name: 搜查容器标题_柜
+  pc_rect:
+  - 1290
+  - 140
+  - 1745
+  - 195
+  text: 柜
+  lcs_percent: 0.9
 - area_name: 搜查完成
   pc_rect:
-  - 1640
-  - 460
-  - 1790
-  - 525
+  - 1650
+  - 320
+  - 1810
+  - 560
   text: 全部拾取
   lcs_percent: 1.0
 - area_name: 搜查进行中
   pc_rect:
-  - 1640
-  - 460
-  - 1790
-  - 525
+  - 1650
+  - 320
+  - 1810
+  - 560
   text: 全部拾取
   lcs_percent: 1.0
+- area_name: 全部拾取_单行
+  pc_rect:
+  - 1650
+  - 320
+  - 1810
+  - 410
+  text: 全部拾取
+  lcs_percent: 1.0
+- area_name: 全部拾取_双行
+  pc_rect:
+  - 1650
+  - 440
+  - 1810
+  - 560
+  text: 全部拾取
+  lcs_percent: 1.0
+- area_name: 电梯选项
+  pc_rect:
+  - 1370
+  - 590
+  - 1910
+  - 980
 - area_name: 搜查安全箱
   pc_rect:
   - 240
@@ -148,21 +186,28 @@ area_list:
   - 981
   - 696
   - 1010
-- area_name: 机械保险箱交互
-  area_type: text
+- area_name: 交互图标
   pc_rect:
-  - 1285
-  - 440
-  - 1660
-  - 740
-  text: 机械保险箱
-  lcs_percent: 1.0
-- area_name: 机械保险箱标题
-  area_type: text
+  - 1324
+  - 430
+  - 1640
+  - 760
+  template_sub_dir: bagel
+  template_id: interact_icon
+  template_match_threshold: 0.8
+- area_name: 刷卡图标
   pc_rect:
-  - 1230
-  - 120
-  - 1565
-  - 180
-  text: 机械保险箱
-  lcs_percent: 1.0
+  - 1324
+  - 430
+  - 1640
+  - 760
+  template_sub_dir: bagel
+  template_id: card_key_icon
+  template_match_threshold: 0.8
+- area_name: 交互条目文字
+  pc_rect:
+  - 1382
+  - 430
+  - 1640
+  - 760
+

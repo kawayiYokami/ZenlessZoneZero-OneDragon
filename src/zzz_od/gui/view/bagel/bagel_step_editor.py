@@ -24,7 +24,7 @@ from zzz_od.application.bagel.bagel_flow import (
     BagelStep,
     NavigationOptions,
 )
-from zzz_od.application.bagel.bagel_route import BagelWaypoint
+from zzz_od.application.bagel.bagel_route import COORDINATE_LIMIT, BagelWaypoint
 
 MOVEMENT_MODES: tuple[tuple[str, str], ...] = (
     ('正常移动', 'coordinate'),
@@ -120,7 +120,7 @@ class StepTypeInput(QWidget):
         self.action_combo.blockSignals(True)
         self.action_combo.clear()
         for action, label in ACTION_LABELS.items():
-            if ACTION_CATEGORIES[action] == category and (action != 'unlock' or self.map_id != 'janus_high_b'):
+            if ACTION_CATEGORIES[action] == category and (action != 'unlock' or self.map_id == 'janus_high_a'):
                 self.action_combo.addItem('到达目的地' if action == 'move' else label, userData=action)
         self.form.labelForField(self.action_combo).setText('完成条件' if category == '移动' else '具体操作')
         self.action_combo.blockSignals(False)
@@ -167,10 +167,8 @@ class BagelStepDialog(QDialog):
         self.form.addRow('步骤名称', self.name_edit)
         self.target_combo: ComboBox = ComboBox(self)
         self.target_combo.addItem('武备箱', userData='box')
-        if map_id != 'janus_high_b':
+        if map_id == 'janus_high_a':
             self.target_combo.addItem('电子保险箱', userData='safe')
-        if map_id == 'janus_high_c':
-            self.target_combo.addItem('机械保险箱', userData='mech')
         self.form.addRow('交互目标', self.target_combo)
         self.mode_combo: ComboBox = ComboBox(self)
         for label, mode in MOVEMENT_MODES:
@@ -182,7 +180,7 @@ class BagelStepDialog(QDialog):
         self.x_input: DoubleSpinBox = DoubleSpinBox(self)
         self.y_input: DoubleSpinBox = DoubleSpinBox(self)
         for label, spin, value in zip(('X', 'Y'), (self.x_input, self.y_input), xy, strict=True):
-            spin.setRange(-1000, 1000)
+            spin.setRange(-COORDINATE_LIMIT, COORDINATE_LIMIT)
             spin.setDecimals(1)
             spin.setValue(value)
             spin.setAccessibleName(f'{label} 坐标（地图像素）')

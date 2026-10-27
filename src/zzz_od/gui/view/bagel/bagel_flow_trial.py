@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
     from one_dragon.base.operation.context_event_bus import ContextEventItem
-    from zzz_od.application.bagel.bagel_fixed_map import BagelFixedMap
     from zzz_od.application.bagel.bagel_flow import BagelFlow
+    from zzz_od.application.bagel.bagel_map_model import BagelMapModel
     from zzz_od.context.zzz_context import ZContext
 
 
@@ -40,13 +40,13 @@ class FlowTrialWorker(QThread):
         step_ids: tuple[str, ...],
         ctx: ZContext | None = None,
         parent: QWidget | None = None,
-        map_snapshot: BagelFixedMap | None = None,
+        map_snapshot: BagelMapModel | None = None,
     ) -> None:
         """接收不可变快照，不读取运行期间可能被保存的草稿。"""
         super().__init__(parent)
         self.instance_idx: int = instance_idx
         self.flow: BagelFlow = flow
-        self.map_snapshot: BagelFixedMap | None = map_snapshot
+        self.map_snapshot: BagelMapModel | None = map_snapshot
         self.step_ids: tuple[str, ...] = step_ids
         self.ctx: ZContext | None = ctx
         self.owns_run: bool = False

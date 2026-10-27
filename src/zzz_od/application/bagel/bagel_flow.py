@@ -13,12 +13,11 @@ import yaml
 
 from one_dragon.utils import os_utils
 from zzz_od.application.bagel.bagel_const import (
-    CONTAINER_TITLE_AREAS,
     NAV_CRUISE_DISTANCE,
     NAV_SAFE_BRAKE_DISTANCE,
 )
 from zzz_od.application.bagel.bagel_route import (
-    MAP_LABELS,
+    ROUTE_LABELS,
     BagelRoute,
     BagelWaypoint,
     _number,
@@ -47,9 +46,9 @@ ACTION_CATEGORIES: dict[str, str] = {
 }
 ACTION_RULES: dict[str, str] = {
     'spawn': '只检查是否站在所选出生点，不移动角色。',
-    'move': '单独执行时到点停步；连续执行时可直接通过设为不停步的普通路点。',
+    'move': '只走到指定位置并停下，不等待交互提示，也不按交互键。',
     'approach': '只靠近目标，看到对应交互提示后停下，不按交互键。',
-    'interact': '请先站到出现交互提示和 F 图标的位置。只打开对应容器面板或电子保险箱解锁界面，不执行光圈解锁或收集。',
+    'interact': '请先站到出现交互提示和 F 图标的位置。只打开武备箱面板或电子保险箱解锁界面，不执行解锁或收集。',
     'unlock': '在电子保险箱光圈界面完成解锁，等搜查界面出现后停止；已经进入搜查界面时，确认已解锁后直接完成，不重复按键。',
     'store': '请先打开对应容器的搜查界面。等待搜索并把合适的物品装入安全箱，完成后保留面板。',
     'close': '只关闭搜查界面并回到局内。搜索尚未完成时会等待，不收集物品。',
@@ -165,8 +164,7 @@ class BagelStep:
             data['waypoints'] = [point.to_dict() for point in self.waypoints]
             if self.action == 'move' and self.target is None:
                 data['waypoints'] = [
-                    {key: value for key, value in point.items()
-                     if key not in ('stage', 'role') and (key != 'stop' or value is False)}
+                    {key: value for key, value in point.items() if key not in ('stage', 'role', 'stop')}
                     for point in data['waypoints']
                 ]
             data['navigation'] = self.navigation.to_dict()
@@ -216,7 +214,7 @@ class BagelFlow:
         if set(data) - {'version', 'id', 'name', 'map_id', 'steps'}:
             raise ValueError('流程包含未知字段')
         map_id = data.get('map_id')
-        if not isinstance(map_id, str) or map_id not in MAP_LABELS:
+        if not isinstance(map_id, str) or map_id not in ROUTE_LABELS:
             raise ValueError('流程包含未知地图')
         values = data.get('steps')
         if not isinstance(values, list) or len(values) > 300:
@@ -240,7 +238,7 @@ class BagelFlow:
             if plain_move and 'target' in value:
                 raise ValueError('普通移动不接受目标参数')
             if action not in ('spawn', 'exit') and not plain_move:
-                if target not in CONTAINER_TITLE_AREAS:
+                if target not in ('box', 'safe'):
                     raise ValueError('该动作须指定容器类型')
             elif target is not None:
                 raise ValueError('该动作不接受目标参数')
@@ -255,9 +253,9 @@ class BagelFlow:
                 if plain_move:
                     if not isinstance(raw_points, list) or len(raw_points) != 1:
                         raise ValueError('移动到指定位置每步只能包含一个位置')
-                    if any(not isinstance(p, dict) or set(p) - {'name', 'xy', 'tolerance', 'passed_tolerance', 'stop'} for p in raw_points):
-                        raise ValueError('普通移动位置只接受名称、坐标、距离范围和停步要求')
-                    raw_points = [dict(p, stage='move', role='turn', stop=p.get('stop', True)) for p in raw_points]
+                    if any(not isinstance(p, dict) or set(p) - {'name', 'xy', 'tolerance', 'passed_tolerance'} for p in raw_points):
+                        raise ValueError('普通移动位置只接受名称、坐标和距离范围')
+                    raw_points = [dict(p, stage='move', role='turn', stop=True) for p in raw_points]
                 elif isinstance(raw_points, list) and any(isinstance(p, dict) and 'passed_tolerance' in p for p in raw_points):
                     raise ValueError('只有新版普通移动可以单独设置走过目的地后的允许范围')
                 points = BagelRoute.from_dict(
@@ -287,8 +285,8 @@ class BagelFlow:
                         )
                     if points[-1].role != 'target':
                         raise ValueError('靠近步骤必须以交互目标结束')
-                if not plain_move and any(not point.stop for point in points):
-                    raise ValueError('容器靠近及旧版移动步骤完成后必须停步')
+                if any(not point.stop for point in points):
+                    raise ValueError('独立移动步骤完成后必须停步')
                 if action == 'move' and not plain_move:
                     point = points[0]
                     brake = (
@@ -392,7 +390,7 @@ class BagelFlow:
         if set(data) - {'version', 'id', 'name', 'map_id', 'steps'}:
             raise ValueError('流程包含未知字段')
         map_id = data.get('map_id')
-        if not isinstance(map_id, str) or map_id not in MAP_LABELS:
+        if not isinstance(map_id, str) or map_id not in ROUTE_LABELS:
             raise ValueError('流程包含未知地图')
         values = data.get('steps')
         if not isinstance(values, list) or len(values) > 100:
@@ -420,7 +418,7 @@ class BagelFlow:
                 raise ValueError(f'未知业务动作：{action}')
             target = value.get('target')
             if action in ('move', 'store'):
-                if target not in CONTAINER_TITLE_AREAS:
+                if target not in ('box', 'safe'):
                     raise ValueError('移动或收集须指定容器类型')
             elif target is not None:
                 raise ValueError('该动作不接受目标参数')
@@ -581,7 +579,7 @@ def load_published_flow(map_id: str) -> BagelFlow:
 
 def draft_path(map_id: str) -> Path:
     """开发草稿与账号覆盖配置分开存储。"""
-    if map_id not in MAP_LABELS:
+    if map_id not in ROUTE_LABELS:
         raise ValueError('未知地图')
     return (
         Path(os_utils.get_work_dir())

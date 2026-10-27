@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import time
+from math import hypot
 from typing import TYPE_CHECKING
 
 import cv2
@@ -14,11 +15,6 @@ from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils import cv2_utils
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
-from zzz_od.application.bagel.bagel_const import (
-    CONTAINER_ARRIVE_STATUS,
-    CONTAINER_PROMPT_AREAS,
-    CONTAINER_TITLE_AREAS,
-)
 from zzz_od.application.bagel.bagel_container import ContainerRecovery, container_state
 from zzz_od.application.bagel.bagel_exit import BagelExit
 from zzz_od.application.bagel.bagel_flow import BagelFlow, BagelStep
@@ -28,10 +24,12 @@ from zzz_od.application.bagel.bagel_operation import (
     BagelOperation,
     BagelRecoverableFailure,
 )
-from zzz_od.application.bagel.bagel_route import BagelRoute
-from zzz_od.application.bagel.bagel_route_vision import BagelRouteVision
+from zzz_od.application.bagel.bagel_route import route_layer
+from zzz_od.application.bagel.bagel_route_vision import (
+    ROUTE_MATCH_MAX_DISTANCE,
+    BagelRouteVision,
+)
 from zzz_od.application.bagel.bagel_store import BagelStoreSafe
-from zzz_od.application.bagel.bagel_turn_compensation import BagelTurnCompensator
 from zzz_od.application.bagel.bagel_unlock_safe import BagelUnlockSafe
 
 if TYPE_CHECKING:
@@ -39,7 +37,7 @@ if TYPE_CHECKING:
 
     from one_dragon.base.operation.operation_base import OperationResult
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
-    from zzz_od.application.bagel.bagel_fixed_map import BagelFixedMap
+    from zzz_od.application.bagel.bagel_map_model import BagelMapModel
     from zzz_od.context.zzz_context import ZContext
 
 
@@ -82,11 +80,10 @@ class BagelRunFlow(BagelOperation):
         flow: BagelFlow,
         step_ids: tuple[str, ...] | None = None,
         on_event: Callable[[dict[str, object]], None] | None = None,
-        map_snapshot: BagelFixedMap | None = None,
+        map_snapshot: BagelMapModel | None = None,
         continuous_safe_unlock: bool = False,
         on_location_wait: Callable[[], None] | None = None,
         blueprint_priority: bool = True,
-        turn_compensator: BagelTurnCompensator | None = None,
     ) -> None:
         """校验勾选清单；正式任务可连续执行相邻的保险箱交互与解锁。"""
         super().__init__(ctx, op_name=f'贝果流程-{flow.name}', node_max_retry_times=0)
@@ -111,7 +108,7 @@ class BagelRunFlow(BagelOperation):
         self._precondition_waits: int = 0
         self._location_waits: int = 0
         self.vision: BagelRouteVision | None = None
-        self._map_snapshot: BagelFixedMap | None = map_snapshot
+        self._map_snapshot: BagelMapModel | None = map_snapshot
         self._container_recovery: ContainerRecovery | None = None
         self._container_step_id: str | None = None
         self._approach_step: BagelStep | None = None
@@ -121,8 +118,6 @@ class BagelRunFlow(BagelOperation):
         self.on_location_wait: Callable[[], None] | None = on_location_wait
         self._step_started_at: float = 0
         self._logged_step_start: tuple[str, str] | None = None
-        self._owns_turn_compensator: bool = turn_compensator is None
-        self._turn_compensator: BagelTurnCompensator | None = turn_compensator
 
     def handle_init(self) -> None:
         """每次执行从首个勾选步骤开始，提前校验画面资源。"""
@@ -137,21 +132,15 @@ class BagelRunFlow(BagelOperation):
         self._reapproach_pending = False
         self._step_started_at = 0
         self._logged_step_start = None
-        # 正式应用跨局保留已确认比例；单独执行流程仍创建独立会话。
-        if self._owns_turn_compensator or self._turn_compensator is None:
-            self._turn_compensator = BagelTurnCompensator(self.ctx.controller)
-        self._turn_compensator.clear_pending_sample()
         if self.ctx.screen_loader.get_area('战斗画面', '按键-普通攻击') is None:
             raise ValueError('缺少画面区域：战斗画面/按键-普通攻击')
         for area in (
             '定位小地图',
             '武备箱交互',
             '电子保险箱交互',
-            '机械保险箱交互',
             '交互F键',
             '搜查容器标题',
             '电子保险箱标题',
-            '机械保险箱标题',
             '搜查安全箱',
             '搜查进行中',
             '搜查完成',
@@ -160,8 +149,10 @@ class BagelRunFlow(BagelOperation):
         ):
             if self.ctx.screen_loader.get_area('贝果-局内', area) is None:
                 raise ValueError(f'缺少画面区域：{area}')
-        self.vision = BagelRouteVision(self.flow.map_id, map_snapshot=self._map_snapshot)
-        self.emit('snapshot', flow=self.flow.to_dict(), step_ids=self.step_ids, map_snapshot_id=self.vision.map.snapshot_id)
+        self.vision = BagelRouteVision(
+            route_layer(self.flow.map_id), map_snapshot=self._map_snapshot,
+        )
+        self.emit('snapshot', flow=self.flow.to_dict(), step_ids=self.step_ids, layer_name=self.vision.layer_name)
 
     def emit(self, kind: str, **details: object) -> None:
         """事件原样发送；文本日志补充步骤归属，重复前置检查只记一次开始。"""
@@ -211,9 +202,10 @@ class BagelRunFlow(BagelOperation):
                 else '请先打开电子保险箱光圈解锁界面'
             )
         if step.action in ('store', 'close'):
-            title = CONTAINER_TITLE_AREAS[step.target]
+            title = '搜查容器标题' if step.target == 'box' else '电子保险箱标题'
             if not self._has(title):
-                if any(self._has(area) for area in CONTAINER_TITLE_AREAS.values()) or self._has('大保险解锁提示'):
+                other_title = '电子保险箱标题' if step.target == 'box' else '搜查容器标题'
+                if self._has(other_title) or self._has('大保险解锁提示'):
                     return '未识别对应容器搜查面板'
                 # 没有局内 HUD 或其他容器证据时，缺标题只表示画面暂不完整。
                 return self.STATUS_SEARCH_PENDING
@@ -227,14 +219,14 @@ class BagelRunFlow(BagelOperation):
             )
         if step.action in ('approach', 'interact') and container_state(self, step.target) == 'ready':
             return None
-        if any(self._has(area) for area in CONTAINER_TITLE_AREAS.values()):
+        if self._has('搜查容器标题') or self._has('电子保险箱标题'):
             return '请先执行关闭搜查面板步骤'
         if self._has('大保险解锁提示'):
             return '请先完成电子保险箱解锁并关闭搜查面板'
         if not self._has('按键-普通攻击', '战斗画面'):
             return '未识别贝果局内画面'
         if step.action == 'interact':
-            prompt = CONTAINER_PROMPT_AREAS[step.target]
+            prompt = '武备箱交互' if step.target == 'box' else '电子保险箱交互'
             return (
                 None
                 if (self._has(prompt) and self._has('交互F键')) or (
@@ -259,27 +251,35 @@ class BagelRunFlow(BagelOperation):
                 target=0,
             )
             if position is None:
-                location = self.vision.last_location
-                if location is not None and location.reason == 'insufficient_geometry':
-                    return self.STATUS_LOCATION_PENDING
                 return '当前小地图无法定位'
-            if (
-                step.action == 'spawn'
-                and (
-                    (position[0] - self.vision.spawn[0]) ** 2
-                    + (position[1] - self.vision.spawn[1]) ** 2
-                )
-                > 25
-            ):
-                return '当前不在所选出生点'
+            if step.action == 'spawn':
+                start = self._route_start()
+                if hypot(
+                    position[0] - start[0], position[1] - start[1],
+                ) > ROUTE_MATCH_MAX_DISTANCE:
+                    return '当前离路线起点太远'
         return None
+
+    def _route_start(self) -> tuple[float, float]:
+        """取本流程第一个路点，作为是否走这条路的参照。
+
+        Returns:
+            路线起点的全局坐标。
+
+        Raises:
+            ValueError: 流程里没有任何路点。
+        """
+        for step in self.flow.steps:
+            for point in step.waypoints:
+                return point.xy
+        raise ValueError('流程没有路点，无法判定起点')
 
     def container_interrupted(self, step: BagelStep) -> bool:
         """只在预期容器操作中确认面板已消失且回到局内；未知画面不自动退出。"""
         return (
             step.action in ('store', 'close', 'unlock')
             and not any(self._has(area) for area in (
-                *CONTAINER_TITLE_AREAS.values(), '大保险解锁提示',
+                '搜查容器标题', '电子保险箱标题', '大保险解锁提示',
             ))
             and self._has('按键-普通攻击', '战斗画面')
         )
@@ -326,87 +326,31 @@ class BagelRunFlow(BagelOperation):
         self._step_started_at = time.monotonic()
         self.emit('start', status=f'连续执行：{self.flow.steps[self.index].name}')
 
-    def _approach_from(self, step: BagelStep) -> tuple[float, float] | None:
-        """仅用已经执行的相邻移动路点定义进场方向，单独勾选容器步骤时不推断。"""
-        if step.action != 'approach':
-            return None
-        index = self.flow.steps.index(step)
-        previous = index - 1
-        if previous not in self.indices[:self.cursor]:
-            return None
-        preceding = self.flow.steps[previous]
-        if preceding.action != 'move' or not preceding.waypoints:
-            return None
-        return preceding.waypoints[-1].xy
-
-    def _continuous_move_steps(self, step: BagelStep) -> tuple[BagelStep, ...]:
-        """合并连续勾选且明确不停的单点移动；其它动作及参数变化仍保留边界。"""
-        if (
-            step.action != 'move' or len(step.waypoints) != 1
-            or step.navigation.effective_final_mode('move') != 'coordinate'
-            or step.navigation.brake_distance is not None
-            or step != self.flow.steps[self.index]
-        ):
-            return (step,)
-        steps = [step]
-        previous_index = self.index
-        for index in self.indices[self.cursor + 1:]:
-            following = self.flow.steps[index]
-            if (
-                steps[-1].waypoints[-1].stop or index != previous_index + 1
-                or following.action != 'move' or len(following.waypoints) != 1
-                or following.navigation != step.navigation
-            ):
-                break
-            steps.append(following)
-            previous_index = index
-        return tuple(steps)
-
-    def _start_next_move_step(self, waypoint_index: int) -> None:
-        """连续导航确认到点后推进原步骤事件；下一步仍独立计时并保留失败归属。"""
-        self.emit(
-            'done', status=BagelNavigate.STATUS_WAYPOINT,
-            elapsed=time.monotonic() - self._step_started_at,
-        )
-        self.cursor += 1
-        self.index = self.indices[self.cursor]
-        self._step_started_at = time.monotonic()
-        self.emit('start', status=f'连续移动：已通过第{waypoint_index + 1}个路点')
-
     def build_operation(self, step: BagelStep) -> BagelOperation | None:
         """业务动作只有一个执行来源，工具不复制游戏交互。"""
         if step.action in ('move', 'approach'):
             if self.vision is None:
-                self.vision = BagelRouteVision(self.flow.map_id, map_snapshot=self._map_snapshot)
-            moves = self._continuous_move_steps(step)
-            route = (
-                BagelRoute(self.flow.map_id, tuple(point for item in moves for point in item.waypoints))
-                if len(moves) > 1 else step.route(self.flow.map_id)
-            )
+                self.vision = BagelRouteVision(
+            route_layer(self.flow.map_id), map_snapshot=self._map_snapshot,
+        )
             return BagelNavigate(
                 self.ctx,
                 destination='move' if step.action == 'move' else step.target,
                 map_id=self.flow.map_id,
-                route_data=route,
+                route_data=step.route(self.flow.map_id),
                 map_snapshot=self.vision.map,
                 navigation=step.navigation,
-                require_spawn=False,
                 check_target_position=True,
                 coordinate_only=step.action == 'move',
                 final_approach=step.action == 'approach',
-                on_observation=lambda data: self.emit(
-                    'observation', **({**data, 'target': 0} if len(moves) > 1 else data),
-                ),
+                on_observation=lambda data: self.emit('observation', **data),
                 recovery=self._recovery_for(step) if step.action == 'approach' else None,
                 recovering=self._reapproach_pending,
                 on_location_wait=self.on_location_wait,
-                turn_compensator=self._turn_compensator,
-                approach_from=self._approach_from(step),
-                on_waypoint_reached=self._start_next_move_step if len(moves) > 1 else None,
             )
         if step.action == 'interact':
-            if step.target in ('box', 'mech'):
-                return BagelOpenBox(self.ctx, recovery=self._recovery_for(step), target=step.target)
+            if step.target == 'box':
+                return BagelOpenBox(self.ctx, recovery=self._recovery_for(step))
             continuous = self._can_continue_safe_unlock(step)
             return BagelUnlockSafe(
                 self.ctx, phase='full' if continuous else 'interact',
@@ -496,7 +440,7 @@ class BagelRunFlow(BagelOperation):
             recoverable = True
         if recovering:
             self._reapproach_pending = False
-            if success and status in CONTAINER_ARRIVE_STATUS.values():
+            if success and status in (BagelNavigate.STATUS_ARRIVED_BOX, BagelNavigate.STATUS_ARRIVED_SAFE):
                 return self.round_wait('重新靠近完成，继续当前交互步骤', wait=0.1)
         if (
             not success
@@ -514,7 +458,11 @@ class BagelRunFlow(BagelOperation):
             not in (
                 BagelNavigate.STATUS_WAYPOINT
                 if step.action == 'move'
-                else CONTAINER_ARRIVE_STATUS[step.target],
+                else (
+                    BagelNavigate.STATUS_ARRIVED_BOX
+                    if step.target == 'box'
+                    else BagelNavigate.STATUS_ARRIVED_SAFE
+                ),
             )
         ):
             success = False
