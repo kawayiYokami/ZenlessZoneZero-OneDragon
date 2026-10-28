@@ -4,6 +4,13 @@ auto_lock_interval: 0  # 关闭自动锁定
 auto_turn_interval: 0  # 关闭自动转向
 
 scenes:
+  # 首领专属交互：终结技被禁用期间按空格，禁用解除即中断
+  - triggers: ["按键禁用-终结技"]
+    priority: 100
+    interval: 0.3
+    handlers:
+      - state_template: "首领交互"
+
   - triggers: ["格挡-破碎"]
     priority: 99
     interval: 0.3
