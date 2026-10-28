@@ -39,3 +39,45 @@ spawn_points:
     y: 829
     radius: 100
     initial_route: null
+  - id: windworn_highway_low
+    name: 风蚀公路_低
+    layer: 城郊幻境/Custom3
+    x: 145
+    y: 513
+    radius: 100
+    initial_route: null
+  - id: windworn_highway_high
+    name: 风蚀公路_高
+    layer: 城郊幻境/Custom3
+    x: 35
+    y: 520
+    radius: 100
+    initial_route: null
+  - id: bahamut_warehouse_north
+    name: 巴哈姆特仓库_北
+    layer: 城郊幻境/Custom3
+    x: 1145
+    y: 577
+    radius: 100
+    initial_route: null
+  - id: bahamut_warehouse_east
+    name: 巴哈姆特仓库_东
+    layer: 城郊幻境/Custom3
+    x: 1240
+    y: 759
+    radius: 100
+    initial_route: null
+  - id: bunless_bae_town_east
+    name: 野人镇_东
+    layer: 城郊幻境/Custom3
+    x: 904
+    y: 303
+    radius: 100
+    initial_route: null
+  - id: bunless_bae_town_west
+    name: 野人镇_西
+    layer: 城郊幻境/Custom3
+    x: 610
+    y: 421
+    radius: 100
+    initial_route: null
