@@ -28,6 +28,7 @@ class BattleStateEnum(Enum):
 
     # 按钮位置出现禁用图标时的状态 与上面的按键可用是两套独立信号 可以同时成立
     # 触发时间只在首次识别到禁用时记录 禁用期间不刷新 因此可用 [状态, 时间下限, 时间上限] 判断已经禁用了多久
+    # 特殊攻击的禁用图标目前不做检测 该状态不会产生
     STATUS_NORMAL_ATTACK_BAN = '按键禁用-普通攻击'
     STATUS_SPECIAL_BAN = '按键禁用-特殊攻击'
     STATUS_ULTIMATE_BAN = '按键禁用-终结技'

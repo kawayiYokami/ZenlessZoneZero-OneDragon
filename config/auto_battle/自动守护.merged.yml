@@ -25,10 +25,38 @@
     - "op_name": "等待秒数"
       "seconds": 10
     "states": "[首领-薇斯珀, 0, 999]"
-  "interval": 0.3
+  - "debug_name": "基塔布鲁-首领交互"
+    "states": "[首领-基塔布鲁, 0, 999]"
+    "sub_handlers":
+    - "debug_name": "基塔布鲁-首领交互-切人"
+      "interrupt_states": "![按键禁用-普通攻击, 0, 999]"
+      "operations":
+      - "op_name": "等待秒数"
+        "seconds": 0.8
+      - "op_name": "按键-切换角色-下一个"
+      - "op_name": "等待秒数"
+        "seconds": 1.2
+      - "op_name": "按键-切换角色-下一个"
+      - "op_name": "等待秒数"
+        "seconds": 1.4
+      - "op_name": "按键-切换角色-下一个"
+      - "op_name": "等待秒数"
+        "seconds": 10
+      "states": "[按键禁用-普通攻击, 0, 999]"
+    - "debug_name": "基塔布鲁-首领交互-闪避"
+      "interrupt_states": "[按键禁用-普通攻击, 0, 999]"
+      "operations":
+      - "op_name": "等待秒数"
+        "seconds": 3.5
+      - "op_name": "按键-闪避"
+      - "op_name": "等待秒数"
+        "seconds": 10
+      "states": "[按键禁用-终结技, 0, 999]"
+  "interval": 0.01
   "priority": 100
   "triggers":
   - "按键禁用-终结技"
+  - "按键禁用-普通攻击"
 - "handlers":
   - "debug_name": "画面黑白无法支援"
     "operations":
@@ -8907,21 +8935,9 @@
         - "op_name": "按键-普通攻击-按下"
         - "op_name": "等待秒数"
           "seconds": 0.5
-        - "op_name": "按键-普通攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.5
-        - "op_name": "按键-普通攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.5
-        - "op_name": "按键-普通攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.5
-        - "op_name": "按键-普通攻击-按下"
-        - "op_name": "等待秒数"
-          "seconds": 0.5
         - "op_name": "按键-普通攻击-松开"
         - "op_name": "等待秒数"
-          "seconds": 2
+          "seconds": 4
         "states": "[蕾米埃尔-虚曜]{3,3}"
       - "debug_name": "长按强化特殊技"
         "interrupt_states": "[按键可用-快速支援] | [蕾米埃尔-虚曜]{3,3}"
