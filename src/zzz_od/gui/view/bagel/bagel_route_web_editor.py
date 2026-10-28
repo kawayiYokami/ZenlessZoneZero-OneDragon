@@ -165,6 +165,8 @@ class BagelRouteEditor(QDialog):
         self._page_ready: bool = False
         self._close_confirmed: bool = False
         """网页已确认没有未保存修改，可以真正关闭。"""
+        self._closing: bool = False
+        """已请求关闭，正在等录制、试跑、定位线程退出；期间拒绝新命令。"""
         self._shown_layer: str | None = None
         self._layer_origins: dict[str, tuple[int, int]] = _layer_origins()
         self.overlay: BagelRecordOverlay | None = None
@@ -336,6 +338,8 @@ class BagelRouteEditor(QDialog):
 
     def _busy_reason(self) -> str | None:
         """录制、试跑、定位进行中时拒绝会改变数据或占用游戏的命令。"""
+        if self._closing:
+            return '正在关闭编辑器'
         if self.recorder is not None:
             return '正在录制，请先停止录制'
         if self.test_thread is not None:
@@ -492,6 +496,7 @@ class BagelRouteEditor(QDialog):
     def _clear_locate_thread(self) -> None:
         """定位线程结束后放开引用。"""
         self.locate_thread = None
+        self._close_if_pending()
 
     def _on_locate_done(
         self, ok: bool, message: str, layer_name: str, global_xy: object,
@@ -540,6 +545,8 @@ class BagelRouteEditor(QDialog):
             snapshot: 执行器状态字典，或 None。
         """
         if snapshot is None:
+            # 先停跟随计时器：计时器发现游戏在前台会重新显示悬浮窗。
+            self._run_overlay_timer.stop()
             if self.run_overlay is not None:
                 self.run_overlay.hide()
             return
@@ -547,6 +554,7 @@ class BagelRouteEditor(QDialog):
             return
         if self.run_overlay is None:
             self.run_overlay = BagelRunOverlay()
+        if not self._run_overlay_timer.isActive():
             self._run_overlay_timer.start()
         from zzz_od.gui.view.bagel.bagel_route_test_thread import decision_lines
 
@@ -588,6 +596,7 @@ class BagelRouteEditor(QDialog):
         self.test_thread = None
         self._set_buttons()
         self._call_js('setBusy', {'trial': False})
+        self._close_if_pending()
 
     # ---------- 录制 ----------
 
@@ -752,21 +761,67 @@ class BagelRouteEditor(QDialog):
             log.info('贝果路线录制保存为「%s」（%s），%s 点', saved.name, saved.ref, len(saved.points))
         else:
             log.info('贝果路线录制未保存：%s', message)
+        self._close_if_pending()
 
     def closeEvent(self, event: Any) -> None:
-        """关窗前让网页确认未保存的修改；确认后再停录制、恢复主题。"""
+        """关窗前让网页确认未保存的修改；确认后先停后台线程，全部退出后才真正关闭。
+
+        录制、试跑、定位线程都以本窗口为父对象。窗口关闭后会被销毁，
+        线程还在运行时一起销毁会让整个程序崩溃，所以要等线程退出再关。
+        """
         if self._page_ready and not self._close_confirmed:
             event.ignore()
             self.view.page().runJavaScript(
                 'window.bagelEditor.requestClose()', 0, self._on_close_requested,
             )
             return
-        if self.recorder is not None:
-            self.recorder.request_stop()
-            if self.thread is not None:
-                self.thread.wait(5000)
+        if self._stop_background_threads():
+            event.ignore()
+            return
+        self._run_overlay_timer.stop()
+        if self.run_overlay is not None:
+            self.run_overlay.close()
+            self.run_overlay.deleteLater()
+            self.run_overlay = None
         restore_theme(self._previous_theme)
         super().closeEvent(event)
+
+    def keyPressEvent(self, event: Any) -> None:
+        """Esc 走与关窗相同的流程；对话框默认的 Esc 处理会绕过 closeEvent。"""
+        if event.key() == Qt.Key.Key_Escape:
+            event.accept()
+            self.close()
+            return
+        super().keyPressEvent(event)
+
+    def _stop_background_threads(self) -> bool:
+        """请求停止录制、试跑；定位无法中断，只等它结束。
+
+        Returns:
+            仍有线程在运行时返回 True，调用方应推迟关闭。
+        """
+        running = [
+            thread for thread in (self.thread, self.test_thread, self.locate_thread)
+            if thread is not None and thread.isRunning()
+        ]
+        if not running:
+            return False
+        if not self._closing:
+            self._closing = True
+            self.status_label.setText('正在停止后台任务，结束后自动关闭编辑器…')
+            if self.recorder is not None:
+                self.recorder.request_stop()
+            if self.test_thread is not None:
+                self.test_thread.stop()
+        return True
+
+    def _close_if_pending(self) -> None:
+        """已请求关闭且后台线程都已退出时，完成关闭。
+
+        放到下一轮事件循环执行：线程的结束信号处理完之后再关窗。
+        """
+        if self._closing:
+            QTimer.singleShot(0, self.close)
 
     def _on_close_requested(self, result: object) -> None:
         """网页脚本出错没有接手关闭时直接关闭，避免窗口关不掉。"""

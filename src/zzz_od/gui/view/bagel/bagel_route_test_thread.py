@@ -60,6 +60,8 @@ class BagelRouteTestThread(QThread):
         self.ctx: ZContext = ctx
         self.route_ref: BagelRouteRef = route_ref
         self._stop_requested: Event = Event()
+        self._owns_run: bool = False
+        """本线程是否已取得共享运行状态；只有取得后，停止试跑才能结束运行状态。"""
         self._walker: BagelRouteWalker | None = None
         self._layer_images: dict[str, Path] = {}
 
@@ -75,6 +77,12 @@ class BagelRouteTestThread(QThread):
             # 占用失败时不能留下没人收尾的线程。
             if not self.ctx.run_context.start_running():
                 self.done.emit(False, '当前有其他功能在运行，请先结束它再试跑')
+                return
+            # 先登记运行权再检查停止请求：stop() 若在登记前到达，这里能看到停止请求；
+            # 若在登记后到达，stop() 会结束运行状态，执行器随即退出。
+            self._owns_run = True
+            if self._stop_requested.is_set():
+                self.done.emit(False, '已手动停止试跑')
                 return
             self._walker = BagelRouteWalker(self.ctx, route_ref=self.route_ref)
             result = self._run_with_state()
@@ -119,9 +127,10 @@ class BagelRouteTestThread(QThread):
             reporter.wait(2000)
 
     def stop(self) -> None:
-        """请求停止试跑。"""
+        """请求停止试跑；未取得运行状态时只设停止标记，不影响其他功能的运行。"""
         self._stop_requested.set()
-        self.ctx.run_context.stop_running()
+        if self._owns_run:
+            self.ctx.run_context.stop_running()
 
     def _activate_game(self) -> bool:
         """把游戏窗口切到前台并等它真的在前台。"""
