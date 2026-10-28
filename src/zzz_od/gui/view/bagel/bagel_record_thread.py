@@ -61,13 +61,13 @@ class BagelRecordThread(QThread):
         if self.recorder.failure is not None:
             self.done.emit(False, self.recorder.failure)
             return
-        path = self.recorder.saved_path
-        if path is None:
+        route = self.recorder.saved_route
+        if route is None:
             self.done.emit(False, '未生成路线文件')
             return
         self.done.emit(
             True,
-            f'{self.recorder.stop_reason}，{len(self.recorder.route.points)} 点\n{path}',
+            f'{self.recorder.stop_reason}，已保存为「{route.name}」，{len(route.points)} 点',
         )
 
     def stop(self) -> None:
