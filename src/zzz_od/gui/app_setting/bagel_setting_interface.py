@@ -108,6 +108,8 @@ class _UsageDialog(MessageBoxBase):
             column.addWidget(card)
         column.addStretch(1)
         scroll.setWidget(contents)
+        # 滚动区及内容容器透出弹窗底色，避免 Qt 默认浅色背景覆盖黑夜主题。
+        scroll.enableTransparentBackground()
         self.viewLayout.addWidget(scroll)
         self.yesButton.setText('关闭')
         self.hideCancelButton()
