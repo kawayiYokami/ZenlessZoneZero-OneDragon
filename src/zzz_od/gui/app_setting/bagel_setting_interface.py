@@ -41,6 +41,7 @@ from zzz_od.application.bagel import bagel_usage
 from zzz_od.application.bagel.bagel_const import (
     APP_ID,
     CLEAN_MODE_CUSTOM,
+    CLEAN_TYPES,
     DEFAULT_CLEAN_STEPS,
 )
 from zzz_od.gui.app_setting.bagel_setting_widgets import (
@@ -153,7 +154,7 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         self.blueprint_priority: SwitchSettingCard = SwitchSettingCard(
             icon=FluentIcon.DOCUMENT,
             title='蓝图优先',
-            content='优先拾取蓝图。仅影响局内入箱。',
+            content='局内优先拾取蓝图',
             parent=widget,
         )
         self.blueprint_priority.setFixedHeight(88)
@@ -183,7 +184,7 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         sentence.addStretch(1)
         layout.addLayout(sentence)
         layout.addWidget(
-            CaptionLabel('成功次数填 0 表示不限。异常时可能提前停止。', card)
+            CaptionLabel('成功次数为0表示无限循环直到仓库满，失败次数表示失败后自动重开次数', card)
         )
         return card
 
@@ -320,22 +321,20 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
         self.sale_validation.setWordWrap(True)
         self.sale_validation.setTextColor('#a4262c', '#f0b6bb')
         layout.addWidget(self.sale_validation)
-        self.z_warning: QLabel = QLabel(
-            '已选择 Z 品质或装备类型。红色物品会被出售，请注意确认。', widget
-        )
+        # 文案随所选类型变化，由 _refresh_clean_options 设置。
+        self.z_warning: QLabel = QLabel(widget)
         self.z_warning.setWordWrap(True)
         self.z_warning.setObjectName('zWarning')
         FluentStyleSheet.LABEL.apply(self.z_warning)
-        setFont(self.z_warning, 14)
+        setFont(self.z_warning, 13)
         setCustomStyleSheet(
             self.z_warning,
             'QLabel#zWarning { color: #805000; background: #fff8eb; border: 1px solid #e8d3a7; border-radius: 5px; padding: 10px 12px; }',
             'QLabel#zWarning { color: #e9c986; background: #342b23; border: 1px solid #67503b; border-radius: 5px; padding: 10px 12px; }',
         )
         layout.addWidget(self.z_warning)
-        self.blueprint_sale_warning: QLabel = QLabel(
-            '自定义范围包含 S 品质「其他」，金色蓝图和 S 品质材料也会出售。', widget
-        )
+        # 文案随所选品质变化，由 _refresh_clean_options 设置。
+        self.blueprint_sale_warning: QLabel = QLabel(widget)
         self.blueprint_sale_warning.setWordWrap(True)
         self.blueprint_sale_warning.setObjectName('blueprintSaleWarning')
         FluentStyleSheet.LABEL.apply(self.blueprint_sale_warning)
@@ -373,10 +372,19 @@ class BagelSettingInterface(VerticalScrollInterface, GroupIdMixin):
             validation = ''
         self.sale_validation.setText(validation)
         self.sale_validation.setVisible(bool(validation))
-        self.z_warning.setVisible(any('Z' in step.qualities for step in steps))
-        self.blueprint_sale_warning.setVisible(any(
-            '其他' in step.types and 'S' in step.qualities for step in steps
-        ))
+        z_steps = [step for step in steps if 'Z' in step.qualities]
+        z_types = '、'.join(
+            name for name in CLEAN_TYPES if any(name in step.types for step in z_steps)
+        )
+        self.z_warning.setText(f'红色「{z_types or "物品"}」会被出售，请注意确认！')
+        self.z_warning.setVisible(bool(z_steps))
+        # 「其他」类型包含蓝图：S 品质为金色蓝图，Z 品质为红色蓝图。
+        blueprint_colors = '和'.join(
+            color for quality, color in (('S', '金色'), ('Z', '红色'))
+            if any('其他' in step.types and quality in step.qualities for step in steps)
+        )
+        self.blueprint_sale_warning.setText(f'{blueprint_colors}蓝图会被出售，请注意确认！')
+        self.blueprint_sale_warning.setVisible(bool(blueprint_colors))
         self.total_preview.set_steps(steps)
 
     def _rebuild_clean_steps(self) -> None:
