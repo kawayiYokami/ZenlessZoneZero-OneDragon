@@ -35,6 +35,7 @@ from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from one_dragon_qt.view.plugin.plugin_operation_mixin import PluginOperationMixin
 from one_dragon_qt.widgets.plugin_card import (
+    BADGE_INSTALLED,
     BADGE_SUBSCRIBED,
     BADGE_UPDATE,
     PluginCard,
@@ -146,17 +147,24 @@ class PluginManageInterface(PluginOperationMixin, VerticalScrollInterface):
 
         plugins = self.ctx.factory_manager.third_party_plugins
         update_count = 0
+        subscribed_count = 0
         cards: list[PluginCard] = []
         for plugin_info in plugins:
             entry = self.find_market_entry(plugin_info)
-            update_version = self.pending_update_version(plugin_info, entry)
+            subscribed = self.is_subscribed(plugin_info)
+            update_version = self.pending_update_version(plugin_info, entry) if subscribed else ''
+            if subscribed:
+                subscribed_count += 1
             if update_version:
                 update_count += 1
                 badge_text = gt('可更新 v{version}').format(version=update_version)
                 badge_kind = BADGE_UPDATE
-            else:
+            elif subscribed:
                 badge_text = gt('已订阅')
                 badge_kind = BADGE_SUBSCRIBED
+            else:
+                badge_text = gt('已安装')
+                badge_kind = BADGE_INSTALLED
 
             meta_parts = []
             if plugin_info.version:
@@ -186,11 +194,13 @@ class PluginManageInterface(PluginOperationMixin, VerticalScrollInterface):
             cards.append(card)
 
         if plugins:
-            text = gt('已订阅 {count} 个插件').format(count=len(plugins))
+            text = gt('已安装 {count} 个插件').format(count=len(plugins))
+            if subscribed_count:
+                text += gt('，已订阅 {count} 个').format(count=subscribed_count)
             if update_count:
                 text += gt('，{count} 个可更新').format(count=update_count)
         else:
-            text = gt('还没有订阅任何插件，去插件商店看看吧')
+            text = gt('还没有安装任何插件，去插件商店看看吧')
         self._set_status(text)
         self.set_cards(cards)
 

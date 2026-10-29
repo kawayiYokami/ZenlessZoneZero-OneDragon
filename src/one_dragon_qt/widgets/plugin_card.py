@@ -1,7 +1,7 @@
 """插件市场的卡片与卡片网格。
 
 卡片整块就是封面：封面由插件标识生成配色，底部渐变压住名称与版本信息，
-左上角的实心标签表示订阅状态。点击卡片弹出插件详情。
+左上角的实心标签表示订阅或安装状态。点击卡片弹出插件详情。
 """
 
 from __future__ import annotations
@@ -37,11 +37,13 @@ CARD_HEIGHT = 188
 CORNER_RADIUS = 10
 
 BADGE_SUBSCRIBED = 'subscribed'
+BADGE_INSTALLED = 'installed'
 BADGE_UPDATE = 'update'
 BADGE_NONE = 'none'
 
 BADGE_COLORS: dict[str, tuple[str, str]] = {
     BADGE_SUBSCRIBED: ('#0f6cbd', '#2b88d8'),
+    BADGE_INSTALLED: ('#0b6a4a', '#138a5e'),
     BADGE_UPDATE: ('#b85c00', '#c96a12'),
     BADGE_NONE: ('#5d5d5d', '#6b6b6b'),
 }

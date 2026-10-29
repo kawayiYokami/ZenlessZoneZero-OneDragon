@@ -36,6 +36,7 @@ from one_dragon_qt.widgets.fast_scroll_area import FastScrollArea
 
 ACTION_SUBSCRIBE = 'subscribe'
 ACTION_UNSUBSCRIBE = 'unsubscribe'
+ACTION_UNINSTALL = 'uninstall'
 ACTION_UPDATE = 'update'
 ACTION_IGNORE = 'ignore'
 

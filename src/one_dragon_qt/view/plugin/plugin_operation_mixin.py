@@ -48,12 +48,14 @@ from one_dragon_qt.services.plugin_cover_service import (
 from one_dragon_qt.view.plugin.plugin_detail_dialog import (
     ACTION_IGNORE,
     ACTION_SUBSCRIBE,
+    ACTION_UNINSTALL,
     ACTION_UNSUBSCRIBE,
     ACTION_UPDATE,
     PluginDetailData,
     PluginDetailDialog,
 )
 from one_dragon_qt.widgets.plugin_card import (
+    BADGE_INSTALLED,
     BADGE_NONE,
     BADGE_SUBSCRIBED,
     BADGE_UPDATE,
@@ -244,6 +246,22 @@ class PluginOperationMixin:
                 result[entry.plugin_id] = plugin_info
         return result
 
+    def is_subscribed(self, plugin_info: PluginInfo) -> bool:
+        """是否从网页源订阅。
+
+        订阅记录只在商店安装或更新成功后写入。没有记录，或记录来源是本地，
+        都只算安装。旧记录没有 source 字段，当时只有商店安装会写记录，按订阅处理。
+        """
+        package_dir = self.get_plugin_package_dir(plugin_info)
+        dir_name = package_dir.name if package_dir is not None else ''
+        registry_id = self.subscription_config.find_registry_id(plugin_info.app_id, dir_name)
+        if not registry_id:
+            return False
+        record = self.subscription_config.get_record(registry_id)
+        if record is None:
+            return False
+        return str(record.get('source') or 'market') == 'market'
+
     def find_market_entry(self, plugin_info: PluginInfo) -> MarketPlugin | None:
         """查找某个已安装插件对应的市场条目。"""
         snapshot = self._market_snapshot
@@ -312,7 +330,8 @@ class PluginOperationMixin:
         actions: list[tuple[str, str]] = []
         status_text = ''
         status_kind = ''
-        if plugin_info is not None:
+        subscribed = plugin_info is not None and self.is_subscribed(plugin_info)
+        if subscribed and plugin_info is not None:
             update_version = self.pending_update_version(plugin_info, entry)
             status_text = gt('已订阅 · v{version}').format(version=plugin_info.version or '-')
             status_kind = BADGE_SUBSCRIBED
@@ -322,6 +341,10 @@ class PluginOperationMixin:
                 actions.append((ACTION_UPDATE, gt('更新到 v{version}').format(version=update_version)))
                 actions.append((ACTION_IGNORE, gt('跳过此版本')))
             actions.append((ACTION_UNSUBSCRIBE, gt('取消订阅')))
+        elif plugin_info is not None:
+            status_text = gt('已安装 · 未从商店订阅')
+            status_kind = BADGE_INSTALLED
+            actions.append((ACTION_UNINSTALL, gt('卸载')))
         else:
             actions.append((ACTION_SUBSCRIBE, gt('订阅')))
 
@@ -354,15 +377,26 @@ class PluginOperationMixin:
         """打开本机已安装插件的详情页。"""
         entry = self.find_market_entry(plugin_info)
         actions: list[tuple[str, str]] = []
-        status_text = gt('已订阅')
-        status_kind = BADGE_SUBSCRIBED
-        update_version = self.pending_update_version(plugin_info, entry)
-        if entry is not None and update_version:
-            status_kind = BADGE_UPDATE
-            status_text += gt('，可更新到 v{version}').format(version=update_version)
-            actions.append((ACTION_UPDATE, gt('更新到 v{version}').format(version=update_version)))
-            actions.append((ACTION_IGNORE, gt('跳过此版本')))
-        actions.append((ACTION_UNSUBSCRIBE, gt('取消订阅')))
+        subscribed = self.is_subscribed(plugin_info)
+        if subscribed:
+            status_text = gt('已订阅')
+            status_kind = BADGE_SUBSCRIBED
+            update_version = self.pending_update_version(plugin_info, entry)
+            if entry is not None and update_version:
+                status_kind = BADGE_UPDATE
+                status_text += gt('，可更新到 v{version}').format(version=update_version)
+                actions.append((ACTION_UPDATE, gt('更新到 v{version}').format(version=update_version)))
+                actions.append((ACTION_IGNORE, gt('跳过此版本')))
+            actions.append((ACTION_UNSUBSCRIBE, gt('取消订阅')))
+            if entry is None:
+                status_text = gt('已订阅 · 商店暂无此插件')
+        else:
+            status_text = (
+                gt('已安装 · 本地插件')
+                if entry is None else gt('已安装 · 未从商店订阅')
+            )
+            status_kind = BADGE_INSTALLED
+            actions.append((ACTION_UNINSTALL, gt('卸载')))
 
         meta_parts = []
         if plugin_info.version:
@@ -382,7 +416,7 @@ class PluginOperationMixin:
                 if entry is not None and entry.latest is not None else ''
             ),
             changelog_version=entry.latest_version if entry is not None else '',
-            status_text=status_text if entry is not None else gt('已订阅 · 不在插件市场'),
+            status_text=status_text,
             status_kind=status_kind,
             homepage=plugin_info.homepage,
             actions=actions,
@@ -407,8 +441,12 @@ class PluginOperationMixin:
     ) -> None:
         if action == ACTION_SUBSCRIBE and entry is not None:
             self.subscribe(entry)
-        elif action == ACTION_UNSUBSCRIBE and plugin_info is not None:
-            self.unsubscribe(plugin_info, entry.plugin_id if entry is not None else None)
+        elif action in (ACTION_UNSUBSCRIBE, ACTION_UNINSTALL) and plugin_info is not None:
+            self.unsubscribe(
+                plugin_info,
+                entry.plugin_id if entry is not None else None,
+                subscribed=action == ACTION_UNSUBSCRIBE,
+            )
         elif action == ACTION_UPDATE and entry is not None and plugin_info is not None:
             self.update_plugin(entry, plugin_info)
         elif action == ACTION_IGNORE and entry is not None:
@@ -562,51 +600,60 @@ class PluginOperationMixin:
         self,
         plugin_info: PluginInfo,
         registry_id: str | None = None,
+        subscribed: bool | None = None,
     ) -> None:
-        """取消订阅，等价于删除插件目录。"""
+        """删除插件目录。订阅来的插件文案用取消订阅，本地安装用卸载。"""
         if self._import_busy:
             return
 
-        msg_box = MessageBox(
-            gt('取消订阅'),
-            gt('确定要取消订阅 "{name}" 吗？插件文件会被删除。').format(name=plugin_info.app_name),
-            self._as_widget().window(),
+        if subscribed is None:
+            subscribed = self.is_subscribed(plugin_info)
+        title = gt('取消订阅') if subscribed else gt('卸载')
+        message = (
+            gt('确定要取消订阅 "{name}" 吗？插件文件会被删除。')
+            if subscribed else gt('确定要卸载 "{name}" 吗？插件文件会被删除。')
         )
-        msg_box.yesButton.setText(gt('取消订阅'))
+        msg_box = MessageBox(title, message.format(name=plugin_info.app_name), self._as_widget().window())
+        msg_box.yesButton.setText(title)
         msg_box.cancelButton.setText(gt('保留'))
 
         if not msg_box.exec():
             return
 
+        failure_title = gt('取消失败') if subscribed else gt('卸载失败')
         plugin_package_dir = self.get_plugin_package_dir(plugin_info)
         if plugin_package_dir is None:
             self._show_error(
-                gt('取消失败'),
+                failure_title,
                 gt('无法定位插件目录，只能删除 plugins 目录下的插件'),
             )
             return
 
         if self.is_plugin_running(plugin_package_dir):
             self._show_error(
-                gt('取消失败'),
-                gt('插件正在运行，请先停止后再取消订阅'),
+                failure_title,
+                gt('插件正在运行，请先停止后再{action}').format(action=title),
             )
             return
 
         self._start_plugin_task(
             lambda: self.plugin_import_service.delete_plugin(plugin_package_dir),
-            partial(self._finish_unsubscribe, plugin_info, registry_id),
+            partial(self._finish_unsubscribe, plugin_info, registry_id, subscribed),
         )
 
     def _finish_unsubscribe(
         self,
         plugin_info: PluginInfo,
         registry_id: str | None,
+        subscribed: bool,
         result: ImportResult,
     ) -> None:
         self._finish_plugin_task()
         if not result.success:
-            self._show_error(gt('取消失败'), result.message)
+            self._show_error(
+                gt('取消失败') if subscribed else gt('卸载失败'),
+                result.message,
+            )
             return
 
         if registry_id:
@@ -621,7 +668,7 @@ class PluginOperationMixin:
         self.ctx.refresh_application_registration()
         self.refresh_cards()
         InfoBar.success(
-            title=gt('已取消订阅'),
+            title=gt('已取消订阅') if subscribed else gt('已卸载'),
             content=gt('{name} 已移除').format(name=plugin_info.app_name),
             orient=Qt.Horizontal,
             isClosable=True,
@@ -677,6 +724,7 @@ class PluginOperationMixin:
                 app_id=plugin_info.app_id,
                 plugin_dir_name=package_dir.name if package_dir is not None else '',
                 installed_version=plugin_info.version or '',
+                source='local',
             )
         self.subscription_config.set_ignored_version(entry.plugin_id, entry.latest_version)
 

@@ -1,8 +1,8 @@
 """插件订阅记录。
 
-订阅即安装：一条记录把插件市场条目、本地应用、插件目录三者绑定在一起，
-避免靠仓库地址字符串去猜本地插件对应市场里的哪一条。记录同时保存
-用户忽略的版本号，用于跳过不想更新的版本。
+订阅指从插件商店的网页源安装或更新。本地导入、手动放进 plugins 目录只算安装，
+不写订阅记录。一条订阅记录把市场条目、本地应用、插件目录绑在一起，
+并保存用户跳过的版本号。
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ class PluginSubscriptionConfig(YamlConfig):
         app_id: str,
         plugin_dir_name: str,
         installed_version: str = '',
+        source: str = 'market',
     ) -> None:
         """写入或更新一条订阅记录，保留原有的忽略版本。
 
@@ -49,6 +50,7 @@ class PluginSubscriptionConfig(YamlConfig):
             app_id: 插件声明的应用 id。
             plugin_dir_name: 插件在 plugins 目录下的目录名。
             installed_version: 已安装版本号。
+            source: market 表示从网页源安装或更新；local 只为记下跳过的版本，不算订阅。
         """
         if not registry_id:
             return
@@ -59,6 +61,7 @@ class PluginSubscriptionConfig(YamlConfig):
             'plugin_dir_name': plugin_dir_name,
             'installed_version': installed_version,
             'ignored_version': str(old.get('ignored_version') or ''),
+            'source': source,
         }
         self.update('records', current)
 

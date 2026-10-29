@@ -28,6 +28,7 @@ from one_dragon.base.operation.one_dragon_context import OneDragonContext
 from one_dragon.utils.i18_utils import gt
 from one_dragon_qt.view.plugin.plugin_operation_mixin import PluginOperationMixin
 from one_dragon_qt.widgets.plugin_card import (
+    BADGE_INSTALLED,
     BADGE_NONE,
     BADGE_SUBSCRIBED,
     BADGE_UPDATE,
@@ -192,9 +193,10 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
     ) -> PluginCard:
         """按市场条目造一张卡片，订阅状态、封面与失联标记一并处理。"""
         plugin_info = installed_map.get(entry.plugin_id)
+        subscribed = plugin_info is not None and self.is_subscribed(plugin_info)
         update_version = (
             self.pending_update_version(plugin_info, entry)
-            if plugin_info is not None else ''
+            if subscribed and plugin_info is not None else ''
         )
         if plugin_info is None:
             badge_text = gt('未订阅')
@@ -202,9 +204,12 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
         elif update_version:
             badge_text = gt('可更新 v{version}').format(version=update_version)
             badge_kind = BADGE_UPDATE
-        else:
+        elif subscribed:
             badge_text = gt('已订阅')
             badge_kind = BADGE_SUBSCRIBED
+        else:
+            badge_text = gt('已安装')
+            badge_kind = BADGE_INSTALLED
 
         meta_parts = []
         if entry.latest_version:
