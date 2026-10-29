@@ -6,6 +6,8 @@
 
 单件物品价值没有直接显示，按装箱时「本次调查收益」浮出的涨幅和总数差值推算，
 见 ``BagelSafeLedger``。
+
+用时按扣除暂停后的时钟计算。
 """
 
 from __future__ import annotations
@@ -88,7 +90,8 @@ class BagelItemRecord:
 
     item_type: str
     quality: str
-    quantity: int
+    quantity: int | None
+    """格子下方读到的数量；装箱中途结束、没读数量时为 None。"""
     value: int | None
     """推算出的单格价值；推算不出时为 None。"""
 
@@ -104,6 +107,8 @@ class _Transfer:
     confirmed: bool = False
     popup: int | None = None
     """这次装箱浮出的涨幅；没读到为 None。"""
+    item: tuple[str, str] | None = None
+    """拖入的物品（类型, 品质）；不明为 None。"""
 
 
 class BagelSafeLedger:
@@ -128,8 +133,12 @@ class BagelSafeLedger:
         self.total: int | None = None
         """最近一次停住的调查收益。"""
         self.slot_values: dict[int, int | None] = {}
-        self.slot_items: dict[int, tuple[str, str, int]] = {}
-        """安全箱格号 -> （类型, 品质, 数量），取最后一次装箱结束时的画面。"""
+        self.slot_items: dict[int, tuple[str, str, int | None]] = {}
+        """安全箱格号 -> （类型, 品质, 数量）。
+
+        确认入箱时先按拖入的物品更新，数量未知；装箱正常结束后再按画面读数覆盖。
+        这样装箱中途结束时，类型和价值仍指向同一件物品。
+        """
         self._last_reading: int | None = None
         self._last_popup: int | None = None
         self._pending: list[_Transfer] = []
@@ -177,16 +186,27 @@ class BagelSafeLedger:
         self._pending.clear()
         self.total = total
 
-    def start_transfer(self, swap: bool, slot: int) -> None:
-        """拖拽发出前登记；确认入箱前不参与结算。"""
+    def start_transfer(self, swap: bool, slot: int, item: tuple[str, str] | None = None) -> None:
+        """拖拽发出前登记；确认入箱前不参与结算。
+
+        Args:
+            swap: 是否与安全箱内物品对换。
+            slot: 安全箱目标格号，从 0 开始。
+            item: 拖入的物品（类型, 品质）；不明为 None。
+        """
         replaced = self.slot_values.get(slot) if swap else None
-        self._pending.append(_Transfer(swap=swap, slot=slot, replaced=replaced))
+        self._pending.append(_Transfer(swap=swap, slot=slot, replaced=replaced, item=item))
 
     def confirm_transfer(self) -> None:
-        """最近一次拖拽已确认入箱。"""
+        """最近一次拖拽已确认入箱；该安全箱格的物品与价值一起换成新物品。"""
         for transfer in reversed(self._pending):
             if not transfer.confirmed:
                 transfer.confirmed = True
+                self.slot_values[transfer.slot] = None
+                if transfer.item is not None:
+                    self.slot_items[transfer.slot] = (*transfer.item, None)
+                else:
+                    self.slot_items.pop(transfer.slot, None)
                 return
 
     def cancel_transfer(self) -> None:
@@ -209,7 +229,8 @@ def format_items(items: list[BagelItemRecord]) -> str:
     if not items:
         return '无'
     return '；'.join(
-        f'{item.quality} {item.item_type}×{item.quantity} ≈{format_value(item.value)}'
+        f'{item.quality} {item.item_type}×{item.quantity if item.quantity is not None else "?"}'
+        f' ≈{format_value(item.value)}'
         for item in items
     )
 
@@ -220,6 +241,8 @@ class _ItemTotal:
 
     slots: int = 0
     quantity: int = 0
+    quantity_unknown: int = 0
+    """数量没读到的格数。"""
     value: int = 0
     unknown: int = 0
 
@@ -242,7 +265,9 @@ class BagelRunStats:
     """按局累计收益与各阶段耗时，每局结束打一行本局统计和一行累计统计。"""
 
     def __init__(self) -> None:
-        self.task_started: float = time.monotonic()
+        self._paused_total: float = 0.0
+        self._paused_since: float | None = None
+        self.task_started: float = self._now()
         self.current: _Round | None = None
         self.outcome_counts: dict[str, int] = {}
         self.finished_rounds: int = 0
@@ -267,16 +292,32 @@ class BagelRunStats:
         """
         if self.current is not None:
             self.finish_round()
-        now = time.monotonic()
+        now = self._now()
         self.current = _Round(attempt=attempt, started=now)
         self.begin_phase(PHASE_ENTER)
+
+    def pause(self) -> None:
+        """任务暂停；重复调用只按第一次计时。"""
+        if self._paused_since is None:
+            self._paused_since = time.monotonic()
+
+    def resume(self) -> None:
+        """任务恢复；暂停期间不计入任何用时。"""
+        if self._paused_since is not None:
+            self._paused_total += time.monotonic() - self._paused_since
+            self._paused_since = None
+
+    def _now(self) -> float:
+        """扣除暂停后的时钟，含正在进行的暂停。"""
+        ongoing = 0.0 if self._paused_since is None else time.monotonic() - self._paused_since
+        return time.monotonic() - self._paused_total - ongoing
 
     def begin_phase(self, phase: str) -> None:
         """切换到某阶段；同一阶段重复调用不重新计时。"""
         current = self.current
         if current is None or current.phase == phase:
             return
-        now = time.monotonic()
+        now = self._now()
         self._close_phase(current, now)
         current.phase = phase
         current.phase_started = now
@@ -302,7 +343,7 @@ class BagelRunStats:
         if current is None:
             return
         self.current = None
-        now = time.monotonic()
+        now = self._now()
         self._close_phase(current, now)
         seconds = now - current.started
         self.finished_rounds += 1
@@ -320,7 +361,10 @@ class BagelRunStats:
         for item in current.items:
             total = self.item_totals.setdefault((item.quality, item.item_type), _ItemTotal())
             total.slots += 1
-            total.quantity += item.quantity
+            if item.quantity is None:
+                total.quantity_unknown += 1
+            else:
+                total.quantity += item.quantity
             if item.value is None:
                 total.unknown += 1
             else:
@@ -353,9 +397,10 @@ class BagelRunStats:
                 value = f'价值约 {format_value(total.value)}（{total.unknown} 格未推算）'
             else:
                 value = f'价值约 {format_value(total.value)}'
+            unknown_quantity = f'（{total.quantity_unknown} 格数量未读到）' if total.quantity_unknown else ''
             log.info(
-                '贝果累计物品：%s %s %s 格，共 %s 件，%s',
-                quality, item_type, total.slots, total.quantity, value,
+                '贝果累计物品：%s %s %s 格，共 %s 件%s，%s',
+                quality, item_type, total.slots, total.quantity, unknown_quantity, value,
             )
 
     def record_sale(self, coins: int | None) -> None:
@@ -380,8 +425,8 @@ class BagelRunStats:
         current.phase = None
 
     def _log_summary(self) -> None:
-        """输出累计统计。每小时收益按任务开始以来的实际时间计算。"""
-        hours = (time.monotonic() - self.task_started) / 3600
+        """输出累计统计。每小时收益按任务开始以来扣除暂停后的时间计算。"""
+        hours = (self._now() - self.task_started) / 3600
         counts = '/'.join(
             f'{name}{self.outcome_counts.get(name, 0)}'
             for name in (OUTCOME_SUCCESS, OUTCOME_EMPTY, OUTCOME_FAILED, OUTCOME_UNSUPPORTED, OUTCOME_UNFINISHED)

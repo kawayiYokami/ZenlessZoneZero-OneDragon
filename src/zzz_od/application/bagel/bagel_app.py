@@ -150,9 +150,15 @@ class BagelApp(ZApplication):
         return execute_bagel_round(self)
 
     def handle_pause(self) -> None:
-        """暂停释放按键，不打断当前拖拽，也不重置累计状态。"""
+        """暂停释放按键，不打断当前拖拽，也不重置累计状态；暂停时长不计入统计用时。"""
         release_flow_inputs(self.ctx, release_mouse=False)
+        self._stats.pause()
         super().handle_pause()
+
+    def handle_resume(self) -> None:
+        """恢复后统计继续计时。"""
+        self._stats.resume()
+        super().handle_resume()
 
     def handle_init(self) -> None:
         """新任务重置计数；子操作切换和暂停恢复不调用此初始化。"""

@@ -391,7 +391,10 @@ class BagelStoreSafe(BagelOperation):
             destination_item, self.blueprint_priority,
         )
         if self.ledger is not None:
-            self.ledger.start_transfer(choice.kind == ACTION_SWAP, choice.dest_index)
+            self.ledger.start_transfer(
+                choice.kind == ACTION_SWAP, choice.dest_index,
+                (choice.mark.item_type, choice.mark.quality),
+            )
         self._drag_item(source, destination)
         return self.round_success('已拖拽一件', wait=0.7)
 
