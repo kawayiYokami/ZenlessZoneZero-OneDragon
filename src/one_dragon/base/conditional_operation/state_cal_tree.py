@@ -102,64 +102,6 @@ class StateCalNode:
 
         return False
 
-    def explain(self, now: float) -> str:
-        """
-        只展开让这个复合条件此刻成立的路径 用于说明它是靠什么命中的
-        条件不成立时返回空字符串
-        :param now: 判定时刻
-        :return: 形如 [蕾米埃尔-虚曜]{0, 0} 的字符串
-        """
-        if not self.in_time_range(now):
-            return ''
-        return self._explain_true(now)
-
-    def _explain_true(self, now: float) -> str:
-        """
-        已知当前节点为真 返回导致它为真的那部分表达式
-        AND 两边都要成立所以都展开 OR 只要一支成立 有假支就丢掉
-        """
-        if self.node_type == StateCalNodeType.TRUE:
-            return '恒真'
-        if self.node_type == StateCalNodeType.STATE:
-            return self._state_desc()
-        if self.op_type == StateCalOpType.NOT:
-            child = self.left_child
-            if child.node_type == StateCalNodeType.STATE:
-                return '!' + child._state_desc()
-            return f'!({child._explain_any(now)})'
-        if self.op_type == StateCalOpType.AND:
-            return f'{self.left_child._explain_true(now)} & {self.right_child._explain_true(now)}'
-
-        left_hit = self.left_child.in_time_range(now)
-        right_hit = self.right_child.in_time_range(now)
-        if left_hit and right_hit:
-            return f'{self.left_child._explain_true(now)} | {self.right_child._explain_true(now)}'
-        branch = self.left_child if left_hit else self.right_child
-        return branch._explain_true(now)
-
-    def _explain_any(self, now: float) -> str:
-        """
-        不判断真假地完整展开 只用于嵌套在非状态节点下时的兜底显示
-        """
-        if self.node_type == StateCalNodeType.STATE:
-            return self._state_desc()
-        if self.node_type == StateCalNodeType.TRUE:
-            return '恒真'
-        if self.op_type == StateCalOpType.NOT:
-            return f'!({self.left_child._explain_any(now)})'
-        op = '&' if self.op_type == StateCalOpType.AND else '|'
-        return f'({self.left_child._explain_any(now)} {op} {self.right_child._explain_any(now)})'
-
-    def _state_desc(self) -> str:
-        """
-        把叶子状态还原成配置里的写法
-        :return:
-        """
-        name = self.state_recorder.state_name
-        if self.state_value_range_min is not None and self.state_value_range_max is not None:
-            return f'[{name}]{{{self.state_value_range_min}, {self.state_value_range_max}}}'
-        return f'[{name}, {self.state_time_range_min}, {self.state_time_range_max}]'
-
     @cached_property
     def usage_states(self) -> set[str]:
         """
