@@ -34,7 +34,11 @@ from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel import bagel_screen
 from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
-from zzz_od.application.bagel.bagel_input_worker import BagelInputWorker
+from zzz_od.application.bagel.bagel_input_worker import (
+    TURN_DEADBAND,
+    TURN_DEADBAND_FAST,
+    BagelInputWorker,
+)
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_route_model import (
     BEACON,
@@ -750,7 +754,7 @@ class BagelRouteWalker(BagelOperation):
             if angle is not None:
                 target_angle = self._target_angle(position, point)
                 angle_diff = cal_utils.angle_delta(angle % 360, target_angle)
-                self._submit_turn(target_angle)
+                self._submit_turn(target_angle, deadband=TURN_DEADBAND_FAST)
                 if abs(angle_diff) > WALK_TURN_ANGLE:
                     # 方向偏太多先停下等转，不然会走到旁边去。
                     self._release_forward()
@@ -1108,7 +1112,7 @@ class BagelRouteWalker(BagelOperation):
         angle_diff = cal_utils.angle_delta(controller_angle, target_angle)
         distance = hypot(point.x - position[0], point.y - position[1])
         near = distance <= NEAR_STEP_TURN_RADIUS
-        self._submit_turn(target_angle, cruise_only=near)
+        self._submit_turn(target_angle, cruise_only=near, deadband=TURN_DEADBAND_FAST)
         if abs(angle_diff) > WALK_TURN_ANGLE and not near:
             # 大偏差：松键停车等转向线程转到位再走。
             self._release_forward()
@@ -1121,7 +1125,7 @@ class BagelRouteWalker(BagelOperation):
         self._set_sprint(distance)
         return self.round_wait('冲刺前进' if self.sprinting else '按住前进')
 
-    def _submit_turn(self, target: float, cruise_only: bool = False) -> None:
+    def _submit_turn(self, target: float, cruise_only: bool = False, deadband: float = TURN_DEADBAND) -> None:
         """提交目标方向给转向线程；只存不定夺，不记输入。
 
         转不转、转多少、校准，全由转向线程自己采样、稳 3 帧后定。
@@ -1131,8 +1135,9 @@ class BagelRouteWalker(BagelOperation):
         Args:
             target: 目标方向（度）。
             cruise_only: 近距离只做边走边转，线程内限幅 15 度。
+            deadband: 本次目标的对准死区；快速移动传 2 度，其余用默认 5 度。
         """
-        self.input_worker.submit_turn(target, cruise_only=cruise_only)
+        self.input_worker.submit_turn(target, cruise_only=cruise_only, deadband=deadband)
 
     def persist_turn_scale(self) -> None:
         """把本局学到的补偿比例写回现有灵敏度字段 turn_dx，供下一局直接用。

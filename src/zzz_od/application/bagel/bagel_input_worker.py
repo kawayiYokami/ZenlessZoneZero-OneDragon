@@ -69,6 +69,9 @@ TURN_SAMPLE_INTERVAL: float = 0.03
 TURN_DEADBAND: float = 5.0
 """对准死区：与目标差在它以内不转。1 度内是识别精度，1~5 度是被打偏后的容忍带。"""
 
+TURN_DEADBAND_FAST: float = 2.0
+"""快速移动时的对准死区：巡航与进电梯按住走，偏一点就会走偏，压到 2 度。"""
+
 TURN_TARGET_FRESH_SECONDS: float = 1.0
 """提交新鲜度：目标超过这么久没更新就视为过期，暂停转向。
 
@@ -239,6 +242,8 @@ class _TurnWorker:
         """最新目标的提交时刻；超过新鲜度没更新就当过期。"""
         self._target_cruise_only: bool = False
         """主线近距离只做边走边转时为 True，单次转向 amplitude 受 CRUISE_TURN_CAP 限制。"""
+        self._target_deadband: float = TURN_DEADBAND
+        """本次目标用的对准死区；快速移动时主线会传 2 度，默认 5 度。"""
         self._history: deque[float] = deque(maxlen=TURN_STABLE_FRAMES)
         """最近几帧的当前朝向，读不到时清空。"""
         self._anchor: float | None = None
@@ -269,7 +274,7 @@ class _TurnWorker:
         )
         self._thread.start()
 
-    def submit(self, target: float | None, cruise_only: bool = False) -> None:
+    def submit(self, target: float | None, cruise_only: bool = False, deadband: float = TURN_DEADBAND) -> None:
         """提交最新目标方向；只存不定夺，转不转由线程自己采样再看。
 
         只写内存，不记输入、不碰截图，调完立刻返回，不会限速主循环。
@@ -279,6 +284,7 @@ class _TurnWorker:
         Args:
             target: 目标方向（度），None 表示暂停转向。
             cruise_only: 近距离只做边走边转，单次幅度受 CRUISE_TURN_CAP 限制。
+            deadband: 本次目标的对准死区；快速移动传 2 度，其余用默认 5 度。
         """
         with self._lock:
             if self._stopping:
@@ -289,6 +295,7 @@ class _TurnWorker:
                 self._target = target % 360
                 self._target_at = time.monotonic()
                 self._target_cruise_only = cruise_only
+                self._target_deadband = deadband
         self._wake.set()
 
     def busy(self) -> bool:
@@ -379,7 +386,8 @@ class _TurnWorker:
                     self._target = None
                     continue
                 deviation = cal_utils.angle_delta(stable_angle, self._target)
-                if abs(deviation) <= TURN_DEADBAND:
+                deadband = self._target_deadband
+                if abs(deviation) <= deadband:
                     continue
                 cruise_only = self._target_cruise_only
                 magnitude = abs(deviation)
@@ -593,7 +601,7 @@ class BagelInputWorker:
         with self._backward_lock:
             self._backward_want = False
 
-    def submit_turn(self, target: float | None, cruise_only: bool = False) -> None:
+    def submit_turn(self, target: float | None, cruise_only: bool = False, deadband: float = TURN_DEADBAND) -> None:
         """提交最新目标方向；只存不定夺，朝向由转向线程自己采样。
 
         只写内存，不记输入，调完立刻返回，不会限速主循环。
@@ -601,8 +609,9 @@ class BagelInputWorker:
         Args:
             target: 目标方向（度），None 表示暂停转向。
             cruise_only: 近距离只做边走边转，单次幅度受 CRUISE_TURN_CAP 限制。
+            deadband: 本次目标的对准死区；快速移动传 2 度，其余用默认 5 度。
         """
-        self._turn_worker.submit(target, cruise_only=cruise_only)
+        self._turn_worker.submit(target, cruise_only=cruise_only, deadband=deadband)
 
     @property
     def turn_ratio(self) -> float:
