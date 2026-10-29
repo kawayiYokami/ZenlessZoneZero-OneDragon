@@ -5,8 +5,9 @@
 
 三条独立通道，各自有线程，互不打断、可并发：
 - 前进（状态）：只记「该不该按着」，线程把真实键位对齐到意图，重复调用无副作用。
-- 转向（互斥）：上一条没转完时，新请求直接忽略，不排队也不叠加。
-  转向是相对位移，叠加会越转越过、一直转个不停。
+- 转向（独立判稳）：主线只提交目标方向，这里自己采样朝向、数连续 3 帧稳定、
+  1 度防抖、偏离 5 度才转一次，转稳后自己算校准样本。转向是相对位移，
+  不排队不叠加，上一笔没校准完不开下一笔。
 - 即时动作（队列）：点按 F、长按 F、松开 F、闪避，按顺序执行。
 
 三条通道互不占用，所以转向永远不会把前进顶掉（曾因此原地不动）。
@@ -17,10 +18,15 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from statistics import median
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from one_dragon.base.geometry.point import Point
+from one_dragon.utils import cal_utils, cv2_utils
 from one_dragon.utils.log_utils import log
+from zzz_od.game_data.map_locator.minimap_angle import analyze
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -51,12 +57,77 @@ SLEEP_SLICE: float = 0.01
 SCREEN_CENTER: Point = Point(960, 540)
 """画面中心，点它推进对话。按 1080p 基准。"""
 
-TURN_SETTLE: float = 0.02
-"""转向下发后等画面更新的时长（秒）。
+TURN_STABLE_FRAMES: int = 3
+"""连续这么多帧朝向不动，才认为画面稳定、可以开始下一次转向。"""
 
-鼠标移动是瞬间返回的，但游戏把小地图朝向重新画出来要一帧多。
-不等这一下，主线会在旧画面上截图，读到的角度还是转之前的。
+TURN_STABLE_JITTER: float = 1.0
+"""防抖：相邻两帧朝向差在它以内算没动。静止实测抖动 0.2 度，取 1 度是识别精度。"""
+
+TURN_SAMPLE_INTERVAL: float = 0.03
+"""转向线程自己采截图的间隔（秒）。独立于主线循环，首转不再等主线攒 3 轮。"""
+
+TURN_DEADBAND: float = 5.0
+"""对准死区：与目标差在它以内不转。1 度内是识别精度，1~5 度是被打偏后的容忍带。"""
+
+TURN_DEADBAND_FAST: float = 2.0
+"""快速移动时的对准死区：巡航与进电梯按住走，偏一点就会走偏，压到 2 度。"""
+
+TURN_TARGET_FRESH_SECONDS: float = 1.0
+"""提交新鲜度：目标超过这么久没更新就视为过期，暂停转向。
+
+主线只在移动分支提交；开箱、等提示、暂停时不提交，靠这个超时让线程
+自己停手，不用每个分支都调一次暂停。正常移动时约 0.1 秒提交一次，
+远小于这个值，不影响。"""
+
+TURN_RATIO_SMOOTH: float = 0.3
+"""校准值的指数平滑系数：新样本占三成，避免单次抖动带偏。"""
+
+TURN_RATIO_MIN: float = 0.2
+TURN_RATIO_MAX: float = 20.0
+"""可信校准值范围；超出说明样本被别的动作污染，直接丢弃。"""
+
+STOP_TURN_CAP: float = 180.0
+"""停车转的单次上限（度）：偏差多大就一把转到位，最大 180 度（掉头）。"""
+
+STOP_TURN_CAP_WARMUP: float = 45.0
+"""比例未知时用的保守上限（度）：一次别甩太大。"""
+
+TURN_CAP_TRUST_SAMPLES: int = 3
+"""攒够这么多个样本才放宽到 STOP_TURN_CAP。"""
+
+CRUISE_TURN_CAP: float = 15.0
+"""边走边转的单次上限（度）：只做小幅修正，剩下的下一轮再补。"""
+
+TURN_CRUISE_LIMIT: float = 10.0
+"""偏差在它以内是边走边转，对应主线束角；超过它才停车转。"""
+
+TURN_RATIO_RECENT_SAMPLES: int = 5
+"""实时校准值按最近这么多个样本的中位数更新。
+
+单个样本偶尔会掉到 0.74 这种（实转只到一半），直接进指数平滑会把校准值一次拽下
+0.23；取中位数后单个异常样本不影响目标值。
 """
+
+TURN_RATIO_CLAMP_WARN_STREAK: int = 5
+"""校准值连续这么多个样本贴着可信区间的边界，就提示可能需要重做灵敏度检测。"""
+
+TURN_SCALE_SAMPLE_MIN_COMMAND: float = 8.0
+"""下发角小于它就不参与校准：这个幅度以下量化误差与上一把转向的余摆占比过大。"""
+
+TURN_SETTLE_GRACE: float = 0.4
+"""下发转向后这么久内画面没变化不计数：实测转稳中位 0.24 秒、最大 0.31 秒。"""
+
+TURN_STILL_TIMEOUT: float = 1.0
+"""宽限过后，画面持续没变化超过这么久就放行下一笔，不重置校准。
+
+下发后 0.4 + 1.0 秒还没动静，继续等只会饿死后续转向，所以消费掉
+这一笔让下一笔能转。校准值本身任何时候都不重置，只靠正常样本平滑收敛。"""
+
+TURN_RATIO_MIN_ANGLE: float = 3.0
+"""实际转角小于它就不采样：角度太小，量化误差占比过大。"""
+
+TURN_RATIO_MIN_DELTA: float = 0.5
+"""实际转角小于它视为画面还没跟上，样本留到下一轮再算。"""
 
 
 class _Command:
@@ -144,27 +215,57 @@ class _InstantChannel:
                         self._running = False
 
 
-class _TurnChannel:
-    """转向通道：同一时刻只执行一条，正在转时新请求直接忽略。
+class _TurnWorker:
+    """转向独立线程：主线只给目标方向，这里自己采样、自己判稳、自己转、自己校准。
 
-    转向是相对位移，排队会让它越积越多、一路转到过头；
-    上一条没转完时又叠一条，还会拼命转。所以这里不是队列，
-    而是「有在转就丢弃新请求」。
-
-    转完还要再等一小段才放开 busy：鼠标事件下发是瞬间返回的，
-    但游戏把新朝向画到小地图上要一帧多。不等的话，
-    主线会在画面还没更新时截图，读到的还是转之前的朝向。
+    主线只提交目标角，不提交朝向；这里按固定间隔自己截小地图读朝向，
+    不等主线循环。连续 3 帧朝向差都在 1 度内才算稳，稳了且与目标差
+    超过 5 度才转一次。转完清空历史，等新的 3 帧稳了再算校准样本，
+    样本干净了才更新比例。被敌人打转方向时画面一直不稳，这里就一直
+    不动手，等稳了再一次性转回去。
     """
-    def __init__(self, handler: Callable[[float], None], settle: float = TURN_SETTLE) -> None:
+
+    def __init__(
+        self, handler: Callable[[float], None],
+        sampler: Callable[[], float | None],
+    ) -> None:
         """
         Args:
-            handler: 执行一次转向的函数，参数是角度。
-            settle: 下发后等待画面更新的时长（秒）。
+            handler: 执行一次转向的函数，参数是换算后的实际下发角。
+            sampler: 采一帧当前镜头朝向；读不到返回 None。
         """
         self._handler: Callable[[float], None] = handler
-        self._settle: float = settle
-        self._busy: bool = False
+        self._sampler: Callable[[], float | None] = sampler
+        self._target: float | None = None
+        """主线给的最新目标方向；None 表示暂停转向。"""
+        self._target_at: float = 0.0
+        """最新目标的提交时刻；超过新鲜度没更新就当过期。"""
+        self._target_cruise_only: bool = False
+        """主线近距离只做边走边转时为 True，单次转向 amplitude 受 CRUISE_TURN_CAP 限制。"""
+        self._target_deadband: float = TURN_DEADBAND
+        """本次目标用的对准死区；快速移动时主线会传 2 度，默认 5 度。"""
+        self._history: deque[float] = deque(maxlen=TURN_STABLE_FRAMES)
+        """最近几帧的当前朝向，读不到时清空。"""
+        self._anchor: float | None = None
+        """上次转向前的稳定朝向，用来和转稳后的朝向求实际转角。"""
         self._pending: float | None = None
+        """上次真正下发的转角，等转稳后用来算校准样本。"""
+        self._pending_at: float = 0.0
+        """上次下发的时刻；宽限内画面没变化不计数。"""
+        self._still_since: float | None = None
+        """宽限过后首次看到画面没动的时刻；超时只放行下一笔，不碰校准。"""
+        self.turn_ratio: float = 1.0
+        """转向校准值：名义转角乘它就是实际转角，1.0 表示还没校准过。任何时候都不重置。"""
+        self.turn_samples: int = 0
+        """已累积的校准样本数，用于日志观察。"""
+        self._recent_samples: list[float] = []
+        """最近几个有效样本，实时校准值取它们的中位数，挡住单个异常样本。"""
+        self._clamp_streak: int = 0
+        """校准值连续几次贴到夹取边界的计数，用于提示重做灵敏度检测。"""
+        self._scale_samples: list[float] = []
+        """本局按有效样本算出的补偿比例（1/校准值），局末取中位数写回现有灵敏度字段。"""
+        self._busy: bool = False
+        """正在执行鼠标转向的极短瞬间；平时都是 False，主线不用等它。"""
         self._lock: threading.Lock = threading.Lock()
         self._wake: threading.Event = threading.Event()
         self._stopping: bool = False
@@ -173,25 +274,32 @@ class _TurnChannel:
         )
         self._thread.start()
 
-    def submit(self, angle: float) -> bool:
-        """请求一次转向；上一条还在转就忽略。
+    def submit(self, target: float | None, cruise_only: bool = False, deadband: float = TURN_DEADBAND) -> None:
+        """提交最新目标方向；只存不定夺，转不转由线程自己采样再看。
+
+        只写内存，不记输入、不碰截图，调完立刻返回，不会限速主循环。
+        朝向由线程自己按固定间隔采样，暂停时目标置空，历史不清，
+        恢复提交后不用重数 3 帧。
 
         Args:
-            angle: 转向角度（度）。
-
-        Returns:
-            本次是否真的排上了。
+            target: 目标方向（度），None 表示暂停转向。
+            cruise_only: 近距离只做边走边转，单次幅度受 CRUISE_TURN_CAP 限制。
+            deadband: 本次目标的对准死区；快速移动传 2 度，其余用默认 5 度。
         """
         with self._lock:
-            if self._stopping or self._busy:
-                return False
-            self._busy = True
-            self._pending: float | None = angle
+            if self._stopping:
+                return
+            if target is None:
+                self._target = None
+            else:
+                self._target = target % 360
+                self._target_at = time.monotonic()
+                self._target_cruise_only = cruise_only
+                self._target_deadband = deadband
         self._wake.set()
-        return True
 
     def busy(self) -> bool:
-        """是否有转向正在执行。"""
+        """是否正在执行鼠标转向；只有下发的那一瞬间是 True。"""
         with self._lock:
             return self._busy
 
@@ -200,31 +308,192 @@ class _TurnChannel:
         with self._lock:
             self._stopping = True
             self._pending = None
+            self._anchor = None
+            self._history.clear()
+            self._target = None
+            self._still_since = None
+            self._recent_samples.clear()
+            self._clamp_streak = 0
         self._wake.set()
         self._thread.join(timeout=1.0)
 
+    @staticmethod
+    def _stable(history: list[float]) -> bool:
+        """连续几帧的朝向差是否都在防抖内；处理 0/360 跨界。"""
+        if len(history) < TURN_STABLE_FRAMES:
+            return False
+        recent = history[-TURN_STABLE_FRAMES:]
+        return all(
+            abs(cal_utils.angle_delta(a, b)) <= TURN_STABLE_JITTER
+            for a, b in zip(recent, recent[1:], strict=False)
+        )
+
     def _loop(self) -> None:
-        """有请求就转一次，转完再放开。"""
+        """按固定间隔自己采样：稳了、有偏差、上一笔已校准，才转。"""
         while True:
-            self._wake.wait(SLEEP_SLICE)
+            self._wake.wait(TURN_SAMPLE_INTERVAL)
             self._wake.clear()
             with self._lock:
                 if self._stopping:
                     return
-                angle = self._pending
-                self._pending = None
-            if angle is None:
-                continue
             try:
-                self._handler(angle)
-                # 鼠标事件是瞬间返回的，但游戏把小地图朝向画出来要一帧多。
-                # 等画面真的跟上再放开 busy，主线才不会读到转之前的旧角度。
-                time.sleep(self._settle)
+                current = self._sampler()
+            except Exception:
+                log.error('贝果转向采样朝向失败', exc_info=True)
+                current = None
+            with self._lock:
+                if self._stopping:
+                    return
+                if current is None:
+                    self._history.clear()
+                    # 读不到时不计时：重现后重新计时，避免缺数据也算静止。
+                    self._still_since = None
+                else:
+                    self._history.append(current % 360)
+                history = list(self._history)
+                pending = self._pending
+                anchor = self._anchor
+            if not history:
+                continue
+            # 目标过期先处理：即使上一笔卡住没学完，暂停/开箱后也不留旧目标。
+            # 否则学样本返回等待会跳过后边的过期分支，旧目标一直留着。
+            with self._lock:
+                if (
+                    self._target is not None
+                    and time.monotonic() - self._target_at > TURN_TARGET_FRESH_SECONDS
+                ):
+                    self._target = None
+            if not self._stable(history):
+                # 画面在动：不是静止，计时清掉重来。
+                with self._lock:
+                    self._still_since = None
+                continue
+            stable_angle = history[-1]
+            if pending is not None and anchor is not None:
+                # 上一笔转完又有 3 帧稳了，拿稳态差算样本，不拿转一半的中间帧。
+                if not self._learn(anchor, pending, stable_angle):
+                    continue
+            with self._lock:
+                if self._stopping:
+                    return
+                if self._pending is not None:
+                    continue
+                if self._target is None:
+                    continue
+                if time.monotonic() - self._target_at > TURN_TARGET_FRESH_SECONDS:
+                    # 主线超过 1 秒没提交（开箱、等提示、暂停），目标过期不清历史：
+                    # 画面朝向帧还接着用，恢复提交后不用重数 3 帧。
+                    self._target = None
+                    continue
+                deviation = cal_utils.angle_delta(stable_angle, self._target)
+                deadband = self._target_deadband
+                if abs(deviation) <= deadband:
+                    continue
+                cruise_only = self._target_cruise_only
+                magnitude = abs(deviation)
+                if cruise_only or magnitude <= TURN_CRUISE_LIMIT:
+                    cap = CRUISE_TURN_CAP
+                elif self.turn_samples >= TURN_CAP_TRUST_SAMPLES:
+                    cap = STOP_TURN_CAP
+                else:
+                    cap = STOP_TURN_CAP_WARMUP
+                nominal = float(max(int(min(magnitude, cap)), 1))
+                signed = nominal if deviation > 0 else -nominal
+                ratio = self.turn_ratio
+                actual = signed / ratio if ratio else signed
+                # 上限按真正拖拽的角度算：比例小于 1 时下发角会被放大，只夹名义角等于没夹。
+                actual = max(-cap, min(actual, cap))
+                self._pending = actual
+                self._pending_at = time.monotonic()
+                self._anchor = stable_angle
+                self._history.clear()
+                self._busy = True
+            try:
+                self._handler(actual)
             except Exception:
                 log.error('贝果转向执行失败', exc_info=True)
             finally:
                 with self._lock:
                     self._busy = False
+
+    def _learn(self, anchor: float, pending: float, stable: float) -> bool:
+        """用转稳后的角度反推上一笔的真实比例；画面还没跟上时返回 False 等下一轮。
+
+        Args:
+            anchor: 转向前的稳定朝向。
+            pending: 上次真正下发的转角。
+            stable: 转稳后的当前朝向。
+
+        Returns:
+            样本已消费（不管有效无效）时返回 True，还要继续等时返回 False。
+        """
+        delta = cal_utils.angle_delta(anchor, stable)
+        if abs(delta) < TURN_RATIO_MIN_DELTA:
+            now = time.monotonic()
+            if now - self._pending_at < TURN_SETTLE_GRACE:
+                # 画面还在路上，等，不计时。
+                return False
+            with self._lock:
+                if self._still_since is None:
+                    # 宽限过后第一次看到没动，开始计时。
+                    self._still_since = now
+                    return False
+                if now - self._still_since < TURN_STILL_TIMEOUT:
+                    return False
+                # 超时只放行下一笔，不碰校准值：任何时候都不重置。
+                self._pending = None
+                self._anchor = None
+                self._still_since = None
+            log.info(
+                '贝果转向校准画面 %.1fs 没变化，放行下一笔（校准保持 %.3f）',
+                TURN_SETTLE_GRACE + TURN_STILL_TIMEOUT, self.turn_ratio,
+            )
+            return True
+        with self._lock:
+            self._pending = None
+            self._anchor = None
+            self._still_since = None
+        if abs(delta) < TURN_RATIO_MIN_ANGLE:
+            # 小样本直接丢弃，不计数、不重置。
+            return True
+        if delta * pending <= 0:
+            return True
+        if abs(pending) < TURN_SCALE_SAMPLE_MIN_COMMAND:
+            # 小幅度微调不参与校准：余摆与量化误差会把倍数抬到 2~15 倍。
+            return True
+        sample = abs(delta) / abs(pending)
+        with self._lock:
+            if not (TURN_RATIO_MIN <= sample <= TURN_RATIO_MAX):
+                log.info(
+                    '贝果转向校准样本异常，忽略：%.2f（名义 %.1f 实际 %.1f）',
+                    sample, pending, delta,
+                )
+                return True
+            self._recent_samples.append(sample)
+            del self._recent_samples[:-TURN_RATIO_RECENT_SAMPLES]
+            target = median(self._recent_samples)
+            self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + target * TURN_RATIO_SMOOTH
+            self.turn_samples += 1
+            self._scale_samples.append(1.0 / self.turn_ratio if self.turn_ratio else 1.0)
+            ratio, count = self.turn_ratio, self.turn_samples
+        log.info(
+            '贝果转向校准 %.3f（样本 %.2f，中位 %.2f，名义 %.1f 实际 %.1f，共 %s 次）',
+            ratio, sample, target, pending, delta, count,
+        )
+        if TURN_RATIO_MIN * 1.2 <= ratio <= TURN_RATIO_MAX / 1.2:
+            with self._lock:
+                self._clamp_streak = 0
+        else:
+            with self._lock:
+                self._clamp_streak += 1
+                streak = self._clamp_streak
+            if streak == TURN_RATIO_CLAMP_WARN_STREAK:
+                log.warning(
+                    '转向校准值 %.2f 已贴近可补偿边界（%.2f~%.2f），偏差可能超出范围，'
+                    '建议跑一次鼠标灵敏度检测再继续',
+                    ratio, TURN_RATIO_MIN, TURN_RATIO_MAX,
+                )
+        return True
 
 
 class BagelInputWorker:
@@ -254,7 +523,7 @@ class BagelInputWorker:
         self._backward_lock: threading.Lock = threading.Lock()
         self._stopping: bool = False
 
-        self._turn_channel: _TurnChannel = _TurnChannel(self._run_turn)
+        self._turn_worker: _TurnWorker = _TurnWorker(self._run_turn, self._sample_angle)
         self._instant_channel: _InstantChannel = _InstantChannel(
             'bagel-instant', self._run_instant,
         )
@@ -332,21 +601,40 @@ class BagelInputWorker:
         with self._backward_lock:
             self._backward_want = False
 
-    def turn(self, angle: float) -> None:
-        """按角度转向；上一条还没转完就忽略本次。
+    def submit_turn(self, target: float | None, cruise_only: bool = False, deadband: float = TURN_DEADBAND) -> None:
+        """提交最新目标方向；只存不定夺，朝向由转向线程自己采样。
+
+        只写内存，不记输入，调完立刻返回，不会限速主循环。
 
         Args:
-            angle: 转向角度（度），逆时针为正。
+            target: 目标方向（度），None 表示暂停转向。
+            cruise_only: 近距离只做边走边转，单次幅度受 CRUISE_TURN_CAP 限制。
+            deadband: 本次目标的对准死区；快速移动传 2 度，其余用默认 5 度。
         """
-        self._turn_channel.submit(angle)
+        self._turn_worker.submit(target, cruise_only=cruise_only, deadband=deadband)
+
+    @property
+    def turn_ratio(self) -> float:
+        """转向校准值，供主线日志观察。"""
+        return self._turn_worker.turn_ratio
+
+    @property
+    def turn_samples(self) -> int:
+        """已累积的校准样本数，供局末持久化判断。"""
+        return self._turn_worker.turn_samples
+
+    @property
+    def turn_scale_samples(self) -> list[float]:
+        """本局补偿比例轨迹，供局末取中位数写回现有灵敏度字段。"""
+        return list(self._turn_worker._scale_samples)
 
     def idle(self) -> bool:
-        """转向与即时动作是否空闲；前进短按状态需单独检查。
+        """即时动作是否空闲；前进短按状态需单独检查。
 
-        转向由线程异步下发，投递返回不代表转完。只有等到真正空闲时
-        截到的画面才反映这次转向的结果，此刻读角度才可信。
+        转向不再阻塞主线：它只在稳了 3 帧后才转，稳不稳由它自己数，
+        主线不等它。截到的画面是不是转稳后的，由转向线程的稳定判断保证。
         """
-        return not self._turn_channel.busy() and not self._instant_channel.busy()
+        return not self._instant_channel.busy()
 
     def tap_interact(self, duration: float = 0.2) -> None:
         """点按交互键。
@@ -395,7 +683,7 @@ class BagelInputWorker:
         self.stop_forward()
         self._forward_thread.join(timeout=1.0)
         self._backward_thread.join(timeout=1.0)
-        self._turn_channel.stop()
+        self._turn_worker.stop()
         self._instant_channel.stop()
         try:
             self.ctx.controller.move_w(release=True)
@@ -469,6 +757,38 @@ class BagelInputWorker:
             time.sleep(SLEEP_SLICE)
 
     # ---------- 转向通道 ----------
+
+    def _sample_angle(self) -> float | None:
+        """转向线程自己采一帧当前镜头朝向；读不到返回 None。
+
+        用独立截图，不干扰主线截图策略；裁剪与识别与主线同区域同函数。
+        异常只返回 None，由调用方清空历史，不抛出去杀线程。
+        """
+        try:
+            screen = self.ctx.controller.get_screenshot(independent=True)
+        except Exception:
+            return None
+        if screen is None:
+            return None
+        try:
+            area = self.ctx.screen_loader.get_area('贝果-局内', '定位小地图')
+        except Exception:
+            return None
+        if area is None:
+            return None
+        try:
+            crop = cv2_utils.crop_image_only(screen, area.pc_rect)
+        except Exception:
+            return None
+        if crop is None or crop.size == 0:
+            return None
+        if crop.ndim == 2:
+            crop = np.stack([crop] * 3, axis=-1)
+        try:
+            _marker_vertices, _marker_edges, sector, _radius, _center = analyze(crop)
+        except Exception:
+            return None
+        return sector
 
     def _run_turn(self, angle: float) -> None:
         """执行一次转向。

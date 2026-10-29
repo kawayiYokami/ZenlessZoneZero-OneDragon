@@ -150,7 +150,7 @@ class BagelRunFlow(BagelOperation):
             if self.ctx.screen_loader.get_area('贝果-局内', area) is None:
                 raise ValueError(f'缺少画面区域：{area}')
         self.vision = BagelRouteVision(
-            route_layer(self.flow.map_id), map_snapshot=self._map_snapshot,
+            route_layer(self.flow.map_id), map_model=self._map_snapshot,
         )
         self.emit('snapshot', flow=self.flow.to_dict(), step_ids=self.step_ids, layer_name=self.vision.layer_name)
 
@@ -331,8 +331,8 @@ class BagelRunFlow(BagelOperation):
         if step.action in ('move', 'approach'):
             if self.vision is None:
                 self.vision = BagelRouteVision(
-            route_layer(self.flow.map_id), map_snapshot=self._map_snapshot,
-        )
+                    route_layer(self.flow.map_id), map_model=self._map_snapshot,
+                )
             return BagelNavigate(
                 self.ctx,
                 destination='move' if step.action == 'move' else step.target,
