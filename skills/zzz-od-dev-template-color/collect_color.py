@@ -47,9 +47,9 @@ def fit_linear(lo: float, hi: float) -> tuple[int, int]:
     return (lo_i + hi_i) // 2, int(np.ceil((hi_i - lo_i) / 2))
 
 
-def make_setting(hsv_pixels, s_range, v_range) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
-    """把采样像素与 S/V 区间换算成 hsv_color 与 hsv_color_diff"""
-    h_center, h_diff = fit_hue(hsv_pixels[:, 0])
+def make_setting(h_values, s_range, v_range) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """把出现过的 H 值与 S/V 区间换算成 hsv_color 与 hsv_color_diff"""
+    h_center, h_diff = fit_hue(h_values)
     s_center, s_diff = fit_linear(*s_range)
     v_center, v_diff = fit_linear(*v_range)
     return (h_center, s_center, v_center), (h_diff, s_diff, v_diff)
@@ -100,20 +100,25 @@ def main() -> int:
     rgb_max = np.zeros(3, dtype=np.int16)
     hsv_min = np.full(3, 255, dtype=np.int16)
     hsv_max = np.zeros(3, dtype=np.int16)
-    rgb_samples: list[np.ndarray] = []
-    hsv_samples: list[np.ndarray] = []
+    h_hist = np.zeros(180, dtype=np.int64)  # 只保留出现过的 H 值 长时间采集也不涨内存
     frame_cnt = 0
+    pixel_cnt = 0
     skip_cnt = 0
-    start_time = time.time()
+    active_time = 0.0  # 只累计绝区零在前台的时长 后台等待不算采集
+    last_tick = time.time()
     last_print = 0.0
 
     try:
         while True:
-            elapsed = time.time() - start_time
-            if args.duration > 0 and elapsed >= args.duration:
+            now = time.time()
+            win_active = ctx.controller.game_win.is_win_active
+            if win_active:
+                active_time += now - last_tick
+            last_tick = now
+            if args.duration > 0 and active_time >= args.duration:
                 break
 
-            if not ctx.controller.game_win.is_win_active:
+            if not win_active:
                 skip_cnt += 1
                 if skip_cnt == 1:
                     print('绝区零不在前台，暂停采集')
@@ -152,19 +157,18 @@ def main() -> int:
             rgb_max = np.maximum(rgb_max, pixels.max(axis=0))
             hsv_min = np.minimum(hsv_min, hsv.min(axis=0))
             hsv_max = np.maximum(hsv_max, hsv.max(axis=0))
-            rgb_samples.append(pixels.astype(np.int16))
-            hsv_samples.append(hsv.astype(np.int16))
+            h_hist += np.bincount(hsv[:, 0].ravel(), minlength=180)
+            pixel_cnt += pixels.shape[0]
             frame_cnt += 1
 
-            if elapsed - last_print >= args.print_interval:
-                last_print = elapsed
-                cur_hsv_all = np.vstack(hsv_samples)
+            if active_time - last_print >= args.print_interval:
+                last_print = active_time
                 cur_color, cur_diff = make_setting(
-                    cur_hsv_all,
+                    np.nonzero(h_hist)[0],
                     (float(hsv_min[1]), float(hsv_max[1])),
                     (float(hsv_min[2]), float(hsv_max[2])),
                 )
-                print(f'[{elapsed:5.1f}s] 帧 {frame_cnt}  '
+                print(f'[{active_time:5.1f}s] 帧 {frame_cnt}  '
                       f'RGB {format_tuple(rgb_min)}~{format_tuple(rgb_max)}  '
                       f'HSV 中心{format_tuple(cur_color)} 容差{format_tuple(cur_diff)}')
 
@@ -176,14 +180,11 @@ def main() -> int:
         print('没有采到任何帧')
         return 1
 
-    rgb_all = np.vstack(rgb_samples)
-    hsv_all = np.vstack(hsv_samples)
-
     print()
-    print(f'采集完成  帧数 {frame_cnt}  像素 {rgb_all.shape[0]}  用时 {time.time() - start_time:.1f}s')
+    print(f'采集完成  帧数 {frame_cnt}  像素 {pixel_cnt}  有效采集 {active_time:.1f}s')
 
     color, diff = make_setting(
-        hsv_all,
+        np.nonzero(h_hist)[0],
         (float(hsv_min[1]), float(hsv_max[1])),
         (float(hsv_min[2]), float(hsv_max[2])),
     )
