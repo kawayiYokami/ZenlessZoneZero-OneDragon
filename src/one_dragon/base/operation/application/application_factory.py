@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 from one_dragon.base.operation.application.application_config import ApplicationConfig
 from one_dragon.base.operation.application_base import Application
 from one_dragon.base.operation.application_run_record import AppRunRecord
-from one_dragon.utils.log_utils import log
 
 if TYPE_CHECKING:
     from one_dragon.base.operation.one_dragon_context import OneDragonContext
@@ -172,7 +171,7 @@ class ApplicationFactory:
 
         使用缓存机制，如果运行记录已存在则返回缓存的记录，否则创建新的记录并缓存。
         应用明确没有运行记录时返回 None，不把这种情况当成创建错误。
-        第三方插件创建运行记录抛异常时回退到通用运行记录，避免一个插件导致整个应用列表无法显示。
+        子类创建失败时异常继续抛出，不在这里改成通用记录。
 
         Args:
             instance_idx: 账号实例下标
@@ -184,16 +183,7 @@ class ApplicationFactory:
         if key in self._run_record_cache:
             return self._run_record_cache[key]
 
-        try:
-            record = self.create_run_record(instance_idx)
-        except Exception as exc:  # noqa: BLE001 - 插件实现出错时降级，不打断界面
-            log.warning(f'应用 {self.app_id} 创建运行记录失败，改用通用运行记录: {exc}')
-            record = AppRunRecord(
-                app_id=self.app_id,
-                instance_idx=instance_idx,
-                game_refresh_hour_offset=self.ctx.game_account_config.game_refresh_hour_offset,
-            )
-
+        record = self.create_run_record(instance_idx)
         if record is not None:
             self._run_record_cache[key] = record
         return record

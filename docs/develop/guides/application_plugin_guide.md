@@ -93,16 +93,7 @@ PLUGIN_DESCRIPTION = "插件功能描述"
 
 ### 工厂类必须实现的方法
 
-`ApplicationFactory` 有三个必须实现的方法，漏掉任意一个都会在界面上暴露成异常：
-
-```python
-class MyPluginFactory(ApplicationFactory):
-    def create_application(self, instance_idx: int, group_id: str) -> Application: ...
-    def create_config(self, instance_idx: int, group_id: str) -> ApplicationConfig: ...
-    def create_run_record(self, instance_idx: int) -> AppRunRecord: ...
-```
-
-`create_run_record` 最容易漏：`DEFAULT_GROUP = True` 的插件会出现在一条龙运行列表里，列表要为每个应用读取运行记录才能显示状态。漏实现时主程序会回退到通用运行记录并打警告，插件卡片仍能显示，但运行状态不会按插件自己的周期重置，需要插件自行实现才准确。
+`create_application` 和 `create_config` 必须由插件实现，漏掉会在界面上暴露成异常。`create_run_record` 父类已经有默认实现：`DEFAULT_GROUP = True` 时返回按当前区服刷新时间每日重置的通用记录，否则返回 `None`。只有运行周期或完成判定和这个默认不同时才需要覆盖；覆盖后如果创建失败，异常会继续抛出，不会被改成通用记录。
 
 ### 插件封面
 
