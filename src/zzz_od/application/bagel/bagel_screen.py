@@ -9,7 +9,7 @@ import numpy as np
 from one_dragon.base.geometry.rectangle import Rect
 from one_dragon.base.matcher.ocr import ocr_utils
 from one_dragon.base.screen import screen_utils
-from one_dragon.utils import cal_utils, cv2_utils
+from one_dragon.utils import cal_utils, cv2_utils, str_utils
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel.bagel_const import MAP_TITLE, RECOMMENDED_VALUE
 
@@ -241,24 +241,38 @@ def read_entry_warning_text(ctx: ZContext, screen: MatLike) -> str:
     return ocr_utils.merge_ocr_result_to_single_line(ocr_map, join_space=False)
 
 
+#: 已知入场提示的识别片段；一条提示的全部片段都命中才算识别成功。
+_ENTRY_WARNING_FRAGMENTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ('代理人队伍未满编', ('队伍未满编',)),
+    ('零装备价值', ('当前装备价值为0', '未达到推荐价值')),
+    ('未装备武备', ('未装备武备',)),
+    ('未穿戴队伍装备', ('未穿戴队伍装备',)),
+)
+
+
+def _has_fragment(compact: str, fragment: str) -> bool:
+    """片段的字按顺序出现在提示中即命中；五个字及以上的片段允许 OCR 错漏一个字。"""
+    allowed_misses = 1 if len(fragment) >= 5 else 0
+    return str_utils.longest_common_subsequence_length(fragment, compact) >= len(fragment) - allowed_misses
+
+
 def entry_warning(text: str) -> str | None:
     """区分已知入场弹窗；其他确认框不能自动确认。
 
-    装备提示可能只识别到第一行，沿用关键片段匹配；未满编提示要求完整文案。
+    按关键片段识别，容忍 OCR 漏读、错读个别字或多读其他文字。
+    零装备价值提示中的推荐价值与高危明显不同时（如其他难度的 72100），按未知提示处理。
     """
     compact = re.sub(r'[\s，,。？?：:（）()、]', '', text)
-    if compact == '代理人队伍未满编是否继续出战':
-        return '代理人队伍未满编'
-    if (
-        '当前装备价值为0' in compact
-        and '未达到推荐价值' in compact
-        and str(RECOMMENDED_VALUE) in compact
-    ):
-        return '零装备价值'
-    if '存在未装备武备的代理人' in compact:
-        return '未装备武备'
-    if '未穿戴队伍装备' in compact and ('异体刃' in compact or '抗蚀器' in compact):
-        return '未穿戴队伍装备'
+    for name, fragments in _ENTRY_WARNING_FRAGMENTS:
+        if not all(_has_fragment(compact, fragment) for fragment in fragments):
+            continue
+        if name == '零装备价值':
+            # 只判断四位及以上的数字串，避免把装备价值 0 或断开的残缺数字当成推荐价值。
+            value = max(re.findall(r'\d+', compact), key=len, default='')
+            if (len(value) >= 4 and str_utils.longest_common_subsequence_length(value, RECOMMENDED_VALUE)
+                    < len(RECOMMENDED_VALUE) - 1):
+                return None
+        return name
     return None
 
 

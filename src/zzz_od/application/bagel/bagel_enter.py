@@ -37,6 +37,11 @@ if TYPE_CHECKING:
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
     from zzz_od.context.zzz_context import ZContext
 
+#: 入场点击后的补点时机；慢机弹窗出现或关闭可能晚于该时间，补点只做一次。
+_ENTRY_RECLICK_SECONDS: float = 3
+#: 同一入场提示点击后仍未消失、零投资点击后投资页仍未消失的等待上限。
+_ENTRY_DIALOG_TIMEOUT_SECONDS: float = 15
+
 
 class BagelEnter(BagelOperation):
     """从已知安全画面进入贝果，核实高危、零携带和零投资。"""
@@ -65,6 +70,9 @@ class BagelEnter(BagelOperation):
         self.confirmed_warnings: set[str] = set()
         self.investment_confirmed: bool = False
         self.investment_retries: int = 0
+        self._investment_clicked_at: float = 0
+        self._entry_clicked_at: float = 0
+        self._entry_reclicked: bool = False
         self._pending_warning: str | None = None
         self._warning_started_at: float = 0
         self._warning_reclicked: bool = False
@@ -78,6 +86,9 @@ class BagelEnter(BagelOperation):
         self.confirmed_warnings.clear()
         self.investment_confirmed = False
         self.investment_retries = 0
+        self._investment_clicked_at = 0
+        self._entry_clicked_at = 0
+        self._entry_reclicked = False
         self.clear_attempted = False
         self.loadout_misses = 0
         self._pending_warning = None
@@ -361,6 +372,8 @@ class BagelEnter(BagelOperation):
         result = self.round_by_find_and_click_area(self.last_screenshot, '贝果-备战', '前往空洞')
         if result.is_success:
             self.zero_checked = True
+            self._entry_clicked_at = self.operation_usage_time
+            self._entry_reclicked = False
             return self.round_success(wait=1)
         return result
 
@@ -399,7 +412,10 @@ class BagelEnter(BagelOperation):
         if self.round_by_find_area(self.last_screenshot, '贝果-入场确认', '投资标题').is_success:
             self._pending_warning = None
             if self.investment_confirmed:
-                return self.round_retry('零投资入场未生效', wait=1)
+                # 慢机开始加载时画面可能停住，投资页残留不代表点击无效；只等待，不重复点击。
+                if self.operation_usage_time - self._investment_clicked_at >= _ENTRY_DIALOG_TIMEOUT_SECONDS:
+                    return self.round_fail('零投资入场未生效，停止并保留现场')
+                return self.round_wait('等待零投资入场', wait=0.5)
             amount = read_investment(self.ctx, self.last_screenshot)
             if amount != '0':
                 # WAIT 会重置框架重试次数，单独限次以防 MIN 无效时反复点击。
@@ -420,6 +436,7 @@ class BagelEnter(BagelOperation):
             )
             if result.is_success:
                 self.investment_confirmed = True
+                self._investment_clicked_at = self.operation_usage_time
                 return self.round_wait('等待零投资入场', wait=1)
             return result
         text = read_entry_warning_text(self.ctx, self.last_screenshot)
@@ -427,9 +444,9 @@ class BagelEnter(BagelOperation):
         if warning is not None:
             if warning == self._pending_warning:
                 elapsed = self.operation_usage_time - self._warning_started_at
-                if elapsed >= 6:
+                if elapsed >= _ENTRY_DIALOG_TIMEOUT_SECONDS:
                     return self.round_fail('入场确认持续未消失，停止并保留现场')
-                if elapsed < 3 or self._warning_reclicked:
+                if elapsed < _ENTRY_RECLICK_SECONDS or self._warning_reclicked:
                     return self.round_wait('等待入场确认切换', wait=0.25)
             elif warning in self.confirmed_warnings:
                 return self.round_fail('已处理的入场提示再次出现，停止并保留现场')
@@ -450,7 +467,14 @@ class BagelEnter(BagelOperation):
         if text and self.round_by_find_area(self.last_screenshot, '贝果-入场确认', '确认').is_success:
             return self.round_fail('未知入场确认，停止并保留现场')
         if self._pending_warning is not None:
-            if self.operation_usage_time - self._warning_started_at >= 6:
-                return self.round_fail('入场提示切换后未识别下一画面，停止并保留现场')
+            # 慢机下一个弹窗可能出现得晚，只等待，由节点超时兜底。
             return self.round_wait('等待入场提示切换', wait=0.25)
+        if (not self.confirmed_warnings and not self._entry_reclicked
+                and self.operation_usage_time - self._entry_clicked_at >= _ENTRY_RECLICK_SECONDS
+                and self.round_by_find_area(self.last_screenshot, '贝果-备战', '预设组合').is_success):
+            # 「前往空洞」点击后一直没有弹窗、仍停在备战页时，补点一次；之后只等待。
+            result = self.round_by_find_and_click_area(self.last_screenshot, '贝果-备战', '前往空洞')
+            if result.is_success:
+                self._entry_reclicked = True
+                return self.round_wait('补点前往空洞', wait=1)
         return self.round_wait('等待贝果加载完成', wait=1)
