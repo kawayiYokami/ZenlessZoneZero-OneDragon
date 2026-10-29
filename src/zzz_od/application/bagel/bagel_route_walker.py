@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import time
 from math import atan2, cos, degrees, hypot, radians, sin
+from statistics import median
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -111,6 +112,14 @@ SPRINT_DISTANCE: float = 30.0
 BEACON_SLOW_RADIUS: float = 10.0
 """途径点慢步半径：进入它改用慢步走走停停，不再一路按住前进（用户给定）。"""
 
+NEAR_STEP_TURN_RADIUS: float = 8.0
+"""距离目标点小于它就不再按角度停车转。
+
+这个距离上目标方位完全由 1~2px 的定位抖动决定：实测 5px 处相邻两轮算出的偏差
+是 78° 和 59°，按它停车转只会原地打摆。改成像束角内那样边走边转，转向幅度受
+CRUISE_TURN_CAP 限制。
+"""
+
 BOX_SMALL_STEP_RADIUS: float = 3.0
 """箱子碎步半径：进到它以内用碎步（用户给定 3px）。"""
 
@@ -146,6 +155,24 @@ TURN_FRACTION: float = 1.0
 实际下发角由 turn_ratio 校准值换算，所以这里给的是名义角。
 """
 
+STOP_TURN_CAP: float = 180.0
+"""停车转的单次上限（度）：偏差多大就一把转到位，最大 180 度（掉头）。"""
+
+STOP_TURN_CAP_WARMUP: float = 45.0
+"""比例未知时用的保守上限（度）：一次别甩太大。"""
+
+TURN_CAP_TRUST_SAMPLES: int = 3
+"""没有沿用保存比例时，攒够这么多个样本才放宽到 STOP_TURN_CAP。"""
+
+CRUISE_TURN_CAP: float = 15.0
+"""边走边转的单次上限（度）：只做小幅修正，剩下的下一轮再补。"""
+
+TURN_MIN_INTERVAL: float = 0.25
+"""两次转向之间的最短间隔（秒）。"""
+
+TURN_SETTLE_WAIT: float = 0.02
+"""等上一次转向落地的轮询间隔（秒）。"""
+
 ALIGN_DEADBAND: float = 1.0
 """对准死区：偏差在它以内就当已经对准，不再转向。
 
@@ -156,26 +183,77 @@ ALIGN_DEADBAND: float = 1.0
 TURN_RATIO_SMOOTH: float = 0.3
 """校准值的指数平滑系数：新样本占三成，避免单次抖动带偏。"""
 
+TURN_RATIO_RECENT_SAMPLES: int = 5
+"""实时校准值按最近这么多个样本的中位数更新。
+
+单个样本偶尔会掉到 0.74 这种（实转只到一半），直接进指数平滑会把校准值一次拽下
+0.23；取中位数后单个异常样本不影响目标值。
+"""
+
 TURN_RATIO_MIN: float = 0.2
 TURN_RATIO_MAX: float = 20.0
 """可信校准值范围；超出说明样本被别的动作污染，直接丢弃。
 
-上限放到 20：日志里真实比例到过 5.36，原来卡在 5.0 会把真样本
-全丢掉，校准值再也修不回来。
+上限不能收太紧：收到 3 时会把「实际转了 3~5 倍」的样本当噪声丢掉，
+学习器爬不上去（倍数中位 1.3 → 1.1），转角反而偏大、贴墙卡住。
 """
 
 TURN_RATIO_RESET_STREAK: int = 3
-"""连续这么多个样本都在可信范围外，就认定校准值本身错了，重置回 1.0。"""
+"""连续这么多个样本都在可信范围外，就认定校准值本身错了，重置回本局初值。"""
+
+TURN_RATIO_CLAMP_WARN_STREAK: int = 5
+"""校准值连续这么多个样本贴着可信区间的边界，就提示可能需要重做灵敏度检测。"""
 
 TURN_RATIO_MIN_ANGLE: float = 3.0
-"""下发转角小于它就不采样：角度太小，实际转角的量化误差占比过大。
+"""实转角小于它就不算样本：这个幅度上朝向识别的量化误差占比过大。
 
-这个门槛按「实际转到的角度」判断，而不是下发角：校准值偏大时下发角
-会被压得很小，若按下发角判断就会永久停止采样，校准值再也修不回来。
+按「实转角」判断而不是下发角，是为了让校准值偏大时的残差也能被看见，
+从而走上 TURN_STALL_MIN_COMMAND 的卡死判定。
 """
 
-TURN_RATIO_MIN_DELTA: float = 0.5
-"""实际转角小于它视为画面还没跟上，样本留到下一轮再算。"""
+TURN_STALL_MIN_COMMAND: float = 5.0
+"""下发角小于它时，实转不到 TURN_RATIO_MIN_ANGLE 不算「转不动」。
+
+一发到位后剩下的残差本来就只有一两度，实转一两度是正常的；不设这个下限，
+这类微调会被当成卡死，把已经学准的校准值反复重置回初值。
+"""
+
+TURN_SETTLE_EPS: float = 1.5
+"""相邻两轮朝向变化小于它就认为这次转向已经落地。"""
+
+TURN_SETTLE_MAX_ROUNDS: int = 4
+"""最多累计这么多轮还没落地，就直接拿已累计的转角当样本。
+
+镜头是跨几轮转完的：只量第一轮会低估约三倍（实测 62.8° 只量到 20.3°），
+所以必须累计到稳定，学习器才看得见真实的「每度指令转多少」。
+"""
+
+TURN_SETTLE_ROUND_STEP: float = 45.0
+"""每多下发这么多度，最多轮数就多给一轮：转角越大，镜头转完越费轮。"""
+
+TURN_SCALE_SAMPLE_MIN_COMMAND: float = 8.0
+"""下发角小于它就不参与校准：这个幅度以下量化误差与上一把转向的余摆占比过大。
+
+实时比例与局末保存同用这一个门槛，小幅度微调不进校准。
+"""
+
+TURN_SCALE_LESSON_SAMPLES: int = 10
+"""至少攒到这么多个有效样本，才认为整局中位数可信。
+
+一局十几个大转角实际只有 13~15 条有效样本，门槛取 20 等于永远不保存。
+"""
+
+TURN_SCALE_DRIFT_TOLERANCE: float = 0.15
+"""前后半局中位数差超过它就认为还没稳定，不保存。"""
+
+TURN_SCALE_MIN_CHANGE: float = 0.03
+"""与本次初值差不到这么多就不写盘：实测每局的改进只有 0.03~0.06，门槛取大就永远写不进去。"""
+
+TURN_SCALE_RECALIBRATE: float = 0.25
+"""补偿比例偏离 1.0 超过它，就当成灵敏度本身不准，按校准结果记进贝果内（不改全局 turn_dx）。"""
+
+TURN_SCALE_BOUNDS: tuple[float, float] = (0.55, 1.95)
+"""可信的补偿比例范围；超出说明样本被别的动作污染，存了也是错的。"""
 
 ANGLE_MISS_BLIND_TURN: float = 5.0
 """读不到镜头朝向时每轮盲转的度数（用户给定 5 度）。
@@ -354,16 +432,39 @@ class BagelRouteWalker(BagelOperation):
         """当前是否在冲刺。"""
         self.turn_ratio: float = 1.0
         """转向校准值：名义转角乘它就是实际转角，1.0 表示还没校准过。"""
+        saved_scale = self.store.load_turn_scale(self.ctx.game_config.turn_dx)
+        if saved_scale:
+            self.turn_ratio = 1.0 / saved_scale
+        self.turn_scale_start: float = 1.0 / self.turn_ratio if self.turn_ratio else 1.0
+        """本局起始的补偿比例（下发角/名义角），用来判断这一局是否学到新东西。"""
+        self.turn_scale_trusted: bool = bool(saved_scale)
+        """是否已有可信比例：沿用上次保存的比例时不必先小步试探。"""
+        self.turn_scale_samples: list[float] = []
+        """本局按有效样本算出的补偿比例，局末取中位数存给下一局。"""
+        self.last_turn_at: float = 0.0
+        """上一次下发转向的时刻，用来限制转向频率。"""
+        log.info(
+            '贝果转向校准初值 %.3f 倍（turn_dx=%.4f 已生效，等效 %.1f 像素/度；%s）',
+            self.turn_scale_start, self.ctx.game_config.turn_dx,
+            abs(self.ctx.game_config.turn_dx) * self.turn_scale_start,
+            '沿用上次运行保存的比例' if saved_scale else '没有保存比例，直接按配置灵敏度转',
+        )
         self.pending_turn: float | None = None
         """上一轮真正下发的转角，等下一轮读到新朝向后用来算校准值。"""
+        self.pending_delta: float = 0.0
+        """这次转向已经累计到的镜头转角，落地后除以下发角就是校准样本。"""
+        self.pending_rounds: int = 0
+        """这次转向已经累计了几轮。"""
         self.turn_samples: int = 0
         """已累积的校准样本数，用于日志观察。"""
+        self.turn_recent_samples: list[float] = []
+        """最近几个有效样本，实时校准值取它们的中位数，挡住单个异常样本。"""
         self.turn_bad_streak: int = 0
         """连续被丢弃的异常样本数，用于判断校准值本身是否已经错了。"""
+        self.turn_ratio_clamp_streak: int = 0
+        """校准值连续几次贴到夹取边界的计数，用于提示重做灵敏度检测。"""
         self.turn_small_streak: int = 0
         """连续转不动的次数，用于发现校准值偏大把下发角压死的情况。"""
-        self.turn_still_streak: int = 0
-        """连续读到画面没变化的次数，同上，但发生在更小幅度上。"""
         self.last_turn_angle: float | None = None
         """上一轮下发转向时读到的镜头朝向，用来和这一轮的朝向求实际转角。"""
         self.elevator_phase: str | None = None
@@ -1148,6 +1249,9 @@ class BagelRouteWalker(BagelOperation):
         if miss is not None:
             return miss
         self._sample_turn_ratio(angle)
+        settle = self._turn_settle_remaining()
+        if settle is not None:
+            return self.round_wait('等待上次转向落地', wait=settle)
         target_angle = self._target_angle(position, point)
         controller_angle = angle % 360
         angle_diff = cal_utils.angle_delta(controller_angle, target_angle)
@@ -1191,9 +1295,26 @@ class BagelRouteWalker(BagelOperation):
             nominal: 名义上想转的度数，带符号（逆时针为正）。
         """
         actual = nominal / self.turn_ratio if self.turn_ratio else nominal
+        cap = self._turn_cap(abs(nominal))
+        # 上限要按真正拖拽的角度算：校准比例小于 1 时下发角会被放大，只夹名义角等于没夹
+        actual = max(-cap, min(actual, cap))
+        self.last_turn_at = time.monotonic()
         self.pending_turn = actual
         self.input_worker.turn(actual)
         self._record_input()
+
+    def _turn_settle_remaining(self) -> float | None:
+        """转向还没落地、或间隔太短时返回还要等的秒数，否则 None。
+
+        必须先落到稳定再判下一轮：没落地就继续下发的话，镜头转角会被拆到几轮里，
+        学习器量到的倍数只有真实值的三分之一（实测 62.8° 只量到 20.3°）。
+        """
+        if self.pending_turn is not None:
+            return TURN_SETTLE_WAIT
+        if self.last_turn_at <= 0:
+            return None
+        left = TURN_MIN_INTERVAL - (time.monotonic() - self.last_turn_at)
+        return min(left, 0.2) if left > 0 else None
 
     def _sample_turn_ratio(self, angle: float) -> None:
         """用这一轮读到的朝向，反推上一轮转向的真实比例并平滑校准。
@@ -1217,44 +1338,42 @@ class BagelRouteWalker(BagelOperation):
         if self.last_turn_angle is None:
             self.last_turn_angle = current
             return
-        delta = cal_utils.angle_delta(self.last_turn_angle, current)
-        if abs(delta) < TURN_RATIO_MIN_DELTA:
-            # 画面还没跟上这次转向，留到下一轮再算。
-            # 但连续多轮都读不到变化，说明是校准值把下发角压没了，
-            # 不是延迟 —— 这时必须重置，否则会永久卡死。
-            self.turn_still_streak += 1
-            if self.turn_still_streak >= TURN_RATIO_RESET_STREAK:
-                log.info(
-                    '贝果转向校准连续 %s 轮画面没变化，重置为 1.0（原值 %.3f）',
-                    self.turn_still_streak, self.turn_ratio,
-                )
-                self.turn_ratio = 1.0
-                self.turn_still_streak = 0
-                self.turn_small_streak = 0
-                self.turn_bad_streak = 0
-                self.turn_samples = 0
-            return
-        self.turn_still_streak = 0
-        self.pending_turn = None
+        step = cal_utils.angle_delta(self.last_turn_angle, current)
         self.last_turn_angle = current
+        # 镜头是跨几轮转完的：只量第一段会低估三倍，所以累计到朝向稳定再算样本
+        self.pending_delta += step
+        self.pending_rounds += 1
+        settled = abs(step) < TURN_SETTLE_EPS
+        if not settled and self.pending_rounds < self._settle_round_limit():
+            return
+        delta = self.pending_delta
+        self.pending_turn = None
+        self.pending_delta = 0.0
+        self.pending_rounds = 0
         if abs(delta) < TURN_RATIO_MIN_ANGLE:
             # 实际转到的角度太小，量化误差占比过大，这个样本不可信。
-            # 但若校准值明显偏大，下发角会被压得越来越小，永远走不到
-            # 可采样的幅度 —— 所以连续攒够几次小样本，就把校准值重置。
+            # 下发角本来就小（残差微调）时实转一两度是正常的，不当作转不动；
+            # 只有下发角够大却转不动，才说明校准值偏大把下发角压死了，攒够几次就重置。
+            if abs(pending) < TURN_STALL_MIN_COMMAND:
+                return
             self.turn_small_streak += 1
             if self.turn_small_streak >= TURN_RATIO_RESET_STREAK:
                 log.info(
-                    '贝果转向校准连续 %s 次转不动，重置为 1.0（原值 %.3f）',
-                    self.turn_small_streak, self.turn_ratio,
+                    '贝果转向校准连续 %s 次转不动，重置回本局初值 %.3f（原值 %.3f）',
+                    self.turn_small_streak, 1.0 / self.turn_scale_start, self.turn_ratio,
                 )
-                self.turn_ratio = 1.0
+                self.turn_ratio = 1.0 / self.turn_scale_start
                 self.turn_small_streak = 0
                 self.turn_bad_streak = 0
                 self.turn_samples = 0
+                self.turn_recent_samples.clear()
             return
         self.turn_small_streak = 0
         if delta * pending <= 0:
             # 转向和名义角反向，说明这期间被别的动作带偏了。
+            return
+        if abs(pending) < TURN_SCALE_SAMPLE_MIN_COMMAND:
+            # 小幅度微调不参与校准：余摆与量化误差会把倍数抬到 2~15 倍。
             return
         sample = abs(delta) / abs(pending)
         if not (TURN_RATIO_MIN <= sample <= TURN_RATIO_MAX):
@@ -1263,17 +1382,73 @@ class BagelRouteWalker(BagelOperation):
                      sample, pending, delta, self.turn_bad_streak)
             if self.turn_bad_streak >= TURN_RATIO_RESET_STREAK:
                 # 连续异常说明不是偶发污染，而是校准值本身错了。
-                # 继续用它只会把下发角放大得更离谱，重置回 1.0 重新学。
-                log.info('贝果转向校准连续异常，重置为 1.0（原值 %.3f）', self.turn_ratio)
-                self.turn_ratio = 1.0
+                # 继续用它只会把下发角放大得更离谱，重置回本局初值重新学。
+                log.info(
+                    '贝果转向校准连续异常，重置回本局初值 %.3f（原值 %.3f）',
+                    1.0 / self.turn_scale_start, self.turn_ratio,
+                )
+                self.turn_ratio = 1.0 / self.turn_scale_start
                 self.turn_bad_streak = 0
                 self.turn_samples = 0
+                self.turn_recent_samples.clear()
             return
         self.turn_bad_streak = 0
-        self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + sample * TURN_RATIO_SMOOTH
+        self.turn_recent_samples.append(sample)
+        del self.turn_recent_samples[:-TURN_RATIO_RECENT_SAMPLES]
+        target = median(self.turn_recent_samples)
+        self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + target * TURN_RATIO_SMOOTH
         self.turn_samples += 1
-        log.info('贝果转向校准 %.3f（样本 %.2f，名义 %.1f 实际 %.1f，共 %s 次）',
-                 self.turn_ratio, sample, pending, delta, self.turn_samples)
+        self.turn_scale_samples.append(1.0 / self.turn_ratio if self.turn_ratio else 1.0)
+        log.info('贝果转向校准 %.3f（样本 %.2f，中位 %.2f，名义 %.1f 实际 %.1f，共 %s 次）',
+                 self.turn_ratio, sample, target, pending, delta, self.turn_samples)
+        if TURN_RATIO_MIN * 1.2 <= self.turn_ratio <= TURN_RATIO_MAX / 1.2:
+            self.turn_ratio_clamp_streak = 0
+        else:
+            self.turn_ratio_clamp_streak += 1
+            if self.turn_ratio_clamp_streak == TURN_RATIO_CLAMP_WARN_STREAK:
+                log.warning(
+                    '转向校准值 %.2f 已贴近可补偿边界（%.2f~%.2f），偏差可能超出范围，'
+                    '建议跑一次鼠标灵敏度检测再继续',
+                    self.turn_ratio, TURN_RATIO_MIN, TURN_RATIO_MAX,
+                )
+
+    def persist_turn_scale(self) -> None:
+        """把本局学到的补偿比例存给下一局当初值。
+
+        单条样本抖动很大，所以存整局中位数；前后半局中位数差太多、超出可信范围、
+        或与初值几乎一样时都不写盘，避免下一局从一个错的值起步。
+        """
+        samples = self.turn_scale_samples
+        if len(samples) < TURN_SCALE_LESSON_SAMPLES:
+            return
+        half = len(samples) // 2
+        scale = median(samples)
+        drift = abs(median(samples[:half]) - median(samples[half:]))
+        if drift > TURN_SCALE_DRIFT_TOLERANCE:
+            log.info('贝果转向校准前后半局差 %.3f，还没稳定，不保存补偿比例', drift)
+            return
+        min_scale, max_scale = TURN_SCALE_BOUNDS
+        if not min_scale <= scale <= max_scale:
+            log.info('贝果转向校准值 %.3f 超出可信范围，不保存', scale)
+            return
+        if abs(scale - self.turn_scale_start) < TURN_SCALE_MIN_CHANGE:
+            return
+        try:
+            self.store.save_turn_scale(scale, self.ctx.game_config.turn_dx)
+        except (OSError, ValueError, BagelRouteConfigError):
+            log.error('转向补偿比例保存失败', exc_info=True)
+            return
+        effective = abs(self.ctx.game_config.turn_dx) * scale
+        if abs(scale - 1.0) >= TURN_SCALE_RECALIBRATE:
+            log.info(
+                '转向偏差 %.2f 倍：贝果内灵敏度已自动校准为 %.3f 像素/度（全局 turn_dx=%.4f 保持不变）',
+                scale, effective, self.ctx.game_config.turn_dx,
+            )
+        else:
+            log.info(
+                '转向补偿比例 %.3f 已保存（本局初值 %.3f，有效样本 %s，等效 %.3f 像素/度），下一局作为初值',
+                scale, self.turn_scale_start, len(samples), effective,
+            )
 
     def _set_sprint(self, distance: float) -> None:
         """按距离决定是否冲刺。
@@ -1305,9 +1480,41 @@ class BagelRouteWalker(BagelOperation):
         self.sprinting = False
         self.input_worker.stop_forward()
 
-    @staticmethod
-    def _turn_step(angle_diff: float) -> float | None:
-        """这一轮转多少度：偏差的一半向下取整，但至少 1 度。
+    def _turn_cap(self, magnitude: float) -> float:
+        """按偏差大小选单次上限：超过束角是停车转，否则是边走边转。"""
+        if magnitude <= WALK_TURN_ANGLE:
+            return CRUISE_TURN_CAP
+        if self.turn_scale_trusted or self.turn_samples >= TURN_CAP_TRUST_SAMPLES:
+            return STOP_TURN_CAP
+        return STOP_TURN_CAP_WARMUP
+
+    def _settle_round_limit(self) -> int:
+        """这次转向最多累计几轮：按下发角放宽，别把大转角截成偏小的样本。"""
+        pending = abs(self.pending_turn or 0.0)
+        return TURN_SETTLE_MAX_ROUNDS + int(pending // TURN_SETTLE_ROUND_STEP)
+
+    def _step_turn_plan(self, distance: float, angle_diff: float) -> tuple[float | None, bool]:
+        """这一轮转多少度、要不要停车转。
+
+        近距离不按角度停车转：这个距离上的目标方位由定位抖动决定，
+        停下车来按它转只会原地打摆。
+
+        Args:
+            distance: 距目标点的像素距离。
+            angle_diff: 目标角减当前朝向角，落在 [-180, 180]。
+
+        Returns:
+            （本轮转向角，是否停车转）；不转时转向角为 None。
+        """
+        turn = self._turn_step(angle_diff)
+        near = distance <= NEAR_STEP_TURN_RADIUS
+        if turn is not None and near:
+            turn = min(turn, CRUISE_TURN_CAP)
+        stop_turn = turn is not None and abs(angle_diff) > WALK_TURN_ANGLE and not near
+        return turn, stop_turn
+
+    def _turn_step(self, angle_diff: float) -> float | None:
+        """这一轮转多少度：偏差按 TURN_FRACTION 折算，再按单次上限截断。
 
         不分档，不管偏差大小都按 TURN_FRACTION 折算（用户给定 1.0，
         即一次转到目标角度）。每轮都重新读取偏差、重新算，
@@ -1326,7 +1533,8 @@ class BagelRouteWalker(BagelOperation):
         magnitude = abs(angle_diff)
         if magnitude <= ALIGN_DEADBAND:
             return None
-        return float(max(int(magnitude * TURN_FRACTION), 1))
+        cap = self._turn_cap(magnitude)
+        return float(max(int(min(magnitude * TURN_FRACTION, cap)), 1))
 
     def _prepare_forward_step(self) -> OperationRoundResult | None:
         """上一短按结束并取得松键后的截图，才允许发起下一步。"""
@@ -1411,11 +1619,15 @@ class BagelRouteWalker(BagelOperation):
         if miss is not None:
             return miss
         self._sample_turn_ratio(angle)
+        settle = self._turn_settle_remaining()
+        if settle is not None:
+            return self.round_wait('等待上次转向落地', wait=settle)
         target_angle = self._target_angle(position, point)
         controller_angle = angle % 360
         angle_diff = cal_utils.angle_delta(controller_angle, target_angle)
-        turn = self._turn_step(angle_diff)
-        if turn is not None and abs(angle_diff) > WALK_TURN_ANGLE:
+        distance = hypot(point.x - position[0], point.y - position[1])
+        turn, stop_turn = self._step_turn_plan(distance, angle_diff)
+        if stop_turn:
             effective = turn if angle_diff > 0 else -turn
             self._send_turn(effective)
             return self.round_wait(

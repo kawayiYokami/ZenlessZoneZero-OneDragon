@@ -362,6 +362,7 @@ class BagelApp(ZApplication):
         except ValueError as error:
             return self.round_fail(f'路线执行器初始化失败：{error}')
         outcome = walker.execute()
+        walker.persist_turn_scale()
         self._round_ledger = walker.ledger
         self._round_survey = walker.survey_value
         if walker.last_screenshot is not None:

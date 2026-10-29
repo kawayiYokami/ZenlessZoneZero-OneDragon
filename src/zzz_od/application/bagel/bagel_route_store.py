@@ -6,6 +6,7 @@
 - ``config/bagel/routes/<标识>.sample.route.json``：默认路线，Git 跟踪，内容只读。
 - ``config/bagel/routes/custom_<标识>.route.json``：自定义路线，Git 忽略。
 - ``config/bagel/route_settings.yml``：每个出生点当前开启的路线，Git 忽略。
+- ``config/bagel/turn_scale.yml``：上一局学到的转向补偿比例，Git 忽略。
 
 开启选择每个出生点只存一个路线引用或 ``null``，天然保证同一出生点最多开启一条。
 路线文件不保存开关状态。界面、录制器和执行器都通过本模块读写，不自行拼路径。
@@ -63,6 +64,9 @@ CUSTOM_ID_PATTERN: re.Pattern[str] = re.compile(r'^custom_[0-9a-z_]{1,48}$')
 
 SETTINGS_VERSION: int = 1
 """开启选择配置的格式版本。"""
+
+TURN_SCALE_VERSION: int = 1
+"""转向补偿比例的格式版本。"""
 
 
 class BagelRouteConfigError(Exception):
@@ -144,6 +148,7 @@ class BagelRouteStore:
         self.config_dir: Path = self.work_dir.joinpath(*CONFIG_DIR)
         self.routes_dir: Path = self.config_dir / 'routes'
         self.settings_path: Path = self.config_dir / 'route_settings.yml'
+        self.turn_scale_path: Path = self.config_dir / 'turn_scale.yml'
         self.legacy_dir: Path = self.work_dir / LEGACY_DIR_NAME
         self.spawn_path: Path = self.work_dir.joinpath(*SPAWN_FILE)
 
@@ -592,6 +597,62 @@ class BagelRouteStore:
                 raise ValueError('读回内容不一致')
 
         _atomic_write(self.settings_path, text, check)
+
+    # ---------- 转向补偿比例 ----------
+
+    def load_turn_scale(self, turn_dx: float) -> float | None:
+        """读上一局学到的转向补偿比例。
+
+        转向系数被重新校准过就作废旧比例：那个值是按旧系数学出来的，套在新系数上只会帮倒忙。
+
+        Args:
+            turn_dx: 当前使用的转向系数（px/度）。
+
+        Returns:
+            可用的补偿比例；缺失、损坏或与当前转向系数对不上时返回 None。
+        """
+        try:
+            data = yaml.safe_load(self.turn_scale_path.read_text(encoding='utf-8'))
+        except (OSError, yaml.YAMLError):
+            return None
+        if not isinstance(data, dict) or data.get('version') != TURN_SCALE_VERSION:
+            return None
+        saved_dx = data.get('turn_dx')
+        scale = data.get('scale')
+        if not isinstance(saved_dx, (int, float)) or not isinstance(scale, (int, float)):
+            return None
+        if abs(float(saved_dx) - turn_dx) > abs(turn_dx) * 0.01:
+            log.info(
+                '转向补偿比例失效，按当前灵敏度重新学（保存时 turn_dx=%s，当前 turn_dx=%s）',
+                saved_dx, turn_dx,
+            )
+            try:
+                self.turn_scale_path.unlink(missing_ok=True)
+            except OSError:
+                log.warning('删除失效的转向补偿比例失败：%s', self.turn_scale_path)
+            return None
+        return float(scale)
+
+    def save_turn_scale(self, scale: float, turn_dx: float) -> None:
+        """保存本局学到的转向补偿比例，供下一局当初值。
+
+        Args:
+            scale: 补偿比例，下发角 = 名义角 × scale。
+            turn_dx: 学这个比例时用的转向系数。
+        """
+        data = {
+            'version': TURN_SCALE_VERSION,
+            'turn_dx': round(float(turn_dx), 6),
+            'scale': round(float(scale), 4),
+            'effective_px_per_deg': round(abs(float(turn_dx)) * float(scale), 4),
+        }
+        text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+
+        def check(tmp: Path) -> None:
+            if yaml.safe_load(tmp.read_text(encoding='utf-8')) != data:
+                raise ValueError('读回内容不一致')
+
+        _atomic_write(self.turn_scale_path, text, check)
 
     def _new_custom_id(self) -> str:
         """生成一个未被占用的自定义路线标识。"""
