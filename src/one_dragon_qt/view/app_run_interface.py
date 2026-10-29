@@ -64,6 +64,8 @@ class AppRunner(QThread):
 
 class AppRunInterface(VerticalScrollInterface):
 
+    _start_requested = Signal()
+
     def __init__(
         self,
         ctx: OneDragonContext,
@@ -83,6 +85,8 @@ class AppRunInterface(VerticalScrollInterface):
         )
         self.ctx: OneDragonContext = ctx
         self.app_id: str = app_id
+        self._runner_logs_active: bool = False
+        self._start_requested.connect(self._on_start_clicked)
 
     def get_content_widget(self) -> QWidget:
         content_widget = QWidget()
@@ -124,6 +128,7 @@ class AppRunInterface(VerticalScrollInterface):
 
         self.app_runner = AppRunner(self.ctx)
         self.app_runner.state_changed.connect(self.on_context_state_changed)
+        self.app_runner.finished.connect(self._on_runner_logs_finished)
 
         widget_at_bottom = self.get_widget_at_bottom()
         if widget_at_bottom is not None:
@@ -153,17 +158,27 @@ class AppRunInterface(VerticalScrollInterface):
         """
         key: str = event.data
         if key == self.ctx.key_start_running and self.ctx.run_context.is_context_stop:
-            self._on_start_clicked()
+            self._start_requested.emit()
 
     def run_app(self) -> None:
-        """
-        运行应用
-        """
-        if self.app_runner.isRunning():
+        """运行本界面对应的应用。"""
+        self._start_app_runner(self.app_id)
+
+    def _start_app_runner(self, app_id: str) -> None:
+        """先接收日志再启动线程，结束统计输出前保持接收。"""
+        if self._runner_logs_active or self.app_runner.isRunning():
             log.error('已有应用在运行中')
             return
-        self.app_runner.app_id = self.app_id
+        self.app_runner.app_id = app_id
+        self._runner_logs_active = True
+        self.log_card.start(clear_log=True)
         self.app_runner.start()
+
+    def _on_runner_logs_finished(self) -> None:
+        """线程已完成应用收尾，最后刷新一次日志后停止接收。"""
+        self.log_card.stop()
+        self._runner_logs_active = False
+        self.on_context_state_changed()
 
     def on_context_state_changed(self) -> None:
         """
@@ -173,16 +188,18 @@ class AppRunInterface(VerticalScrollInterface):
         if self.ctx.run_context.is_context_running:
             text = gt('暂停')
             icon = FluentIcon.PAUSE
-            self.log_card.start()  # 开始日志更新
         elif self.ctx.run_context.is_context_pause:
             text = gt('继续')
             icon = FluentIcon.PLAY
-            self.log_card.pause()  # 暂停日志更新
         else:
             text = gt('开始')
             icon = FluentIcon.PLAY
-            self.log_card.stop()  # 停止日志更新
 
+        # STOP 是停止请求，应用线程仍可能在输出统计；日志接收到 finished 为止。
+        self.start_btn.setEnabled(not (
+            self.ctx.run_context.is_context_stop
+            and (self._runner_logs_active or self.app_runner.isRunning())
+        ))
         self.start_btn.setText(f"{text} {self.ctx.key_start_running.upper()}")
         self.start_btn.setIcon(icon)
         self.state_text.setText(f"{gt('当前状态')} {self.ctx.run_context.run_status_text}")
