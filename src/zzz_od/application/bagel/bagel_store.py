@@ -9,7 +9,6 @@ from one_dragon.base.geometry.rectangle import Rect
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.log_utils import log
-from zzz_od.application.bagel import bagel_screen
 from zzz_od.application.bagel.bagel_item_vision import (
     ACTION_FILL,
     ACTION_SWAP,
@@ -35,9 +34,9 @@ from zzz_od.application.bagel.bagel_slots import (
     transfer_visually_ok,
 )
 from zzz_od.application.bagel.bagel_stats import (
+    QUALITY_RED,
     BagelSafeLedger,
     parse_quantity,
-    parse_survey,
 )
 
 if TYPE_CHECKING:
@@ -104,7 +103,7 @@ class BagelStoreSafe(BagelOperation):
         Args:
             ctx: 运行上下文。
             blueprint_priority: 蓝图是否优先入箱。
-            ledger: 本局安全箱价值账本；给定时顺带记录物品与推算价值，只用于统计日志。
+            ledger: 本局安全箱物品账本；给定时顺带记录带出的物品，只用于统计日志。
         """
         super().__init__(ctx, op_name='贝果-装入安全箱', timeout_seconds=90)
         self.blueprint_priority: bool = blueprint_priority
@@ -179,7 +178,6 @@ class BagelStoreSafe(BagelOperation):
             assert centers is not None
             self._result_centers = centers
             self._panel_wait_rounds = 0
-            self._observe_survey_value()
             return None
         self._panel_wait_rounds += 1
         if self._panel_wait_rounds < self.PANEL_WAIT_ROUNDS_LIMIT:
@@ -391,10 +389,7 @@ class BagelStoreSafe(BagelOperation):
             destination_item, self.blueprint_priority,
         )
         if self.ledger is not None:
-            self.ledger.start_transfer(
-                choice.kind == ACTION_SWAP, choice.dest_index,
-                (choice.mark.item_type, choice.mark.quality),
-            )
+            self.ledger.start_transfer(choice.dest_index, (choice.mark.item_type, choice.mark.quality))
         self._drag_item(source, destination)
         return self.round_success('已拖拽一件', wait=0.7)
 
@@ -602,31 +597,23 @@ class BagelStoreSafe(BagelOperation):
         return self._give_up('入箱画面无变化，源格和目标格都没动')
 
     def _confirm_ledger_transfer(self) -> None:
-        """入箱已确认，账本里的这次拖拽转为待结算。"""
+        """入箱已确认，账本里该格换成拖入的物品。"""
         if self.ledger is not None:
             self.ledger.confirm_transfer()
 
-    def _observe_survey_value(self) -> None:
-        """读面板底栏「本次调查收益」交给账本；只用于统计，读不到不影响装箱。"""
-        if self.ledger is None:
-            return
-        try:
-            text = bagel_screen.read_area(self.ctx, self.last_screenshot, '贝果-局内', '本次调查收益')
-        except Exception:
-            log.error('读取本次调查收益失败，本次不计入统计', exc_info=True)
-            text = ''
-        self.ledger.observe(*parse_survey(text))
-
     def _record_safe_items(self) -> None:
-        """记下装箱结束时安全箱各格的类型、品质与数量；只用于统计日志。"""
+        """记下装箱结束时安全箱各格的类型和品质，只读红色物品的数量；只用于统计日志。"""
         if self.ledger is None:
             return
         try:
             safe = inspect_safe_slots(self.last_screenshot)
             if safe is None:
                 return
-            items: dict[int, tuple[str, str, int]] = {}
+            items: dict[int, tuple[str, str, int | None]] = {}
             for mark in inspect_occupied(self.last_screenshot, SAFE_SLOT_CENTERS, safe.occupied):
+                if mark.quality != QUALITY_RED:
+                    items[mark.index] = (mark.item_type, mark.quality, None)
+                    continue
                 rect = Rect(
                     mark.center.x - _SAFE_QUANTITY_HALF_WIDTH, _SAFE_QUANTITY_TOP,
                     mark.center.x + _SAFE_QUANTITY_HALF_WIDTH, _SAFE_QUANTITY_BOTTOM,

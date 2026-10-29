@@ -1,12 +1,10 @@
-"""贝果每局收益、物品与时长统计：只写日志，不参与流程判断。
+"""贝果收益统计：每局一行日志，任务结束输出总表并生成推送摘要，不参与流程判断。
 
 一局指从「零携带入场」到返回入口。收益取局内 HUD 背包图标旁的调查收益，
-游戏只显示到 0.1K 一级，例如「198.5K」记为 198500。出售所得齿轮硬币另行
-累计：出售会连同已有库存一起卖，不能摊到单局。
+游戏只显示到 0.1K 一级，例如「198.5K」记为 198500。失败局的收益也计入合计。
+出售所得齿轮硬币只写日志：出售会连同已有库存一起卖，不能摊到单局。
 
-单件物品价值没有直接显示，按装箱时「本次调查收益」浮出的涨幅和总数差值推算，
-见 ``BagelSafeLedger``。
-
+物品只统计红色（Z 品质），按类型汇总件数，见 ``BagelSafeLedger``。
 用时按扣除暂停后的时钟计算。
 """
 
@@ -17,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 
 from one_dragon.utils.log_utils import log
+from zzz_od.application.bagel.bagel_item_vision import TYPE_RANK
 
 OUTCOME_SUCCESS: str = '成功入仓'
 OUTCOME_EMPTY: str = '空箱'
@@ -24,47 +23,21 @@ OUTCOME_FAILED: str = '失败局'
 OUTCOME_UNSUPPORTED: str = '非支持出生点'
 OUTCOME_UNFINISHED: str = '未完成'
 
-PHASE_ENTER: str = '入场'
-PHASE_SPAWN: str = '出生识别'
-PHASE_ROUTE: str = '路线'
-PHASE_EXIT: str = '退出'
-PHASE_SETTLE: str = '结算'
-PHASE_RETURN: str = '返回'
+QUALITY_RED: str = 'Z'
+"""红色品质；只有这一品质计入物品统计。"""
 
-_VALUE_PATTERN: re.Pattern[str] = re.compile(r'(\+?)(\d+(?:\.\d+)?)([KM]?)')
+_VALUE_PATTERN: re.Pattern[str] = re.compile(r'(\d+(?:\.\d+)?)([KM]?)')
 _VALUE_UNITS: dict[str, int] = {'': 1, 'K': 1_000, 'M': 1_000_000}
-
-
-def _matches(text: str) -> list[tuple[bool, int]]:
-    """按出现顺序列出（是否带加号, 换算后的整数）。"""
-    compact = text.replace(',', '').replace(' ', '').upper()
-    return [
-        (sign == '+', round(float(number) * _VALUE_UNITS[unit]))
-        for sign, number, unit in _VALUE_PATTERN.findall(compact)
-    ]
 
 
 def parse_value(text: str) -> int | None:
     """把「198.5K」「3476500」一类读数换成整数；读不出数字时返回 None。"""
-    matches = _matches(text)
-    return matches[0][1] if matches else None
-
-
-def parse_survey(text: str) -> tuple[int | None, int | None]:
-    """拆出面板底栏的总数与浮字涨幅。
-
-    装箱时总数上方会短暂浮出「+31.5K」，按从上到下拼接后浮字在前。
-
-    Args:
-        text: 底栏区域 OCR 拼接后的文字。
-
-    Returns:
-        （总数, 浮字涨幅）；读不到的一项为 None。
-    """
-    matches = _matches(text)
-    popup = next((value for plus, value in matches if plus), None)
-    total = next((value for plus, value in reversed(matches) if not plus), None)
-    return total, popup
+    compact = text.replace(',', '').replace(' ', '').upper()
+    match = _VALUE_PATTERN.search(compact)
+    if match is None:
+        return None
+    number, unit = match.groups()
+    return round(float(number) * _VALUE_UNITS[unit])
 
 
 def parse_quantity(text: str) -> int:
@@ -84,6 +57,18 @@ def format_value(value: int | None) -> str:
     return str(value)
 
 
+def format_duration(seconds: float) -> str:
+    """把秒数写成「1h12m」「5m08s」「42s」。"""
+    total = int(seconds)
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f'{hours}h{minutes:02d}m'
+    if minutes:
+        return f'{minutes}m{secs:02d}s'
+    return f'{secs}s'
+
+
 @dataclass
 class BagelItemRecord:
     """本局带出的一格物品。"""
@@ -91,160 +76,70 @@ class BagelItemRecord:
     item_type: str
     quality: str
     quantity: int | None
-    """格子下方读到的数量；装箱中途结束、没读数量时为 None。"""
-    value: int | None
-    """推算出的单格价值；推算不出时为 None。"""
-
-
-@dataclass
-class _Transfer:
-    """一次尚未结算价值的装箱。"""
-
-    swap: bool
-    slot: int
-    replaced: int | None
-    """对换时被换出物品的价值；填空或价值未知时为 None。"""
-    confirmed: bool = False
-    popup: int | None = None
-    """这次装箱浮出的涨幅；没读到为 None。"""
-    item: tuple[str, str] | None = None
-    """拖入的物品（类型, 品质）；不明为 None。"""
+    """格子下方读到的数量；只读红色物品，其余品质和装箱中途结束时为 None。"""
 
 
 class BagelSafeLedger:
-    """一局内安全箱各格物品的价值账本。
+    """一局内安全箱各格的物品账本，只用于统计日志。
 
-    每装一件，面板底栏「本次调查收益」上方浮出这件的涨幅（如「+31.5K」），
-    总数随后滚动一到两秒才停。账本同时用两种读数：
-
-    - 浮字：每张截图都读。出现新的浮字时，记到最近一次还没有浮字的装箱上。
-      浮字一闪而过，可能漏读。
-    - 停住的总数：连续两次读数相同才当作已停，与上次停住的总数相减，
-      得到这段时间装进去的价值合计。合计减去已读到浮字的部分，
-      若只剩一件没有浮字，余数就是这件的价值；剩两件以上记为未知，不硬拆。
-
-    对换时按净涨幅加回被换出物品的价值；对换浮字是否等于净涨幅尚未实机确认。
-    差值为 0 视为涨幅还没开始，留到下一次读数。关闭面板后 HUD 的读数视为
-    已停，用来结算最后一件。安全箱每局从空开始，箱内每件的价值都是本局记下的。
-    拖拽间隙若捡到金币，金币价值会算进没有浮字的那件物品。
+    拖拽发出前登记拖入的物品；确认入箱时把该格换成这件物品，数量记为未知；
+    装箱正常结束后，装箱操作再按画面读数整体覆盖 ``slot_items``。
+    这样装箱中途结束时，账本仍是已确认入箱的物品。
     """
 
     def __init__(self) -> None:
-        self.total: int | None = None
-        """最近一次停住的调查收益。"""
-        self.slot_values: dict[int, int | None] = {}
         self.slot_items: dict[int, tuple[str, str, int | None]] = {}
-        """安全箱格号 -> （类型, 品质, 数量）。
+        """安全箱格号 -> （类型, 品质, 数量）。"""
+        self._pending: list[tuple[int, tuple[str, str] | None]] = []
+        """已发出、尚未确认的拖拽：（安全箱格号, 拖入的物品）。"""
 
-        确认入箱时先按拖入的物品更新，数量未知；装箱正常结束后再按画面读数覆盖。
-        这样装箱中途结束时，类型和价值仍指向同一件物品。
-        """
-        self._last_reading: int | None = None
-        self._last_popup: int | None = None
-        self._pending: list[_Transfer] = []
-
-    def observe(self, reading: int | None, popup: int | None = None) -> None:
-        """记录一次面板底栏读数；总数与上一次相同才结算。
+    def start_transfer(self, slot: int, item: tuple[str, str] | None) -> None:
+        """拖拽发出前登记。
 
         Args:
-            reading: 本张截图读到的调查收益总数，读不到为 None。
-            popup: 本张截图读到的浮字涨幅，没有为 None。
-        """
-        if popup is not None and popup != self._last_popup:
-            target = next((transfer for transfer in reversed(self._pending) if transfer.popup is None), None)
-            if target is not None:
-                target.popup = popup
-        self._last_popup = popup
-        stable = reading is not None and reading == self._last_reading
-        self._last_reading = reading
-        if stable and reading is not None:
-            self.settle(reading)
-
-    def settle(self, total: int) -> None:
-        """用一个已停住的总数结算待定的装箱。"""
-        if any(not transfer.confirmed for transfer in self._pending):
-            return
-        if not self._pending:
-            self.total = total
-            return
-        delta = None if self.total is None else total - self.total
-        if delta == 0:
-            return
-        missing = [transfer for transfer in self._pending if transfer.popup is None]
-        known = sum(transfer.popup for transfer in self._pending if transfer.popup is not None)
-        for transfer in self._pending:
-            if transfer.popup is not None:
-                increase: int | None = transfer.popup
-            elif delta is not None and len(missing) == 1:
-                increase = delta - known
-            else:
-                increase = None
-            value = increase
-            if transfer.swap and increase is not None:
-                value = None if transfer.replaced is None else increase + transfer.replaced
-            self.slot_values[transfer.slot] = value if value is not None and value > 0 else None
-        self._pending.clear()
-        self.total = total
-
-    def start_transfer(self, swap: bool, slot: int, item: tuple[str, str] | None = None) -> None:
-        """拖拽发出前登记；确认入箱前不参与结算。
-
-        Args:
-            swap: 是否与安全箱内物品对换。
             slot: 安全箱目标格号，从 0 开始。
             item: 拖入的物品（类型, 品质）；不明为 None。
         """
-        replaced = self.slot_values.get(slot) if swap else None
-        self._pending.append(_Transfer(swap=swap, slot=slot, replaced=replaced, item=item))
+        self._pending.append((slot, item))
 
     def confirm_transfer(self) -> None:
-        """最近一次拖拽已确认入箱；该安全箱格的物品与价值一起换成新物品。"""
-        for transfer in reversed(self._pending):
-            if not transfer.confirmed:
-                transfer.confirmed = True
-                self.slot_values[transfer.slot] = None
-                if transfer.item is not None:
-                    self.slot_items[transfer.slot] = (*transfer.item, None)
-                else:
-                    self.slot_items.pop(transfer.slot, None)
-                return
+        """最近一次拖拽已确认入箱，该格换成拖入的物品。"""
+        if not self._pending:
+            return
+        slot, item = self._pending.pop()
+        if item is not None:
+            self.slot_items[slot] = (*item, None)
+        else:
+            self.slot_items.pop(slot, None)
 
     def cancel_transfer(self) -> None:
         """最近一次拖拽没进安全箱，撤销登记。"""
-        for index in range(len(self._pending) - 1, -1, -1):
-            if not self._pending[index].confirmed:
-                del self._pending[index]
-                return
+        if self._pending:
+            self._pending.pop()
 
     def report(self) -> list[BagelItemRecord]:
-        """按格号列出本局带出的物品和推算价值。"""
+        """按格号列出本局带出的物品。"""
         return [
-            BagelItemRecord(item_type, quality, quantity, self.slot_values.get(slot))
-            for slot, (item_type, quality, quantity) in sorted(self.slot_items.items())
+            BagelItemRecord(item_type, quality, quantity)
+            for _, (item_type, quality, quantity) in sorted(self.slot_items.items())
         ]
 
 
-def format_items(items: list[BagelItemRecord]) -> str:
-    """把物品列成「S 蓝图×1 ≈31.5K」一类文字。"""
-    if not items:
+def red_counts(items: list[BagelItemRecord]) -> dict[str, int]:
+    """按类型汇总红色物品件数；数量没读到时按 1 件计。"""
+    counts: dict[str, int] = {}
+    for item in items:
+        if item.quality == QUALITY_RED:
+            counts[item.item_type] = counts.get(item.item_type, 0) + (item.quantity or 1)
+    return counts
+
+
+def format_red(counts: dict[str, int]) -> str:
+    """按类型排序写成「装备 ×2、蓝图 ×1」；没有时为「无」。"""
+    if not counts:
         return '无'
-    return '；'.join(
-        f'{item.quality} {item.item_type}×{item.quantity if item.quantity is not None else "?"}'
-        f' ≈{format_value(item.value)}'
-        for item in items
-    )
-
-
-@dataclass
-class _ItemTotal:
-    """某一类型与品质的累计。"""
-
-    slots: int = 0
-    quantity: int = 0
-    quantity_unknown: int = 0
-    """数量没读到的格数。"""
-    value: int = 0
-    unknown: int = 0
+    ordered = sorted(counts.items(), key=lambda pair: -TYPE_RANK.get(pair[0], -99))
+    return '、'.join(f'{item_type} ×{count}' for item_type, count in ordered)
 
 
 @dataclass
@@ -253,16 +148,13 @@ class _Round:
 
     attempt: int
     started: float
-    phase: str | None = None
-    phase_started: float = 0.0
-    phases: dict[str, float] = field(default_factory=dict)
     income: int | None = None
     items: list[BagelItemRecord] = field(default_factory=list)
     outcome: str = OUTCOME_UNFINISHED
 
 
 class BagelRunStats:
-    """按局累计收益与各阶段耗时，每局结束打一行本局统计和一行累计统计。"""
+    """按局累计调查收益与红色物品；每局结束打一行，任务结束输出总表。"""
 
     def __init__(self) -> None:
         self._paused_total: float = 0.0
@@ -271,18 +163,15 @@ class BagelRunStats:
         self.current: _Round | None = None
         self.outcome_counts: dict[str, int] = {}
         self.finished_rounds: int = 0
-        self.completed_rounds: int = 0
-        """有明确结果的局数；未完成的局不计入平均用时。"""
-        self.completed_seconds: float = 0.0
-        self.unsupported_seconds: float = 0.0
         self.total_income: int = 0
-        self.income_rounds: int = 0
-        """读到收益且结果为成功入仓的局数，用于算成功局平均收益。"""
-        self.success_income: int = 0
+        self.income_unknown_rounds: int = 0
+        """调查收益没读到的局数，不计入合计。"""
+        self.red_totals: dict[str, int] = {}
         self.sale_count: int = 0
         self.sale_coins: int = 0
         self.sale_unknown: int = 0
-        self.item_totals: dict[tuple[str, str], _ItemTotal] = {}
+        self._finished: bool = False
+        """总表已输出；任务收尾的多个入口只输出一次。"""
 
     def start_round(self, attempt: int) -> None:
         """开始新的一局；上一局没收尾时按未完成记账。
@@ -292,9 +181,7 @@ class BagelRunStats:
         """
         if self.current is not None:
             self.finish_round()
-        now = self._now()
-        self.current = _Round(attempt=attempt, started=now)
-        self.begin_phase(PHASE_ENTER)
+        self.current = _Round(attempt=attempt, started=self._now())
 
     def pause(self) -> None:
         """任务暂停；重复调用只按第一次计时。"""
@@ -312,16 +199,6 @@ class BagelRunStats:
         ongoing = 0.0 if self._paused_since is None else time.monotonic() - self._paused_since
         return time.monotonic() - self._paused_total - ongoing
 
-    def begin_phase(self, phase: str) -> None:
-        """切换到某阶段；同一阶段重复调用不重新计时。"""
-        current = self.current
-        if current is None or current.phase == phase:
-            return
-        now = self._now()
-        self._close_phase(current, now)
-        current.phase = phase
-        current.phase_started = now
-
     def set_income(self, income: int | None) -> None:
         """记录本局调查收益；读不到时保持未知。"""
         if self.current is not None and income is not None:
@@ -338,70 +215,65 @@ class BagelRunStats:
             self.current.outcome = outcome
 
     def finish_round(self) -> None:
-        """收尾当前局，输出本局与累计统计。"""
+        """收尾当前局，输出一行本局统计。"""
         current = self.current
         if current is None:
             return
         self.current = None
-        now = self._now()
-        self._close_phase(current, now)
-        seconds = now - current.started
+        seconds = self._now() - current.started
         self.finished_rounds += 1
-        if current.outcome != OUTCOME_UNFINISHED:
-            self.completed_rounds += 1
-            self.completed_seconds += seconds
         self.outcome_counts[current.outcome] = self.outcome_counts.get(current.outcome, 0) + 1
-        if current.outcome == OUTCOME_UNSUPPORTED:
-            self.unsupported_seconds += seconds
         if current.income is not None:
             self.total_income += current.income
-            if current.outcome == OUTCOME_SUCCESS:
-                self.income_rounds += 1
-                self.success_income += current.income
-        for item in current.items:
-            total = self.item_totals.setdefault((item.quality, item.item_type), _ItemTotal())
-            total.slots += 1
-            if item.quantity is None:
-                total.quantity_unknown += 1
-            else:
-                total.quantity += item.quantity
-            if item.value is None:
-                total.unknown += 1
-            else:
-                total.value += item.value
-        phases = '/'.join(f'{name}{value:.1f}s' for name, value in current.phases.items())
+        elif current.outcome != OUTCOME_UNFINISHED:
+            self.income_unknown_rounds += 1
+        red = red_counts(current.items)
+        for item_type, count in red.items():
+            self.red_totals[item_type] = self.red_totals.get(item_type, 0) + count
         log.info(
-            '贝果本局统计：第 %s 次入场 · 结果=%s · 调查收益=%s · 用时 %s · 合计 %.1fs',
-            current.attempt, current.outcome, format_value(current.income), phases or '无', seconds,
+            '贝果本局统计：第 %s 次入场 · %s · 调查收益 %s · 用时 %s · 红色：%s',
+            current.attempt, current.outcome, format_value(current.income),
+            format_duration(seconds), format_red(red),
         )
-        if current.items:
-            log.info('贝果本局物品：%s', format_items(current.items))
-        self._log_summary()
 
-    def log_final(self) -> None:
-        """任务结束时收尾未完成的局，再输出总表与物品汇总。"""
+    def finish_task(self) -> None:
+        """任务结束：收尾未完成的局，输出总表；重复调用只输出一次。"""
+        if self._finished:
+            return
+        self._finished = True
         if self.current is not None:
             self.finish_round()
         if not self.finished_rounds:
             return
-        log.info('贝果任务统计总表：')
-        self._log_summary()
-        if not self.item_totals:
-            log.info('贝果累计物品：无')
-            return
-        ordered = sorted(self.item_totals.items(), key=lambda pair: pair[1].value, reverse=True)
-        for (quality, item_type), total in ordered:
-            if total.unknown == total.slots:
-                value = '价值未推算'
-            elif total.unknown:
-                value = f'价值约 {format_value(total.value)}（{total.unknown} 格未推算）'
-            else:
-                value = f'价值约 {format_value(total.value)}'
-            unknown_quantity = f'（{total.quantity_unknown} 格数量未读到）' if total.quantity_unknown else ''
-            log.info(
-                '贝果累计物品：%s %s %s 格，共 %s 件%s，%s',
-                quality, item_type, total.slots, total.quantity, unknown_quantity, value,
-            )
+        counts = ' / '.join(
+            f'{name} {self.outcome_counts[name]}'
+            for name in (OUTCOME_SUCCESS, OUTCOME_EMPTY, OUTCOME_FAILED, OUTCOME_UNSUPPORTED, OUTCOME_UNFINISHED)
+            if self.outcome_counts.get(name)
+        )
+        log.info('贝果收益统计：共 %s 局（%s）· 用时 %s', self.finished_rounds, counts, format_duration(self._elapsed()))
+        log.info('贝果收益统计：%s', self._income_text())
+        log.info('贝果收益统计：红色物品：%s', format_red(self.red_totals))
+        if self.sale_count:
+            log.info('贝果出售统计：出售 %s 次，共 %s 齿轮硬币%s', self.sale_count, self.sale_coins,
+                     f'（{self.sale_unknown} 次未读到）' if self.sale_unknown else '')
+
+    def summary(self, stop_reason: str | None) -> str | None:
+        """推送用的短摘要；一局都没结束时为 None。
+
+        Args:
+            stop_reason: 异常停止的原因；正常结束为 None。
+        """
+        if not self.finished_rounds:
+            return None
+        lines = [] if stop_reason is None else [f'已停止：{stop_reason}']
+        lines.append(
+            f'成功 {self.outcome_counts.get(OUTCOME_SUCCESS, 0)} 局 · '
+            f'失败 {self.outcome_counts.get(OUTCOME_FAILED, 0)} 局 · '
+            f'用时 {format_duration(self._elapsed())}'
+        )
+        lines.append(self._income_text())
+        lines.append(f'红色物品：{format_red(self.red_totals)}')
+        return '\n'.join(lines)
 
     def record_sale(self, coins: int | None) -> None:
         """记录一次出售所得；读不到时只计次数。"""
@@ -416,31 +288,17 @@ class BagelRunStats:
             coins, self.sale_count, self.sale_coins, self.sale_unknown,
         )
 
-    def _close_phase(self, current: _Round, now: float) -> None:
-        """把正在计时的阶段累加进本局。"""
-        if current.phase is None:
-            return
-        elapsed = now - current.phase_started
-        current.phases[current.phase] = current.phases.get(current.phase, 0.0) + elapsed
-        current.phase = None
+    def _elapsed(self) -> float:
+        """任务开始以来扣除暂停后的秒数。"""
+        return self._now() - self.task_started
 
-    def _log_summary(self) -> None:
-        """输出累计统计。每小时收益按任务开始以来扣除暂停后的时间计算。"""
-        hours = (self._now() - self.task_started) / 3600
-        counts = '/'.join(
-            f'{name}{self.outcome_counts.get(name, 0)}'
-            for name in (OUTCOME_SUCCESS, OUTCOME_EMPTY, OUTCOME_FAILED, OUTCOME_UNSUPPORTED, OUTCOME_UNFINISHED)
-            if self.outcome_counts.get(name, 0)
-        )
-        average_success = self.success_income // self.income_rounds if self.income_rounds else None
-        per_hour = round(self.total_income / hours) if hours > 0 else None
-        average_seconds = (
-            f'{self.completed_seconds / self.completed_rounds:.1f}s' if self.completed_rounds else '无'
-        )
-        log.info(
-            '贝果累计统计：%s 局（%s）· 调查收益合计 %s · 成功局平均 %s · 每小时 %s · '
-            '平均每局 %s · 非支持出生点累计 %.1f 分钟 · 出售 %s 次共 %s 齿轮硬币',
-            self.finished_rounds, counts, format_value(self.total_income), format_value(average_success),
-            format_value(per_hour), average_seconds,
-            self.unsupported_seconds / 60, self.sale_count, self.sale_coins,
-        )
+    def _income_text(self) -> str:
+        """写成「调查收益合计 770.0K（每小时约 4.12M）」；括号里另注没读到收益的局数。"""
+        notes: list[str] = []
+        hours = self._elapsed() / 3600
+        if hours > 0:
+            notes.append(f'每小时约 {format_value(round(self.total_income / hours))}')
+        if self.income_unknown_rounds:
+            notes.append(f'{self.income_unknown_rounds} 局未读到，未计入')
+        suffix = f'（{"；".join(notes)}）' if notes else ''
+        return f'调查收益合计 {format_value(self.total_income)}{suffix}'

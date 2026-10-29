@@ -375,7 +375,7 @@ class BagelRouteWalker(BagelOperation):
         self.input_worker: BagelInputWorker = BagelInputWorker(ctx)
         """按键单独线程：主线投递即返回；同种操作不打断自己，不同操作打断旧的。"""
         self.ledger: BagelSafeLedger = BagelSafeLedger()
-        """本局安全箱物品与推算价值，只用于统计日志。"""
+        """本局安全箱物品，只用于统计日志。"""
         self.survey_value: int | None = None
         """最近一次关闭搜查面板后从 HUD 读到的调查收益，只用于统计日志。"""
 
@@ -1606,7 +1606,7 @@ class BagelRouteWalker(BagelOperation):
         self.input_worker.stop_backward()
 
     def _read_survey_value(self) -> None:
-        """关闭面板回到局内后读 HUD 调查收益；读到的值视为已停住，交给账本结算。"""
+        """关闭面板回到局内后读 HUD 调查收益；失败局用最后一次读数作为本局收益。"""
         try:
             value = parse_value(bagel_screen.read_area(
                 self.ctx, self.last_screenshot, '贝果-局内', '调查收益',
@@ -1617,7 +1617,6 @@ class BagelRouteWalker(BagelOperation):
         if value is None:
             return
         self.survey_value = value
-        self.ledger.settle(value)
 
     def _adopt_screenshot(self, op: BagelOperation) -> None:
         """子操作结束后同步其最后截图。"""

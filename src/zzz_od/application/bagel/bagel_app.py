@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from one_dragon.base.config.notify_config import NotifyDetailMode
 from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
+from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel import bagel_const, bagel_screen, bagel_stats, bagel_usage
 from zzz_od.application.bagel.bagel_deposit import BagelDeposit
@@ -71,7 +73,7 @@ class BagelApp(ZApplication):
         self.last_return_status: str | None = None
         self._round_log: BagelRoundLog = BagelRoundLog(self.display_name)
         self._stats: BagelRunStats = BagelRunStats()
-        """每局收益、物品与时长统计，只写日志。"""
+        """每局收益、红色物品与用时统计；写日志，任务结束推送摘要。"""
         self._round_ledger: BagelSafeLedger | None = None
         """本局路线执行器的安全箱账本；本局没跑路线时为 None。"""
         self._round_survey: int | None = None
@@ -121,7 +123,7 @@ class BagelApp(ZApplication):
                 self._round_log.flush()
                 release_flow_inputs(self.ctx)
                 try:
-                    self._stats.log_final()
+                    self._stats.finish_task()
                 except Exception:
                     log.error('输出贝果统计总表失败', exc_info=True)
 
@@ -143,7 +145,44 @@ class BagelApp(ZApplication):
                 log.error('停止原因：%s；详情：%s', result.status, result.data)
                 log.info(bagel_usage.stop_guidance(result.status))
                 bagel_usage.log_feedback()
+            self._finish_stats(result)
             super().after_operation_done(result)
+
+    def _finish_stats(self, result: OperationResult) -> None:
+        """输出统计总表并推送摘要；只写统计，出错不影响停止流程。"""
+        try:
+            self._stats.finish_task()
+            self._push_summary(result)
+        except Exception:
+            log.error('输出贝果统计总表失败', exc_info=True)
+
+    def _push_summary(self, result: OperationResult) -> None:
+        """任务结束推送收益摘要，按本应用的节点通知设置发送；用户手动停止不推送。
+
+        正常结束和异常停止都可能发生在任一节点，不能只靠单个节点的 ``@node_notify``，
+        所以在这里按节点通知的同一套规则发送：关闭不发，仅失败时只在异常停止时发，
+        合并时放进通知池，由框架在应用结束时一起发出。
+        """
+        if self.ctx.run_context.is_context_stop:
+            return
+        if not self.ctx.notify_config.enable_notify or not self.ctx.run_context.is_app_need_notify(self.app_id):
+            return
+        mode = self.ctx.notify_config.get_app_detail_mode(self.app_id)
+        if mode == NotifyDetailMode.OFF.value.value:
+            return
+        if mode == NotifyDetailMode.ERROR_ONLY.value.value and result.success:
+            return
+        # 失败原因常带「；」后的细节，推送只取第一段。
+        stop_reason = None if result.success else str(result.status).split('；')[0]
+        summary = self._stats.summary(stop_reason)
+        if summary is None:
+            return
+        title = f'{gt("任务")}「{gt(bagel_const.APP_NAME)}」{gt("收益统计")}'
+        content = f'{title}\n{summary}'
+        if mode == NotifyDetailMode.MERGE.value.value:
+            self.ctx.run_context.notify_pool.add(content=content)
+        else:
+            self.ctx.push_service.push_async(title=self.ctx.notify_config.title, content=content)
 
     def _execute_one_round(self) -> OperationRoundResult:
         """初始化以外的程序异常也直接停止，不获得业务重开额度。"""
@@ -181,7 +220,7 @@ class BagelApp(ZApplication):
         self._round_survey = None
 
     def _record_round_income(self, read_hud: bool) -> None:
-        """把本局调查收益和带出物品记入统计；只写日志，出错不影响流程。
+        """把本局调查收益和带出物品记入统计；只写统计，出错不影响流程。
 
         Args:
             read_hud: 是否先截一张新图读 HUD。失败局已在结算画面，HUD 不可见。
@@ -193,11 +232,8 @@ class BagelApp(ZApplication):
                 value = bagel_stats.parse_value(bagel_screen.read_area(
                     self.ctx, self.last_screenshot, '贝果-局内', '调查收益',
                 ))
-            ledger = self._round_ledger
-            if ledger is not None:
-                if value is not None:
-                    ledger.settle(value)
-                self._stats.set_items(ledger.report())
+            if self._round_ledger is not None:
+                self._stats.set_items(self._round_ledger.report())
             self._stats.set_income(value if value is not None else self._round_survey)
         except Exception:
             log.error('记录贝果本局收益失败', exc_info=True)
@@ -271,7 +307,6 @@ class BagelApp(ZApplication):
     @operation_node(name='识别出生点', timeout_seconds=10)
     def check_spawn(self) -> OperationRoundResult:
         """支持点进入短线收集；其余正常退出重开。"""
-        self._stats.begin_phase(bagel_stats.PHASE_SPAWN)
         if is_bagel_result(self):
             return self.round_fail(BagelOperation.STATUS_DEFEATED)
         if not self.round_by_find_area(
@@ -302,7 +337,6 @@ class BagelApp(ZApplication):
         """
         self._stats.set_outcome(bagel_stats.OUTCOME_UNSUPPORTED)
         self._stats.set_income(0)
-        self._stats.begin_phase(bagel_stats.PHASE_EXIT)
         return self.round_by_op_result(BagelExit(self.ctx).execute())
 
     @node_from(from_name='退出非支持局')
@@ -310,7 +344,6 @@ class BagelApp(ZApplication):
     @operation_node(name='返回入口', screenshot_before_round=False)
     def return_entry(self) -> OperationRoundResult:
         """返回贝果主界面后开下一局；大世界落点由入场操作重建入口。"""
-        self._stats.begin_phase(bagel_stats.PHASE_RETURN)
         result = BagelReturn(self.ctx).execute()
         self._stats.finish_round()
         return (
@@ -322,7 +355,6 @@ class BagelApp(ZApplication):
     @operation_node(name='执行局内流程', screenshot_before_round=False)
     def run_flow(self) -> OperationRoundResult:
         """按出生点开启的路线执行；出生点识别与推进由路线执行器负责。"""
-        self._stats.begin_phase(bagel_stats.PHASE_ROUTE)
         try:
             walker = BagelRouteWalker(
                 self.ctx, blueprint_priority=self.config.blueprint_priority,
@@ -363,7 +395,6 @@ class BagelApp(ZApplication):
         """路线完整结束后退出到仓库；退出失败时不入仓或计成功。"""
         release_flow_inputs(self.ctx)
         self._record_round_income(read_hud=True)
-        self._stats.begin_phase(bagel_stats.PHASE_EXIT)
         operation = BagelExit(self.ctx)
         result = operation.execute()
         self.last_screenshot = operation.last_screenshot
@@ -374,7 +405,6 @@ class BagelApp(ZApplication):
     @operation_node(name='结算仓库', screenshot_before_round=False)
     def settle(self) -> OperationRoundResult:
         """只有安全箱有物且确实入仓才计成功；空箱局仍要返回入口。"""
-        self._stats.begin_phase(bagel_stats.PHASE_SETTLE)
         finishing = (self.config.max_success_rounds > 0
                      and self.success_rounds + 1 >= self.config.max_success_rounds)
         result = self._settle_warehouse(finishing=finishing)
@@ -414,7 +444,6 @@ class BagelApp(ZApplication):
     @operation_node(name='成功局返回入口', screenshot_before_round=False)
     def return_after_success(self) -> OperationRoundResult:
         """最后一局也返回，并记录实际到达的页面。"""
-        self._stats.begin_phase(bagel_stats.PHASE_RETURN)
         result = BagelReturn(self.ctx).execute()
         self._stats.finish_round()
         self.last_return_status = result.status if result.success else None
@@ -454,7 +483,6 @@ class BagelApp(ZApplication):
         release_flow_inputs(self.ctx)
         self._stats.set_outcome(bagel_stats.OUTCOME_FAILED)
         self._record_round_income(read_hud=False)
-        self._stats.begin_phase(bagel_stats.PHASE_EXIT)
         path = self.save_screenshot()
         self.failure_history.append({'reason': self.failure_reason, 'screenshot': path,
                                      'used': self.failure_retries_used})
@@ -476,7 +504,6 @@ class BagelApp(ZApplication):
     @operation_node(name='失败局结算仓库', screenshot_before_round=False)
     def settle_after_defeat(self) -> OperationRoundResult:
         """失败局同样入仓清理；清理失败则保留其错误，不改口成撤离失败。"""
-        self._stats.begin_phase(bagel_stats.PHASE_SETTLE)
         if self.config.auto_clean_warehouse:
             log.info('失败局有物入仓计入出售间隔，不补卖；满仓或残留允许提前出售并重试一次入仓。')
         else:

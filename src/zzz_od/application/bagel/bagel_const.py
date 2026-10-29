@@ -3,7 +3,7 @@ APP_NAME: str = '贝果计划'
 DEFAULT_GROUP: bool = True
 # 排在驱动盘拆解之后、通知之前。数值越小越靠前。
 PRIORITY: int = 1800
-NEED_NOTIFY: bool = False
+NEED_NOTIFY: bool = True
 MAP_TITLE: str = '高危雅努斯幻境'
 RECOMMENDED_VALUE: str = '258000'
 
