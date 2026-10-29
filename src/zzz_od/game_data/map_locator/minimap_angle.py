@@ -47,12 +47,22 @@ DILATE_ITERATIONS: int = 1
 """膨胀迭代次数。"""
 
 SECTOR_INNER_RADIUS: int = 18
-SECTOR_OUTER_RADIUS: int = 26
-"""求扇形方向的环形带，单位像素，以裁剪块几何中心为圆心。
+SECTOR_OUTER_RADIUS: int = 40
+"""求扇形方向的环形带，单位像素，以角色标记质心为圆心。
 
-内边界 18 要大于角色菱形半径（实测 15.8），外侧到 26 只取贴近角色的那一圈：
-扇形被墙切掉时，远端的缺失会把整体质心拽偏，近端受影响最小。
+内边界 18 要大于角色菱形半径（实测 15.8），避开标记自身；外侧到 40 覆盖
+扇形主体，实测贝果局内扇形亮区落在半径 18~40 之间。
 """
+
+SECTOR_STEP_DEGREE: float = 0.5
+"""沿角度扫描的分辨率。外圈 40 像素半径上 0.5 度约 0.35 像素，够细。"""
+
+SECTOR_LIT_RATIO: float = 0.5
+"""某个角度上环带里亮像素占比超过它，才算落在这个角度的扇形里。"""
+
+SECTOR_MIN_SPAN: float = 10.0
+SECTOR_MAX_SPAN: float = 180.0
+"""可信的扇形张角范围。窄于下限只剩一个角，宽于上限说明半圈都亮着，都不可信。"""
 
 VERTEX_EPSILON: int = 3
 """菱形顶点拟合精度。小了会把圆角切出多余顶点，大了会把真实的窄角抹平。"""
@@ -85,29 +95,70 @@ def _bright_mask(rgb: MatLike) -> np.ndarray:
     return cv2.dilate(mask, dilate_kernel, iterations=DILATE_ITERATIONS)
 
 
+def _longest_lit_run(lit: np.ndarray) -> tuple[int, int]:
+    """环形数组里最长的一段连续真值。
+
+    Args:
+        lit: 一整圈的角度命中标记。
+
+    Returns:
+        (起点下标, 长度)。全真时返回 (0, 长度)。
+    """
+    total = len(lit)
+    if lit.all():
+        return 0, total
+    dark = np.where(~lit)[0]
+    # 每个暗角到下一个暗角的间距，就是这个暗角之后那段亮区的长度加一
+    gaps = np.diff(np.append(dark, dark[0] + total))
+    index = int(np.argmax(gaps))
+    return int(dark[index] + 1) % total, int(gaps[index]) - 1
+
+
 def _sector_angle(
     mask: np.ndarray, center_x: float, center_y: float,
 ) -> float | None:
-    """在固定半径的环里取亮区质心，返回其相对圆心的方向。
+    """逐圈扫环带，找扇形两侧由暗转亮的两条边，取角平分线作为镜头朝向。
+
+    扇形是个锥形：贴着角色的地方窄，往远端张开。所以不能把整条径向压成
+    一个角度判定，否则结果被最窄的内圈带偏；这里每层半径各扫一圈，各自
+    求两条边的中点，最后把各层中点按方向矢量平均。
+
+    不用质心：扇形被墙切掉一块时，缺失会把质心拽向缺口，角度随之偏掉。
 
     Args:
-        mask: 亮区掩码。
-        center_x: 圆心 x。
+        mask: 亮区掩码，角色标记自身的像素应当已经清掉。
+        center_x: 圆心 x，取角色标记质心。
         center_y: 圆心 y。
 
     Returns:
-        镜头朝向角度，环里点太少时返回 None。
+        镜头朝向角度；扫不到可信扇形时返回 None。
     """
-    ys, xs = np.nonzero(mask)
-    radii = np.hypot(xs - center_x, ys - center_y)
-    keep = (radii >= SECTOR_INNER_RADIUS) & (radii < SECTOR_OUTER_RADIUS)
-    if int(keep.sum()) < MIN_PIXELS:
+    height, width = mask.shape[:2]
+    angles = np.deg2rad(np.arange(0.0, 360.0, SECTOR_STEP_DEGREE))
+    cosines, sines = np.cos(angles), np.sin(angles)
+    total = len(angles)
+    sum_x = 0.0
+    sum_y = 0.0
+    layers = 0
+
+    for radius in range(SECTOR_INNER_RADIUS, SECTOR_OUTER_RADIUS):
+        xs = np.clip(np.round(center_x + radius * cosines).astype(np.int32), 0, width - 1)
+        ys = np.clip(np.round(center_y - radius * sines).astype(np.int32), 0, height - 1)
+        lit = mask[ys, xs] > 0
+        if not lit.any():
+            continue
+        start, length = _longest_lit_run(lit)
+        span = length * SECTOR_STEP_DEGREE
+        if not (SECTOR_MIN_SPAN <= span <= SECTOR_MAX_SPAN):
+            continue
+        middle = math.radians(((start + length / 2) % total) * SECTOR_STEP_DEGREE)
+        sum_x += math.cos(middle)
+        sum_y += math.sin(middle)
+        layers += 1
+
+    if layers == 0 or (sum_x == 0 and sum_y == 0):
         return None
-    offset_x = float(xs[keep].mean()) - center_x
-    offset_y = float(ys[keep].mean()) - center_y
-    if offset_x == 0 and offset_y == 0:
-        return None
-    return math.degrees(math.atan2(-offset_y, offset_x)) % 360
+    return math.degrees(math.atan2(sum_y, sum_x)) % 360
 
 
 def _marker_component(
@@ -388,11 +439,19 @@ def analyze(
     if int(mask.sum()) < MIN_PIXELS:
         return None, None, None, 0.0, center
 
-    sector_value = _sector_angle(mask, center_x, center_y)
-
     component = _marker_component(mask, center_x, center_y)
     if component is None:
+        sector_value = _sector_angle(mask, center_x, center_y)
         return None, None, sector_value, 0.0, center
+
+    # 角色标记并不总在裁剪块正中：贝果局内实测偏出 30 像素上下，
+    # 拿几何中心当圆心会把环带整个扫到空地上去，所以先找标记再定圆心。
+    marker_ys, marker_xs = np.nonzero(component)
+    sector_mask = mask.copy()
+    sector_mask[marker_ys, marker_xs] = 0
+    sector_value = _sector_angle(
+        sector_mask, float(marker_xs.mean()), float(marker_ys.mean()),
+    )
 
     vertices_result = _marker_by_vertices(component)
     edges_result = _marker_by_edges(component)
