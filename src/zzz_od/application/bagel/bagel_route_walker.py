@@ -685,12 +685,12 @@ class BagelRouteWalker(BagelOperation):
     @node_from(from_name='现场交互判断', status='现场有交互物')
     @operation_node(name='现场交互')
     def interact_nearby(self) -> OperationRoundResult:
-        """按提示识别到的类型分派交互，不依赖打点类型。"""
-        kind = self._nearby_kind()
-        if kind is None:
+        """首次按提示确定类型，后续沿用该类型检查交互结果。"""
+        if self.current_kind is None:
+            self.current_kind = self._nearby_kind()
+        if self.current_kind is None:
             return self.round_retry('提示消失，再看一帧', wait=0.2)
-        self.current_kind = kind
-        return self._interact_by_kind(kind)
+        return self._interact_by_kind(self.current_kind)
 
     @node_from(from_name='现场交互判断', status='现场无交互物')
     @operation_node(name='路线结束')
