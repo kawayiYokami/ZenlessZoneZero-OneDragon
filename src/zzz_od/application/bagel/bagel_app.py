@@ -7,7 +7,13 @@ from one_dragon.base.operation.operation_edge import node_from
 from one_dragon.base.operation.operation_node import operation_node
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
-from zzz_od.application.bagel import bagel_const, bagel_screen, bagel_stats, bagel_usage
+from zzz_od.application.bagel import (
+    bagel_const,
+    bagel_route_stats,
+    bagel_screen,
+    bagel_stats,
+    bagel_usage,
+)
 from zzz_od.application.bagel.bagel_deposit import BagelDeposit
 from zzz_od.application.bagel.bagel_enter import BagelEnter
 from zzz_od.application.bagel.bagel_exit import BagelExit
@@ -20,6 +26,11 @@ from zzz_od.application.bagel.bagel_operation import (
     is_bagel_result,
 )
 from zzz_od.application.bagel.bagel_return import BagelReturn
+from zzz_od.application.bagel.bagel_route_model import now_iso
+from zzz_od.application.bagel.bagel_route_stats import (
+    BagelRouteRecord,
+    BagelRouteRecorder,
+)
 from zzz_od.application.bagel.bagel_route_store import (
     BagelRouteConfigError,
     BagelRouteStore,
@@ -35,7 +46,9 @@ if TYPE_CHECKING:
     from one_dragon.base.operation.operation_base import OperationResult
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
     from zzz_od.application.bagel.bagel_config import BagelConfig
+    from zzz_od.application.bagel.bagel_route_model import BagelRoute, BagelSpawnPoint
     from zzz_od.application.bagel.bagel_run_record import BagelRunRecord
+    from zzz_od.application.bagel.bagel_stats import BagelRound
     from zzz_od.context.zzz_context import ZContext
 
 
@@ -78,6 +91,15 @@ class BagelApp(ZApplication):
         """本局路线执行器的安全箱账本；本局没跑路线时为 None。"""
         self._round_survey: int | None = None
         """路线执行器最后一次读到的调查收益。"""
+        self._route_recorder: BagelRouteRecorder = BagelRouteRecorder()
+        """路线数据记录：每局写一行，任务结束输出按出生点的汇总表。"""
+        self._round_map_id: str | None = None
+        self._round_spawn: BagelSpawnPoint | None = None
+        self._round_route: BagelRoute | None = None
+        """本局的地图、出生点和执行的路线；没定位或没跑路线时为 None。"""
+        self._route_rounds: int = 0
+        """本次任务写入的路线数据记录局数；为 0 时不输出汇总表。"""
+        self._route_reported: bool = False
 
     def _log_round_result(
         self,
@@ -126,6 +148,7 @@ class BagelApp(ZApplication):
                     self._stats.finish_task()
                 except Exception:
                     log.error('输出贝果统计总表失败', exc_info=True)
+                self._report_routes()
 
     def after_operation_done(self, result: OperationResult) -> None:
         """正式任务停止也保存现场，程序错误或收尾失败不能只留下旧的局内截图。"""
@@ -152,9 +175,53 @@ class BagelApp(ZApplication):
         """输出统计总表并推送摘要；只写统计，出错不影响停止流程。"""
         try:
             self._stats.finish_task()
-            self._push_summary(result)
         except Exception:
             log.error('输出贝果统计总表失败', exc_info=True)
+        self._report_routes()
+        try:
+            self._push_summary(result)
+        except Exception:
+            log.error('推送贝果收益摘要失败', exc_info=True)
+
+    def _record_route(self, finished: BagelRound | None) -> None:
+        """把收尾的这一局写入路线数据记录；未完成的局不写。只写记录，出错不影响流程。
+
+        Args:
+            finished: ``BagelRunStats.finish_round`` 返回的这一局。
+        """
+        if finished is None or finished.outcome == bagel_stats.OUTCOME_UNFINISHED:
+            return
+        try:
+            route = self._round_route
+            self._route_recorder.append(BagelRouteRecord(
+                ended_at=now_iso(),
+                instance=self.ctx.current_instance_idx,
+                map_id=self._round_map_id,
+                spawn_id=self._round_spawn.spawn_id if self._round_spawn is not None else None,
+                route_source=route.source if route is not None else None,
+                route_id=route.route_id if route is not None else None,
+                route_name=route.name if route is not None else None,
+                route_version=bagel_route_stats.route_version(route) if route is not None else None,
+                outcome=finished.outcome,
+                seconds=round(finished.seconds, 1),
+                income=finished.income,
+                red=bagel_stats.red_counts(finished.items),
+            ))
+            self._route_rounds += 1
+        except Exception:
+            log.error('记录贝果路线数据失败', exc_info=True)
+
+    def _report_routes(self) -> None:
+        """任务结束输出路线数据汇总表；本次任务没写入记录时不输出，重复调用只输出一次。"""
+        if self._route_reported or self._route_rounds == 0:
+            return
+        self._route_reported = True
+        try:
+            catalog = BagelRouteStore().load_catalog()
+            for line in bagel_route_stats.report_lines(self._route_recorder.load(), catalog):
+                log.info('贝果路线数据：%s', line)
+        except Exception:
+            log.error('输出贝果路线数据汇总失败', exc_info=True)
 
     def _push_summary(self, result: OperationResult) -> None:
         """任务结束推送收益摘要，按本应用的节点通知设置发送；用户手动停止不推送。
@@ -218,6 +285,16 @@ class BagelApp(ZApplication):
         self._stats = BagelRunStats()
         self._round_ledger = None
         self._round_survey = None
+        self._reset_round_route()
+        self._route_rounds = 0
+        self._route_reported = False
+        self._route_recorder.prune()
+
+    def _reset_round_route(self) -> None:
+        """新的一局开始前清空地图、出生点和路线。"""
+        self._round_map_id = None
+        self._round_spawn = None
+        self._round_route = None
 
     def _record_round_income(self, read_hud: bool) -> None:
         """把本局调查收益和带出物品记入统计；只写统计，出错不影响流程。
@@ -293,6 +370,7 @@ class BagelApp(ZApplication):
         self._stats.start_round(self.attempts + 1)
         self._round_ledger = None
         self._round_survey = None
+        self._reset_round_route()
         result = BagelEnter(
             self.ctx, allow_clear_loadout=allow_clear_loadout, allow_world_recovery=True,
             prepare_shortcut_entry=allow_clear_loadout,
@@ -345,7 +423,7 @@ class BagelApp(ZApplication):
     def return_entry(self) -> OperationRoundResult:
         """返回贝果主界面后开下一局；大世界落点由入场操作重建入口。"""
         result = BagelReturn(self.ctx).execute()
-        self._stats.finish_round()
+        self._record_route(self._stats.finish_round())
         return (
             self._finish_failed_round(result, '返回入口') if self.failure_retry_pending
             else self.round_by_op_result(result)
@@ -364,6 +442,9 @@ class BagelApp(ZApplication):
         outcome = walker.execute()
         self._round_ledger = walker.ledger
         self._round_survey = walker.survey_value
+        self._round_spawn = walker.spawn
+        self._round_route = walker.routes[0] if walker.routes else None
+        self._round_map_id = walker.spawn.map_id if walker.spawn is not None else walker.last_map_id
         if walker.last_screenshot is not None:
             self.last_screenshot = walker.last_screenshot
             self.last_screenshot_time = walker.last_screenshot_time
@@ -445,7 +526,7 @@ class BagelApp(ZApplication):
     def return_after_success(self) -> OperationRoundResult:
         """最后一局也返回，并记录实际到达的页面。"""
         result = BagelReturn(self.ctx).execute()
-        self._stats.finish_round()
+        self._record_route(self._stats.finish_round())
         self.last_return_status = result.status if result.success else None
         return self.round_by_op_result(result)
 

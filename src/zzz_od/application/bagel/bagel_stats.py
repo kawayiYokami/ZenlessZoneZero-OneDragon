@@ -143,7 +143,7 @@ def format_red(counts: dict[str, int]) -> str:
 
 
 @dataclass
-class _Round:
+class BagelRound:
     """一局的计时、收益与物品。"""
 
     attempt: int
@@ -151,6 +151,8 @@ class _Round:
     income: int | None = None
     items: list[BagelItemRecord] = field(default_factory=list)
     outcome: str = OUTCOME_UNFINISHED
+    seconds: float = 0.0
+    """本局用时，已扣除暂停；收尾时填入。"""
 
 
 class BagelRunStats:
@@ -160,7 +162,7 @@ class BagelRunStats:
         self._paused_total: float = 0.0
         self._paused_since: float | None = None
         self.task_started: float = self._now()
-        self.current: _Round | None = None
+        self.current: BagelRound | None = None
         self.outcome_counts: dict[str, int] = {}
         self.finished_rounds: int = 0
         self.total_income: int = 0
@@ -181,7 +183,7 @@ class BagelRunStats:
         """
         if self.current is not None:
             self.finish_round()
-        self.current = _Round(attempt=attempt, started=self._now())
+        self.current = BagelRound(attempt=attempt, started=self._now())
 
     def pause(self) -> None:
         """任务暂停；重复调用只按第一次计时。"""
@@ -214,13 +216,18 @@ class BagelRunStats:
         if self.current is not None:
             self.current.outcome = outcome
 
-    def finish_round(self) -> None:
-        """收尾当前局，输出一行本局统计。"""
+    def finish_round(self) -> BagelRound | None:
+        """收尾当前局，输出一行本局统计。
+
+        Returns:
+            收尾的这一局；没有进行中的局时为 None。
+        """
         current = self.current
         if current is None:
-            return
+            return None
         self.current = None
         seconds = self._now() - current.started
+        current.seconds = seconds
         self.finished_rounds += 1
         self.outcome_counts[current.outcome] = self.outcome_counts.get(current.outcome, 0) + 1
         if current.income is not None:
@@ -235,6 +242,7 @@ class BagelRunStats:
             current.attempt, current.outcome, format_value(current.income),
             format_duration(seconds), format_red(red),
         )
+        return current
 
     def finish_task(self) -> None:
         """任务结束：收尾未完成的局，输出总表；重复调用只输出一次。"""
