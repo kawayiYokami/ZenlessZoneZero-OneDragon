@@ -651,12 +651,12 @@ class BagelRouteWalker(BagelOperation):
     @node_from(from_name='现场交互判断', status='现场有交互物')
     @operation_node(name='现场交互')
     def interact_nearby(self) -> OperationRoundResult:
-        """首次按提示确定类型，后续沿用该类型检查交互结果。"""
-        if self.current_kind is None:
-            self.current_kind = self._nearby_kind()
-        if self.current_kind is None:
+        """按提示识别到的类型分派交互，不依赖打点类型。"""
+        kind = self._nearby_kind()
+        if kind is None:
             return self.round_retry('提示消失，再看一帧', wait=0.2)
-        return self._interact_by_kind(self.current_kind)
+        self.current_kind = kind
+        return self._interact_by_kind(kind)
 
     @node_from(from_name='现场交互判断', status='现场无交互物')
     @operation_node(name='路线结束')
@@ -984,9 +984,6 @@ class BagelRouteWalker(BagelOperation):
                 '贝果电子保险箱进入短步阶段：距离 %.1fpx，半径 %.0fpx，按压 %.2fs',
                 distance, ELECTRONIC_SMALL_STEP_RADIUS, SMALL_STEP_PRESS,
             )
-        if not self.input_worker.idle():
-            # 转向还在线程里转，此刻截到的画面是转之前的，读出的角度不能采信。
-            return self.round_wait('等待转向落地', wait=0.02)
         if self.last_input_frame is not None and self.last_screenshot_time <= self.last_input_frame:
             return self.round_wait('等待动作后的新截图', wait=0.05)
         if distance <= SPRINT_DISTANCE and self.sprinting:
@@ -1090,15 +1087,6 @@ class BagelRouteWalker(BagelOperation):
         self.input_worker.submit_turn(None)
         return self.round_wait(f'未识别到朝向，停下等待（{missed:.1f}s）', wait=0.1)
 
-    def _cruise(
-        self, point: BagelRoutePoint, position: tuple[float, float],
-    ) -> OperationRoundResult:
-        """远距离移动：偏差小就边走边修，偏差大就停车转。
-
-        分界是 WALK_TURN_ANGLE：10 度以内保持前进键按住，同时小幅转，
-        走起来是连续的一条线；超过 10 度先松键停下转，转到位再走。
-        同时下发大角度转向和前进会互相干扰，表现为原地乱转。
-        """
     def _cruise(
         self, point: BagelRoutePoint, position: tuple[float, float],
     ) -> OperationRoundResult:
@@ -1482,7 +1470,7 @@ class BagelRouteWalker(BagelOperation):
         self.input_worker.stop_backward()
 
     def _read_survey_value(self) -> None:
-        """关闭面板回到局内后读 HUD 调查收益；失败局用最后一次读数作为本局收益。"""
+        """关闭面板回到局内后读 HUD 调查收益；读到的值视为已停住，交给账本结算。"""
         try:
             value = parse_value(bagel_screen.read_area(
                 self.ctx, self.last_screenshot, '贝果-局内', '调查收益',
@@ -1493,6 +1481,7 @@ class BagelRouteWalker(BagelOperation):
         if value is None:
             return
         self.survey_value = value
+        self.ledger.settle(value)
 
     def _adopt_screenshot(self, op: BagelOperation) -> None:
         """子操作结束后同步其最后截图。"""
@@ -1501,8 +1490,13 @@ class BagelRouteWalker(BagelOperation):
             self.last_screenshot_time = op.last_screenshot_time
 
     def handle_pause(self) -> None:
-        """暂停时松键。"""
+        """暂停时松键，并让转向线程立刻停手。
+
+        暂停期间主线不再提交，靠提交新鲜度线程 1 秒后也会自己停；
+        这里主动清一次，不等那 1 秒，避免暂停瞬间按旧目标转镜头。
+        """
         self._release_forward()
+        self.input_worker.submit_turn(None)
         super().handle_pause()
 
     def after_operation_done(self, result: OperationResult) -> None:
