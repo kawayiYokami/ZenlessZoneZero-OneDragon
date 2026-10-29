@@ -345,18 +345,20 @@ class ConditionalOperator(ConditionalOperatorLoader):
             # 没有场景需要触发 看是否需要打断当前操作
             with self._task_lock:
                 interrupt: bool = False
+                interrupt_detail: str = ''
                 if (self.running_executor is not None and self.running_executor.running
                         and self.current_execution_info.interrupt_cal_tree is not None):
                     now = time.time()
                     if self.current_execution_info.interrupt_cal_tree.in_time_range(now):
                         interrupt = True
-                        log.debug('复合中断条件满足，执行中断')
+                        interrupt_detail = self.current_execution_info.interrupt_cal_tree.explain(now)
+                        log.debug('复合中断条件满足，执行中断 | 命中 %s', interrupt_detail)
                 if interrupt:
                     self._stop_running_task()
                     self._emit_debug_timeline(
                         category="decision",
                         title="触发中断",
-                        detail="复合中断条件满足",
+                        detail=f"命中 {interrupt_detail}",
                         level="WARNING",
                     )
 
