@@ -18,6 +18,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from statistics import median
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -68,6 +69,9 @@ TURN_SAMPLE_INTERVAL: float = 0.03
 TURN_DEADBAND: float = 5.0
 """对准死区：与目标差在它以内不转。1 度内是识别精度，1~5 度是被打偏后的容忍带。"""
 
+TURN_DEADBAND_FAST: float = 2.0
+"""快速移动时的对准死区：巡航与进电梯按住走，偏一点就会走偏，压到 2 度。"""
+
 TURN_TARGET_FRESH_SECONDS: float = 1.0
 """提交新鲜度：目标超过这么久没更新就视为过期，暂停转向。
 
@@ -81,6 +85,34 @@ TURN_RATIO_SMOOTH: float = 0.3
 TURN_RATIO_MIN: float = 0.2
 TURN_RATIO_MAX: float = 20.0
 """可信校准值范围；超出说明样本被别的动作污染，直接丢弃。"""
+
+STOP_TURN_CAP: float = 180.0
+"""停车转的单次上限（度）：偏差多大就一把转到位，最大 180 度（掉头）。"""
+
+STOP_TURN_CAP_WARMUP: float = 45.0
+"""比例未知时用的保守上限（度）：一次别甩太大。"""
+
+TURN_CAP_TRUST_SAMPLES: int = 3
+"""攒够这么多个样本才放宽到 STOP_TURN_CAP。"""
+
+CRUISE_TURN_CAP: float = 15.0
+"""边走边转的单次上限（度）：只做小幅修正，剩下的下一轮再补。"""
+
+TURN_CRUISE_LIMIT: float = 10.0
+"""偏差在它以内是边走边转，对应主线束角；超过它才停车转。"""
+
+TURN_RATIO_RECENT_SAMPLES: int = 5
+"""实时校准值按最近这么多个样本的中位数更新。
+
+单个样本偶尔会掉到 0.74 这种（实转只到一半），直接进指数平滑会把校准值一次拽下
+0.23；取中位数后单个异常样本不影响目标值。
+"""
+
+TURN_RATIO_CLAMP_WARN_STREAK: int = 5
+"""校准值连续这么多个样本贴着可信区间的边界，就提示可能需要重做灵敏度检测。"""
+
+TURN_SCALE_SAMPLE_MIN_COMMAND: float = 8.0
+"""下发角小于它就不参与校准：这个幅度以下量化误差与上一把转向的余摆占比过大。"""
 
 TURN_SETTLE_GRACE: float = 0.4
 """下发转向后这么久内画面没变化不计数：实测转稳中位 0.24 秒、最大 0.31 秒。"""
@@ -208,6 +240,10 @@ class _TurnWorker:
         """主线给的最新目标方向；None 表示暂停转向。"""
         self._target_at: float = 0.0
         """最新目标的提交时刻；超过新鲜度没更新就当过期。"""
+        self._target_cruise_only: bool = False
+        """主线近距离只做边走边转时为 True，单次转向 amplitude 受 CRUISE_TURN_CAP 限制。"""
+        self._target_deadband: float = TURN_DEADBAND
+        """本次目标用的对准死区；快速移动时主线会传 2 度，默认 5 度。"""
         self._history: deque[float] = deque(maxlen=TURN_STABLE_FRAMES)
         """最近几帧的当前朝向，读不到时清空。"""
         self._anchor: float | None = None
@@ -222,6 +258,12 @@ class _TurnWorker:
         """转向校准值：名义转角乘它就是实际转角，1.0 表示还没校准过。任何时候都不重置。"""
         self.turn_samples: int = 0
         """已累积的校准样本数，用于日志观察。"""
+        self._recent_samples: list[float] = []
+        """最近几个有效样本，实时校准值取它们的中位数，挡住单个异常样本。"""
+        self._clamp_streak: int = 0
+        """校准值连续几次贴到夹取边界的计数，用于提示重做灵敏度检测。"""
+        self._scale_samples: list[float] = []
+        """本局按有效样本算出的补偿比例（1/校准值），局末取中位数写回现有灵敏度字段。"""
         self._busy: bool = False
         """正在执行鼠标转向的极短瞬间；平时都是 False，主线不用等它。"""
         self._lock: threading.Lock = threading.Lock()
@@ -232,7 +274,7 @@ class _TurnWorker:
         )
         self._thread.start()
 
-    def submit(self, target: float | None) -> None:
+    def submit(self, target: float | None, cruise_only: bool = False, deadband: float = TURN_DEADBAND) -> None:
         """提交最新目标方向；只存不定夺，转不转由线程自己采样再看。
 
         只写内存，不记输入、不碰截图，调完立刻返回，不会限速主循环。
@@ -241,6 +283,8 @@ class _TurnWorker:
 
         Args:
             target: 目标方向（度），None 表示暂停转向。
+            cruise_only: 近距离只做边走边转，单次幅度受 CRUISE_TURN_CAP 限制。
+            deadband: 本次目标的对准死区；快速移动传 2 度，其余用默认 5 度。
         """
         with self._lock:
             if self._stopping:
@@ -250,6 +294,8 @@ class _TurnWorker:
             else:
                 self._target = target % 360
                 self._target_at = time.monotonic()
+                self._target_cruise_only = cruise_only
+                self._target_deadband = deadband
         self._wake.set()
 
     def busy(self) -> bool:
@@ -266,6 +312,8 @@ class _TurnWorker:
             self._history.clear()
             self._target = None
             self._still_since = None
+            self._recent_samples.clear()
+            self._clamp_streak = 0
         self._wake.set()
         self._thread.join(timeout=1.0)
 
@@ -338,12 +386,23 @@ class _TurnWorker:
                     self._target = None
                     continue
                 deviation = cal_utils.angle_delta(stable_angle, self._target)
-                if abs(deviation) <= TURN_DEADBAND:
+                deadband = self._target_deadband
+                if abs(deviation) <= deadband:
                     continue
-                nominal = float(max(int(abs(deviation)), 1))
+                cruise_only = self._target_cruise_only
+                magnitude = abs(deviation)
+                if cruise_only or magnitude <= TURN_CRUISE_LIMIT:
+                    cap = CRUISE_TURN_CAP
+                elif self.turn_samples >= TURN_CAP_TRUST_SAMPLES:
+                    cap = STOP_TURN_CAP
+                else:
+                    cap = STOP_TURN_CAP_WARMUP
+                nominal = float(max(int(min(magnitude, cap)), 1))
                 signed = nominal if deviation > 0 else -nominal
                 ratio = self.turn_ratio
                 actual = signed / ratio if ratio else signed
+                # 上限按真正拖拽的角度算：比例小于 1 时下发角会被放大，只夹名义角等于没夹。
+                actual = max(-cap, min(actual, cap))
                 self._pending = actual
                 self._pending_at = time.monotonic()
                 self._anchor = stable_angle
@@ -399,6 +458,9 @@ class _TurnWorker:
             return True
         if delta * pending <= 0:
             return True
+        if abs(pending) < TURN_SCALE_SAMPLE_MIN_COMMAND:
+            # 小幅度微调不参与校准：余摆与量化误差会把倍数抬到 2~15 倍。
+            return True
         sample = abs(delta) / abs(pending)
         with self._lock:
             if not (TURN_RATIO_MIN <= sample <= TURN_RATIO_MAX):
@@ -407,13 +469,30 @@ class _TurnWorker:
                     sample, pending, delta,
                 )
                 return True
-            self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + sample * TURN_RATIO_SMOOTH
+            self._recent_samples.append(sample)
+            del self._recent_samples[:-TURN_RATIO_RECENT_SAMPLES]
+            target = median(self._recent_samples)
+            self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + target * TURN_RATIO_SMOOTH
             self.turn_samples += 1
+            self._scale_samples.append(1.0 / self.turn_ratio if self.turn_ratio else 1.0)
             ratio, count = self.turn_ratio, self.turn_samples
         log.info(
-            '贝果转向校准 %.3f（样本 %.2f，名义 %.1f 实际 %.1f，共 %s 次）',
-            ratio, sample, pending, delta, count,
+            '贝果转向校准 %.3f（样本 %.2f，中位 %.2f，名义 %.1f 实际 %.1f，共 %s 次）',
+            ratio, sample, target, pending, delta, count,
         )
+        if TURN_RATIO_MIN * 1.2 <= ratio <= TURN_RATIO_MAX / 1.2:
+            with self._lock:
+                self._clamp_streak = 0
+        else:
+            with self._lock:
+                self._clamp_streak += 1
+                streak = self._clamp_streak
+            if streak == TURN_RATIO_CLAMP_WARN_STREAK:
+                log.warning(
+                    '转向校准值 %.2f 已贴近可补偿边界（%.2f~%.2f），偏差可能超出范围，'
+                    '建议跑一次鼠标灵敏度检测再继续',
+                    ratio, TURN_RATIO_MIN, TURN_RATIO_MAX,
+                )
         return True
 
 
@@ -522,20 +601,32 @@ class BagelInputWorker:
         with self._backward_lock:
             self._backward_want = False
 
-    def submit_turn(self, target: float | None) -> None:
+    def submit_turn(self, target: float | None, cruise_only: bool = False, deadband: float = TURN_DEADBAND) -> None:
         """提交最新目标方向；只存不定夺，朝向由转向线程自己采样。
 
         只写内存，不记输入，调完立刻返回，不会限速主循环。
 
         Args:
             target: 目标方向（度），None 表示暂停转向。
+            cruise_only: 近距离只做边走边转，单次幅度受 CRUISE_TURN_CAP 限制。
+            deadband: 本次目标的对准死区；快速移动传 2 度，其余用默认 5 度。
         """
-        self._turn_worker.submit(target)
+        self._turn_worker.submit(target, cruise_only=cruise_only, deadband=deadband)
 
     @property
     def turn_ratio(self) -> float:
         """转向校准值，供主线日志观察。"""
         return self._turn_worker.turn_ratio
+
+    @property
+    def turn_samples(self) -> int:
+        """已累积的校准样本数，供局末持久化判断。"""
+        return self._turn_worker.turn_samples
+
+    @property
+    def turn_scale_samples(self) -> list[float]:
+        """本局补偿比例轨迹，供局末取中位数写回现有灵敏度字段。"""
+        return list(self._turn_worker._scale_samples)
 
     def idle(self) -> bool:
         """即时动作是否空闲；前进短按状态需单独检查。
