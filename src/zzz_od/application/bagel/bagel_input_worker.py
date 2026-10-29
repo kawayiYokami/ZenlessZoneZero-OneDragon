@@ -85,8 +85,11 @@ TURN_RATIO_MAX: float = 20.0
 TURN_SETTLE_GRACE: float = 0.4
 """下发转向后这么久内画面没变化不计数：实测转稳中位 0.24 秒、最大 0.31 秒。"""
 
-TURN_RATIO_RESET_STREAK: int = 3
-"""连续这么多个样本异常，就认定校准值本身错了，重置回 1.0。"""
+TURN_STILL_TIMEOUT: float = 1.0
+"""宽限过后，画面持续没变化超过这么久就放行下一笔，不重置校准。
+
+下发后 0.4 + 1.0 秒还没动静，继续等只会饿死后续转向，所以消费掉
+这一笔让下一笔能转。校准值本身任何时候都不重置，只靠正常样本平滑收敛。"""
 
 TURN_RATIO_MIN_ANGLE: float = 3.0
 """实际转角小于它就不采样：角度太小，量化误差占比过大。"""
@@ -213,13 +216,12 @@ class _TurnWorker:
         """上次真正下发的转角，等转稳后用来算校准样本。"""
         self._pending_at: float = 0.0
         """上次下发的时刻；宽限内画面没变化不计数。"""
+        self._still_since: float | None = None
+        """宽限过后首次看到画面没动的时刻；超时只放行下一笔，不碰校准。"""
         self.turn_ratio: float = 1.0
-        """转向校准值：名义转角乘它就是实际转角，1.0 表示还没校准过。"""
+        """转向校准值：名义转角乘它就是实际转角，1.0 表示还没校准过。任何时候都不重置。"""
         self.turn_samples: int = 0
         """已累积的校准样本数，用于日志观察。"""
-        self._bad_streak: int = 0
-        self._small_streak: int = 0
-        self._still_streak: int = 0
         self._busy: bool = False
         """正在执行鼠标转向的极短瞬间；平时都是 False，主线不用等它。"""
         self._lock: threading.Lock = threading.Lock()
@@ -263,6 +265,7 @@ class _TurnWorker:
             self._anchor = None
             self._history.clear()
             self._target = None
+            self._still_since = None
         self._wake.set()
         self._thread.join(timeout=1.0)
 
@@ -295,6 +298,8 @@ class _TurnWorker:
                     return
                 if current is None:
                     self._history.clear()
+                    # 读不到时不计时：重现后重新计时，避免缺数据也算静止。
+                    self._still_since = None
                 else:
                     self._history.append(current % 360)
                 history = list(self._history)
@@ -302,7 +307,18 @@ class _TurnWorker:
                 anchor = self._anchor
             if not history:
                 continue
+            # 目标过期先处理：即使上一笔卡住没学完，暂停/开箱后也不留旧目标。
+            # 否则学样本返回等待会跳过后边的过期分支，旧目标一直留着。
+            with self._lock:
+                if (
+                    self._target is not None
+                    and time.monotonic() - self._target_at > TURN_TARGET_FRESH_SECONDS
+                ):
+                    self._target = None
             if not self._stable(history):
+                # 画面在动：不是静止，计时清掉重来。
+                with self._lock:
+                    self._still_since = None
                 continue
             stable_angle = history[-1]
             if pending is not None and anchor is not None:
@@ -354,57 +370,43 @@ class _TurnWorker:
         """
         delta = cal_utils.angle_delta(anchor, stable)
         if abs(delta) < TURN_RATIO_MIN_DELTA:
-            if time.monotonic() - self._pending_at < TURN_SETTLE_GRACE:
+            now = time.monotonic()
+            if now - self._pending_at < TURN_SETTLE_GRACE:
+                # 画面还在路上，等，不计时。
                 return False
             with self._lock:
-                self._still_streak += 1
-                if self._still_streak >= TURN_RATIO_RESET_STREAK:
-                    log.info(
-                        '贝果转向校准连续 %s 轮画面没变化，重置为 1.0（原值 %.3f）',
-                        self._still_streak, self.turn_ratio,
-                    )
-                    self.turn_ratio = 1.0
-                    self._still_streak = 0
-                    self._small_streak = 0
-                    self._bad_streak = 0
-                    self.turn_samples = 0
-            return False
-        with self._lock:
-            self._still_streak = 0
-            self._pending = None
-            self._anchor = None
-        if abs(delta) < TURN_RATIO_MIN_ANGLE:
-            with self._lock:
-                self._small_streak += 1
-                if self._small_streak >= TURN_RATIO_RESET_STREAK:
-                    log.info(
-                        '贝果转向校准连续 %s 次转不动，重置为 1.0（原值 %.3f）',
-                        self._small_streak, self.turn_ratio,
-                    )
-                    self.turn_ratio = 1.0
-                    self._small_streak = 0
-                    self._bad_streak = 0
-                    self.turn_samples = 0
+                if self._still_since is None:
+                    # 宽限过后第一次看到没动，开始计时。
+                    self._still_since = now
+                    return False
+                if now - self._still_since < TURN_STILL_TIMEOUT:
+                    return False
+                # 超时只放行下一笔，不碰校准值：任何时候都不重置。
+                self._pending = None
+                self._anchor = None
+                self._still_since = None
+            log.info(
+                '贝果转向校准画面 %.1fs 没变化，放行下一笔（校准保持 %.3f）',
+                TURN_SETTLE_GRACE + TURN_STILL_TIMEOUT, self.turn_ratio,
+            )
             return True
         with self._lock:
-            self._small_streak = 0
+            self._pending = None
+            self._anchor = None
+            self._still_since = None
+        if abs(delta) < TURN_RATIO_MIN_ANGLE:
+            # 小样本直接丢弃，不计数、不重置。
+            return True
         if delta * pending <= 0:
             return True
         sample = abs(delta) / abs(pending)
         with self._lock:
             if not (TURN_RATIO_MIN <= sample <= TURN_RATIO_MAX):
-                self._bad_streak += 1
                 log.info(
-                    '贝果转向校准样本异常，忽略：%.2f（名义 %.1f 实际 %.1f，连续 %s 次）',
-                    sample, pending, delta, self._bad_streak,
+                    '贝果转向校准样本异常，忽略：%.2f（名义 %.1f 实际 %.1f）',
+                    sample, pending, delta,
                 )
-                if self._bad_streak >= TURN_RATIO_RESET_STREAK:
-                    log.info('贝果转向校准连续异常，重置为 1.0（原值 %.3f）', self.turn_ratio)
-                    self.turn_ratio = 1.0
-                    self._bad_streak = 0
-                    self.turn_samples = 0
                 return True
-            self._bad_streak = 0
             self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + sample * TURN_RATIO_SMOOTH
             self.turn_samples += 1
             ratio, count = self.turn_ratio, self.turn_samples
