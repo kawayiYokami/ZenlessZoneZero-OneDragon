@@ -142,12 +142,11 @@ try:
             )
             self.add_sub_interface(ZOneDragonInterface(self.ctx, parent=self))
 
-            # 插件
-            from zzz_od.gui.view.plugin.plugin_interface import (
-                PluginInterface,
+            # 应用运行
+            from zzz_od.gui.view.standalone.zzz_standalone_app_interface import (
+                ZStandaloneAppInterface,
             )
-            self.plugin_interface = PluginInterface(self.ctx, parent=self)
-            self.add_sub_interface(self.plugin_interface)
+            self.add_sub_interface(ZStandaloneAppInterface(self.ctx, parent=self))
 
             # 画中画
             from one_dragon_qt.widgets.pip_button import PipButton
@@ -168,6 +167,16 @@ try:
             self.devtools_interface = AppDevtoolsInterface(self.ctx, parent=self)
             self.add_sub_interface(
                 self.devtools_interface,
+                position=NavigationItemPosition.BOTTOM,
+            )
+
+            # 插件总入口，紧挨在资源管理上面
+            from zzz_od.gui.view.plugin.plugin_interface import (
+                PluginInterface,
+            )
+            self.plugin_interface = PluginInterface(self.ctx, parent=self)
+            self.add_sub_interface(
+                self.plugin_interface,
                 position=NavigationItemPosition.BOTTOM,
             )
 
