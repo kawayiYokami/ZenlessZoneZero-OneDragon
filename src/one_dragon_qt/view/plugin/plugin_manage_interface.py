@@ -30,8 +30,10 @@ from one_dragon.base.operation.application.plugin_import_service import (
     PluginPreviewInfo,
 )
 from one_dragon.base.operation.application.plugin_info import PluginInfo
+from one_dragon.base.operation.one_dragon_context import OneDragonContext
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
+from one_dragon_qt.view.plugin.plugin_operation_mixin import PluginOperationMixin
 from one_dragon_qt.widgets.plugin_card import (
     BADGE_SUBSCRIBED,
     BADGE_UPDATE,
@@ -40,8 +42,6 @@ from one_dragon_qt.widgets.plugin_card import (
     PluginPager,
 )
 from one_dragon_qt.widgets.vertical_scroll_interface import VerticalScrollInterface
-from zzz_od.context.zzz_context import ZContext
-from zzz_od.gui.view.plugin.plugin_operation_mixin import PluginOperationMixin
 
 _T = TypeVar("_T")
 
@@ -51,7 +51,7 @@ class PluginManageInterface(PluginOperationMixin, VerticalScrollInterface):
 
     def __init__(
         self,
-        ctx: ZContext,
+        ctx: OneDragonContext,
         parent: QWidget | None = None,
     ) -> None:
         self.init_plugin_operation(ctx)

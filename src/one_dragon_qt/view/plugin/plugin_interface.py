@@ -6,15 +6,15 @@
 
 from qfluentwidgets import FluentIcon
 
+from one_dragon.base.operation.one_dragon_context import OneDragonContext
 from one_dragon_qt.widgets.pivot_navi_interface import PivotNavigatorInterface
-from zzz_od.context.zzz_context import ZContext
 
 
 class PluginInterface(PivotNavigatorInterface):
     """插件一级界面，包含插件管理与插件商店两个二级页面。"""
 
-    def __init__(self, ctx: ZContext, parent=None) -> None:
-        self.ctx: ZContext = ctx
+    def __init__(self, ctx: OneDragonContext, parent=None) -> None:
+        self.ctx: OneDragonContext = ctx
         PivotNavigatorInterface.__init__(
             self,
             object_name='plugin_interface',
@@ -25,10 +25,10 @@ class PluginInterface(PivotNavigatorInterface):
 
     def create_sub_interface(self) -> None:
         """创建插件管理页与插件商店页。"""
-        from zzz_od.gui.view.plugin.plugin_manage_interface import (
+        from one_dragon_qt.view.plugin.plugin_manage_interface import (
             PluginManageInterface,
         )
-        from zzz_od.gui.view.plugin.plugin_store_interface import (
+        from one_dragon_qt.view.plugin.plugin_store_interface import (
             PluginStoreInterface,
         )
 

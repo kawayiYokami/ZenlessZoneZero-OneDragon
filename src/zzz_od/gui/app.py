@@ -171,7 +171,7 @@ try:
             )
 
             # 插件总入口，紧挨在资源管理上面
-            from zzz_od.gui.view.plugin.plugin_interface import (
+            from one_dragon_qt.view.plugin.plugin_interface import (
                 PluginInterface,
             )
             self.plugin_interface = PluginInterface(self.ctx, parent=self)

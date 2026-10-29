@@ -38,11 +38,20 @@ from one_dragon.base.operation.application.plugin_market import (
     PluginMarketService,
     get_plugin_market_service,
 )
+from one_dragon.base.operation.one_dragon_context import OneDragonContext
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from one_dragon_qt.services.plugin_cover_service import (
     PluginCoverService,
     get_plugin_cover_service,
+)
+from one_dragon_qt.view.plugin.plugin_detail_dialog import (
+    ACTION_IGNORE,
+    ACTION_SUBSCRIBE,
+    ACTION_UNSUBSCRIBE,
+    ACTION_UPDATE,
+    PluginDetailData,
+    PluginDetailDialog,
 )
 from one_dragon_qt.widgets.plugin_card import (
     BADGE_NONE,
@@ -53,15 +62,6 @@ from one_dragon_qt.widgets.plugin_card import (
     PluginCard,
     PluginCardGrid,
     PluginPager,
-)
-from zzz_od.context.zzz_context import ZContext
-from zzz_od.gui.view.plugin.plugin_detail_dialog import (
-    ACTION_IGNORE,
-    ACTION_SUBSCRIBE,
-    ACTION_UNSUBSCRIBE,
-    ACTION_UPDATE,
-    PluginDetailData,
-    PluginDetailDialog,
 )
 
 _T = TypeVar("_T")
@@ -145,7 +145,7 @@ class PluginOperationMixin:
     并调用 `init_plugin_operation()` 完成初始化。
     """
 
-    ctx: ZContext
+    ctx: OneDragonContext
     plugin_import_service: PluginImportService
     market_service: PluginMarketService
     subscription_config: PluginSubscriptionConfig
@@ -153,7 +153,7 @@ class PluginOperationMixin:
 
     def init_plugin_operation(
         self,
-        ctx: ZContext,
+        ctx: OneDragonContext,
     ) -> None:
         """初始化共用状态，由页面构造函数调用。"""
         self.ctx = ctx
