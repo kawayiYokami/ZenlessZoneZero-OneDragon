@@ -64,7 +64,6 @@ CUSTOM_ID_PATTERN: re.Pattern[str] = re.compile(r'^custom_[0-9a-z_]{1,48}$')
 SETTINGS_VERSION: int = 1
 """开启选择配置的格式版本。"""
 
-
 class BagelRouteConfigError(Exception):
     """路线配置无法使用：配置损坏、引用失效或写入被拒绝。"""
 

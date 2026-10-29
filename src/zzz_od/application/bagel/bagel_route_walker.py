@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import time
 from math import atan2, cos, degrees, hypot, radians, sin
+from statistics import median
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -33,7 +34,11 @@ from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
 from zzz_od.application.bagel import bagel_screen
 from zzz_od.application.bagel.bagel_close_search import BagelCloseSearch
-from zzz_od.application.bagel.bagel_input_worker import BagelInputWorker
+from zzz_od.application.bagel.bagel_input_worker import (
+    TURN_DEADBAND,
+    TURN_DEADBAND_FAST,
+    BagelInputWorker,
+)
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_route_model import (
     BEACON,
@@ -111,6 +116,14 @@ SPRINT_DISTANCE: float = 30.0
 BEACON_SLOW_RADIUS: float = 10.0
 """途径点慢步半径：进入它改用慢步走走停停，不再一路按住前进（用户给定）。"""
 
+NEAR_STEP_TURN_RADIUS: float = 8.0
+"""距离目标点小于它就不再按角度停车转。
+
+这个距离上目标方位完全由 1~2px 的定位抖动决定：实测 5px 处相邻两轮算出的偏差
+是 78° 和 59°，按它停车转只会原地打摆。改成像束角内那样边走边转，转向幅度受
+CRUISE_TURN_CAP 限制。
+"""
+
 BOX_SMALL_STEP_RADIUS: float = 3.0
 """箱子碎步半径：进到它以内用碎步（用户给定 3px）。"""
 
@@ -138,6 +151,21 @@ SLOW_STEP_PRESS: float = 0.5
 
 SLOW_STEP_WAIT: float = 0.1
 """慢步投递后重新观察的间隔（秒）；短按未结束时不叠发下一步。"""
+
+TURN_SCALE_LESSON_SAMPLES: int = 10
+"""至少攒到这么多个有效样本，才认为整局中位数可信。
+
+一局十几个大转角实际只有 13~15 条有效样本，门槛取 20 等于永远不保存。
+"""
+
+TURN_SCALE_DRIFT_TOLERANCE: float = 0.15
+"""前后半局中位数差超过它就认为还没稳定，不保存。"""
+
+TURN_SCALE_MIN_CHANGE: float = 0.03
+"""与本次初值差不到这么多就不写盘：实测每局的改进只有 0.03~0.06，门槛取大就永远写不进去。"""
+
+TURN_SCALE_BOUNDS: tuple[float, float] = (0.55, 1.95)
+"""可信的补偿比例范围；超出说明样本被别的动作污染，存了也是错的。"""
 
 ANGLE_FAIL_SECONDS: float = 10.0
 """连续读不到镜头朝向超过这个时长才判失败（用户给定 10 秒）。
@@ -304,6 +332,10 @@ class BagelRouteWalker(BagelOperation):
         """最近一轮的决策文字，供执行态悬浮窗显示。"""
         self.sprinting: bool = False
         """当前是否在冲刺。"""
+        log.info(
+            '贝果转向本局按 turn_dx=%.4f 起步，校准由转向线程自己学，局末写回同一字段',
+            self.ctx.game_config.turn_dx,
+        )
         self.elevator_phase: str | None = None
         """电梯当前阶段：进门 / 选楼层 / 出电梯；不在电梯里时为 None。"""
         self.elevator_since: float | None = None
@@ -313,7 +345,7 @@ class BagelRouteWalker(BagelOperation):
         self.input_worker: BagelInputWorker = BagelInputWorker(ctx)
         """按键单独线程：主线投递即返回；同种操作不打断自己，不同操作打断旧的。"""
         self.ledger: BagelSafeLedger = BagelSafeLedger()
-        """本局安全箱物品与推算价值，只用于统计日志。"""
+        """本局安全箱物品，只用于统计日志。"""
         self.survey_value: int | None = None
         """最近一次关闭搜查面板后从 HUD 读到的调查收益，只用于统计日志。"""
 
@@ -722,7 +754,7 @@ class BagelRouteWalker(BagelOperation):
             if angle is not None:
                 target_angle = self._target_angle(position, point)
                 angle_diff = cal_utils.angle_delta(angle % 360, target_angle)
-                self._submit_turn(target_angle)
+                self._submit_turn(target_angle, deadband=TURN_DEADBAND_FAST)
                 if abs(angle_diff) > WALK_TURN_ANGLE:
                     # 方向偏太多先停下等转，不然会走到旁边去。
                     self._release_forward()
@@ -1067,16 +1099,21 @@ class BagelRouteWalker(BagelOperation):
         转向全由转向线程负责（稳 3 帧、5 度以上才转）。这里只按本轮
         偏差管前进：超过 10 度松键停车等转，以内按住走。
         同时走和大角度转会互相干扰，表现为原地乱转。
+
+        近距离不再按角度停车转：这个距离上的目标方位由定位抖动决定，
+        停下车来按它转只会原地打摆，改成边走边转（线程内限幅 15 度）。
         """
         angle = self.player_angle()
         miss = self._angle_miss_result(angle)
         if miss is not None:
             return miss
         target_angle = self._target_angle(position, point)
-        self._submit_turn(target_angle)
         controller_angle = angle % 360
         angle_diff = cal_utils.angle_delta(controller_angle, target_angle)
-        if abs(angle_diff) > WALK_TURN_ANGLE:
+        distance = hypot(point.x - position[0], point.y - position[1])
+        near = distance <= NEAR_STEP_TURN_RADIUS
+        self._submit_turn(target_angle, cruise_only=near, deadband=TURN_DEADBAND_FAST)
+        if abs(angle_diff) > WALK_TURN_ANGLE and not near:
             # 大偏差：松键停车等转向线程转到位再走。
             self._release_forward()
             return self.round_wait(f'停车等转向 {angle_diff:.0f}度')
@@ -1085,10 +1122,10 @@ class BagelRouteWalker(BagelOperation):
             return stuck
         if self.input_worker.hold_forward():
             self._record_input()
-        self._set_sprint(hypot(point.x - position[0], point.y - position[1]))
+        self._set_sprint(distance)
         return self.round_wait('冲刺前进' if self.sprinting else '按住前进')
 
-    def _submit_turn(self, target: float) -> None:
+    def _submit_turn(self, target: float, cruise_only: bool = False, deadband: float = TURN_DEADBAND) -> None:
         """提交目标方向给转向线程；只存不定夺，不记输入。
 
         转不转、转多少、校准，全由转向线程自己采样、稳 3 帧后定。
@@ -1097,8 +1134,44 @@ class BagelRouteWalker(BagelOperation):
 
         Args:
             target: 目标方向（度）。
+            cruise_only: 近距离只做边走边转，线程内限幅 15 度。
+            deadband: 本次目标的对准死区；快速移动传 2 度，其余用默认 5 度。
         """
-        self.input_worker.submit_turn(target)
+        self.input_worker.submit_turn(target, cruise_only=cruise_only, deadband=deadband)
+
+    def persist_turn_scale(self) -> None:
+        """把本局学到的补偿比例写回现有灵敏度字段 turn_dx，供下一局直接用。
+
+        单条样本抖动很大，所以取整局中位数；前后半局中位数差太多、超出可信范围、
+        或与 1.0 几乎一样时都不写盘，避免把错的值写进全局灵敏度。
+        不再写 config/bagel/turn_scale.yml，直接改现有 turn_dx 字段。
+        """
+        samples = self.input_worker.turn_scale_samples
+        if len(samples) < TURN_SCALE_LESSON_SAMPLES:
+            return
+        half = len(samples) // 2
+        scale = median(samples)
+        drift = abs(median(samples[:half]) - median(samples[half:]))
+        if drift > TURN_SCALE_DRIFT_TOLERANCE:
+            log.info('贝果转向校准前后半局差 %.3f，还没稳定，不写回 turn_dx', drift)
+            return
+        min_scale, max_scale = TURN_SCALE_BOUNDS
+        if not min_scale <= scale <= max_scale:
+            log.info('贝果转向校准值 %.3f 超出可信范围，不写回 turn_dx', scale)
+            return
+        if abs(scale - 1.0) < TURN_SCALE_MIN_CHANGE:
+            return
+        old_dx = self.ctx.game_config.turn_dx
+        new_dx = round(float(old_dx) * float(scale), 6)
+        try:
+            self.ctx.game_config.turn_dx = new_dx
+        except Exception:
+            log.error('转向补偿写回 turn_dx 失败', exc_info=True)
+            return
+        log.info(
+            '贝果转向补偿比例 %.3f 已写回 turn_dx（%.4f → %.4f，有效样本 %s），下一局直接用',
+            scale, old_dx, new_dx, len(samples),
+        )
 
     def _set_sprint(self, distance: float) -> None:
         """按距离决定是否冲刺。
@@ -1200,6 +1273,9 @@ class BagelRouteWalker(BagelOperation):
         其余情况短按前进。每步结束后使用新截图重新判断，
         避免多次短按相互覆盖。
 
+        近距离不再按角度停车转：这个距离上的目标方位由定位抖动决定，
+        改成边走边转（线程内限幅 15 度）。
+
         Args:
             point: 当前目标点。
             position: 当前可靠定位。
@@ -1214,9 +1290,11 @@ class BagelRouteWalker(BagelOperation):
         if miss is not None:
             return miss
         target_angle = self._target_angle(position, point)
-        self._submit_turn(target_angle)
         angle_diff = cal_utils.angle_delta(angle % 360, target_angle)
-        if abs(angle_diff) > WALK_TURN_ANGLE:
+        distance = hypot(point.x - position[0], point.y - position[1])
+        near = distance <= NEAR_STEP_TURN_RADIUS
+        self._submit_turn(target_angle, cruise_only=near)
+        if abs(angle_diff) > WALK_TURN_ANGLE and not near:
             # 大偏差：松键停车等转向线程转到位，不短按前进。
             self._release_forward()
             return self.round_wait(f'{action}停车等转向 {angle_diff:.0f}度')
@@ -1360,8 +1438,8 @@ class BagelRouteWalker(BagelOperation):
     def _reset_point_state(self) -> None:
         """清空与单个点绑定的交互状态。
 
-        转向校准在转向线程里整局共享，换点不清、暂停不停；
-        这里只清本点的交互与移动状态。
+        转向比例不重置：它是整局共享的校准结果，换点后继续沿用。
+        只清掉待学习样本，避免拿跨点的旧样本反推。
         """
         self.current_kind = None
         self.f_pressed = False
