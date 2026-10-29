@@ -47,10 +47,13 @@ _LOCK_MATCH_MIN: float = 0.9
 _LOCK_UNCERTAIN_MIN: float = 0.75
 _APPEARANCE_MEAN_DIFF_MIN: float = 12.0
 
-# 结果格的三种状态。
+# 结果格的单帧观察；完成判断还必须结合逐格历史。
 SLOT_ITEM: str = '有物品'
 SLOT_EMPTY: str = '空'
 SLOT_LOADING: str = '加载中'
+SLOT_REVEALING: str = '揭示中'
+_RESULT_EMPTY_MAX_CHANNEL: int = 65
+_RESULT_EMPTY_MAX_STD: float = 8.0
 
 # 结果格判据：只看卡片底部那一小条方框内三通道的最大值。
 # 实测四帧：空格与未揭示的格子最大 27–60（底色和底部短横线都不过百），
@@ -277,6 +280,30 @@ def slot_states(screen: MatLike, centers: tuple[Point, ...]) -> list[str | None]
         centers: 格心（1080p 游戏坐标）。
     """
     return [slot_state(screen, center) for center in centers]
+
+
+def result_slot_state(screen: MatLike, center: Point) -> str | None:
+    """结果格登记用四态观察；收紧空格候选，动画与未知不能直接用于收尾。
+
+    揭示首帧仍可能满足空格候选条件，因此调用方必须保留曾经加载的格号。
+    本接口不改变安全箱、仓库和拖拽核验的占用判断。
+    """
+    state = slot_state(screen, center)
+    if state != SLOT_EMPTY:
+        return state
+    crop = slot_crop(screen, center)
+    if crop is None or crop.shape[:2] != (64, 64):
+        return None
+    value = slot_max_channel(screen, center)
+    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+    if value <= _RESULT_EMPTY_MAX_CHANNEL and float(np.std(gray)) <= _RESULT_EMPTY_MAX_STD:
+        return SLOT_EMPTY
+    return SLOT_REVEALING
+
+
+def result_slot_states(screen: MatLike, centers: tuple[Point, ...]) -> list[str | None]:
+    """按已定位的结果格读取登记所需的状态。"""
+    return [result_slot_state(screen, center) for center in centers]
 
 
 def slot_appearance_changed(

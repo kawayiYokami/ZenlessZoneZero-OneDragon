@@ -22,14 +22,14 @@ from zzz_od.application.bagel.bagel_item_vision import (
 )
 from zzz_od.application.bagel.bagel_operation import BagelOperation
 from zzz_od.application.bagel.bagel_search_panel import SearchPanelGuard
+from zzz_od.application.bagel.bagel_search_progress import BagelSearchProgress
 from zzz_od.application.bagel.bagel_slots import (
     SAFE_SLOT_CENTERS,
     SLOT_ITEM,
-    SLOT_LOADING,
     inspect_safe_slots,
+    result_slot_states,
     slot_occupied,
     slot_state,
-    slot_states,
     swap_visually_ok,
     transfer_visually_ok,
 )
@@ -42,6 +42,7 @@ from zzz_od.application.bagel.bagel_stats import (
 if TYPE_CHECKING:
     from cv2.typing import MatLike
 
+    from one_dragon.base.operation.operation_base import OperationResult
     from one_dragon.base.operation.operation_round_result import OperationRoundResult
     from zzz_od.context.zzz_context import ZContext
 
@@ -86,11 +87,9 @@ class BagelStoreSafe(BagelOperation):
     # 面板刚打开、以及拖拽后物品落地都有动画，留足时间；每次发出拖拽前会清零，
     # 所以这是「一件物品一次」的预算，不会跨件累计。
     PANEL_WAIT_ROUNDS_LIMIT: int = 10
-    # 没有可拖动候选、却还有格子处于「加载中」时，最多等这么多帧（约 3 秒）。
-    # 等待只在连续加载期间计数，某一帧没有加载中格子就清零：揭示动画是一次性的，
-    # 清零后再出现说明游戏又在揭示新的格子，应该重新给足时间；而某个格子一直判成
-    # 加载中（例如暗色图标始终不过 0x28）时预算不会回涨，不会拖长本步。
-    LOADING_ROUNDS_LIMIT: int = 10
+    # 无确认进展与总用时分别限制；进展不能刷新总用时。
+    NO_PROGRESS_SECONDS: float = 10.0
+    TOTAL_TIMEOUT_SECONDS: float = 30.0
     # 亮度和有效角标同时满足后，先留出揭示收尾时间，再用新截图复核。
     ITEM_READY_DELAY: float = 0.1
 
@@ -105,7 +104,7 @@ class BagelStoreSafe(BagelOperation):
             blueprint_priority: 蓝图是否优先入箱。
             ledger: 本局安全箱物品账本；给定时顺带记录带出的物品，只用于统计日志。
         """
-        super().__init__(ctx, op_name='贝果-装入安全箱', timeout_seconds=90)
+        super().__init__(ctx, op_name='贝果-装入安全箱', timeout_seconds=self.TOTAL_TIMEOUT_SECONDS)
         self.blueprint_priority: bool = blueprint_priority
         self.ledger: BagelSafeLedger | None = ledger
         self.moved: int = 0
@@ -120,17 +119,48 @@ class BagelStoreSafe(BagelOperation):
         self._consecutive_failures: int = 0
         self._drag_repeated: int = 0
         self._left_grid_waited: bool = False
-        self._badge_pending: set[int] = set()
+        self._search_progress: BagelSearchProgress = BagelSearchProgress()
+        self._progress_centers: tuple[tuple[float, float], ...] = ()
+        self._result_layout_changed: bool = False
+        self._finish_snapshot: str | None = None
+        self._finish_frame_time: float | None = None
+        self._logged_progress: str | None = None
         self._result_centers: tuple[Point, ...] = ()
         self._logged_items: dict[str, tuple[tuple[int, str, str], ...]] = {}
         self._panel_guard: SearchPanelGuard = SearchPanelGuard()
         self._panel_wait_rounds: int = 0
         self._safe_unknown_rounds: int = 0
-        self._loading_rounds: int = 0
+        self._paused_usage_time: float | None = None
+        self._first_pause_start_time: float | None = None
+
+    @property
+    def operation_usage_time(self) -> float:
+        """暂停期间冻结用时，避免框架在处理暂停前先触发总超时。"""
+        if self._paused_usage_time is not None:
+            return self._paused_usage_time
+        return super().operation_usage_time
+
+    def handle_pause(self) -> None:
+        """冻结用时并保留首次暂停起点，节点结束后的重复回调不能缩短暂停时长。"""
+        if self._paused_usage_time is None:
+            self._paused_usage_time = super().operation_usage_time
+            self._first_pause_start_time = self.pause_start_time
+        elif self._first_pause_start_time is not None:
+            # 框架每次 _on_pause 都重写起点；恢复首次起点，供 _on_resume 完整扣除。
+            self.pause_start_time = self._first_pause_start_time
+        super().handle_pause()
+
+    def handle_resume(self) -> None:
+        """框架按首次起点扣除暂停时间后，再清空本轮冻结状态。"""
+        self._paused_usage_time = None
+        self._first_pause_start_time = None
+        super().handle_resume()
 
     def handle_init(self) -> None:
         """每次执行清空已装入计数与待核对拖拽。"""
         super().handle_init()
+        self._paused_usage_time = None
+        self._first_pause_start_time = None
         self.moved = 0
         self.acted = False
         self._pending_before = None
@@ -143,13 +173,17 @@ class BagelStoreSafe(BagelOperation):
         self._consecutive_failures = 0
         self._drag_repeated = 0
         self._left_grid_waited = False
-        self._badge_pending.clear()
+        self._search_progress = BagelSearchProgress()
+        self._progress_centers = ()
+        self._result_layout_changed = False
+        self._finish_snapshot = None
+        self._finish_frame_time = None
+        self._logged_progress = None
         self._result_centers = ()
         self._logged_items.clear()
         self._panel_guard.reset()
         self._panel_wait_rounds = 0
         self._safe_unknown_rounds = 0
-        self._loading_rounds = 0
 
     def _check_search_panel(self) -> OperationRoundResult | None:
         """搜查和拖后回读共用门槛；中断优先，未知画面有界等待。
@@ -162,6 +196,9 @@ class BagelStoreSafe(BagelOperation):
         if self.is_bagel_result():
             self._clear_pending()
             return self.round_fail(self.STATUS_DEFEATED)
+        deadline = self._check_collection_deadline()
+        if deadline is not None:
+            return deadline
         if not self._search_ready():
             self._panel_guard.reset()
             if (not self._has_search_title()
@@ -179,6 +216,9 @@ class BagelStoreSafe(BagelOperation):
             self._result_centers = centers
             self._panel_wait_rounds = 0
             return None
+        if self._result_layout_changed:
+            self._clear_pending()
+            return self.round_recoverable_fail('结果格位置变化，无法沿用本次搜查登记')
         self._panel_wait_rounds += 1
         if self._panel_wait_rounds < self.PANEL_WAIT_ROUNDS_LIMIT:
             return self.round_wait('等待搜查面板到位并稳定', wait=0.3)
@@ -195,7 +235,24 @@ class BagelStoreSafe(BagelOperation):
         rows = self._result_rows()
         if rows is None:
             return False
-        return self._panel_guard.observe(self.last_screenshot, self.last_screenshot_time, rows)
+        stable = self._panel_guard.observe(self.last_screenshot, self.last_screenshot_time, rows)
+        centers = self._panel_guard.result_centers
+        if centers is None:
+            return False
+        key = tuple(point.tuple() for point in centers)
+        if key != self._progress_centers:
+            if self._search_progress.registered:
+                self._result_layout_changed = True
+                return False
+            self._progress_centers = key
+            self._search_progress = BagelSearchProgress()
+        # 初始定位期间保留加载证据；拖后只读稳定画面，避免移动图标污染空格。
+        if not self._search_progress.registered or stable:
+            self._search_progress.observe(
+                result_slot_states(self.last_screenshot, centers),
+                self.last_screenshot_time, self.operation_usage_time,
+            )
+        return stable
 
     def _result_rows(self) -> int | None:
         """结果格排数：单行按钮在上、双行按钮在下，两者位置不重叠。"""
@@ -205,20 +262,45 @@ class BagelStoreSafe(BagelOperation):
             return 2
         return None
 
-    def _wait_for_loading(self, states: list[str | None]) -> OperationRoundResult | None:
-        """还有格子处于加载中就先等一帧；没有或预算用完返回 None。
+    def _check_collection_deadline(self) -> OperationRoundResult | None:
+        """等待、拖前和拖后都检查期限，确认进展不延长总用时。"""
+        elapsed = self.operation_usage_time
+        if elapsed >= self.TOTAL_TIMEOUT_SECONDS:
+            self._clear_pending()
+            return self.round_fail(self.STATUS_TIMEOUT)
+        progress_time = self._search_progress.last_progress_time
+        if progress_time is not None and elapsed - progress_time >= self.NO_PROGRESS_SECONDS:
+            log.warning(
+                '贝果搜查连续 %.0f 秒无确认进展：%s',
+                self.NO_PROGRESS_SECONDS, self._search_progress.summary(),
+            )
+            self._clear_pending()
+            return self.round_recoverable_fail(f'搜查连续{self.NO_PROGRESS_SECONDS:.0f}秒无确认进展')
+        return None
 
-        只在要下结论之前调用：判空、以及安全箱满了没得换这两处收尾。拖动本身
-        不等，可拖动的格子立刻拖。
-        """
-        loading = [index for index, state in enumerate(states) if state == SLOT_LOADING]
-        if not loading:
-            self._loading_rounds = 0
-            return None
-        if self._loading_rounds >= self.LOADING_ROUNDS_LIMIT:
-            return None
-        self._loading_rounds += 1
-        return self.round_wait('等待搜查结果加载完成', wait=0.3)
+    def _finish_collection(self, status: str) -> OperationRoundResult:
+        """全部格子定论且下一张新截图复核一致，才正常完成收集。"""
+        progress = self._search_progress
+        if not progress.registered or progress.pending or self._pending_source_index is not None:
+            self._finish_snapshot = None
+            self._finish_frame_time = None
+            return self.round_wait('等待结果格揭示并确认', wait=0.3)
+        snapshot = progress.summary()
+        if self._finish_snapshot != snapshot or self._finish_frame_time is None:
+            self._finish_snapshot = snapshot
+            self._finish_frame_time = self.last_screenshot_time
+            return self.round_wait('等待收尾前的新截图复核', wait=0.1)
+        if self.last_screenshot_time <= self._finish_frame_time:
+            return self.round_wait('等待收尾前的新截图复核', wait=0.1)
+        self._record_safe_items()
+        deadline = self._check_collection_deadline()
+        if deadline is not None:
+            return deadline
+        for index in progress.confirmed:
+            if index not in progress.handled:
+                progress.mark_handled(index, '按优先级保留', self.operation_usage_time)
+        log.info('贝果搜查完成：%s', progress.summary())
+        return self.round_success(status, data={'moved': self.moved})
 
     def _wait_for_safe_slots(self) -> OperationRoundResult:
         """未知格最多额外复查三帧；等待期间保留拖拽基线，不发送输入。"""
@@ -233,15 +315,7 @@ class BagelStoreSafe(BagelOperation):
         title_ok = self._has('搜查容器标题') or self._has('电子保险箱标题')
         return title_ok and self.round_by_find_area(
             self.last_screenshot, '贝果-局内', '搜查安全箱',
-        ).is_success and (self._search_complete() or self.round_by_find_area(
-            self.last_screenshot, '贝果-局内', '搜查进行中',
-        ).is_success)
-
-    def _search_complete(self) -> bool:
-        """只有搜索结果文字出现后才允许关闭面板。"""
-        return self.round_by_find_area(
-            self.last_screenshot, '贝果-局内', '搜查完成',
-        ).is_success
+        ).is_success and (self._has('全部拾取_单行') or self._has('全部拾取_双行'))
 
     def _log_recognized_items(self, area: str, marks: list[BagelSlotMark]) -> None:
         """首次识别或格号、种类、品质变化时记录，避免等待期间重复打印。"""
@@ -263,22 +337,20 @@ class BagelStoreSafe(BagelOperation):
         log.info('贝果物品识别：%s，当前 %s 格；%s', area, len(items), '；'.join(details) or '无已识别物品')
 
     def _ready_results(self, results: list[BagelSlotMark]) -> list[BagelSlotMark]:
-        """只保留有效角标的非金币物品；角标未出现的格子继续等待。"""
+        """确认结果格类型，金币记为已跳过，其他物品交给原优先级选择。"""
         ready: list[BagelSlotMark] = []
-        for mark in results:
-            if mark.item_type == ITEM_TYPE_OTHER:
-                self._badge_pending.add(mark.index)
-                continue
-            self._badge_pending.discard(mark.index)
-            if mark.item_type != ITEM_TYPE_CURRENCY:
+        for mark in self._search_progress.ready_items(results, self.operation_usage_time):
+            if mark.item_type == ITEM_TYPE_CURRENCY:
+                self._search_progress.mark_handled(
+                    mark.index, '金币跳过', self.operation_usage_time,
+                )
+            elif mark.index not in self._swap_seen:
                 ready.append(mark)
+        snapshot = self._search_progress.summary()
+        if snapshot != self._logged_progress:
+            log.info('贝果搜查登记：%s', snapshot)
+            self._logged_progress = snapshot
         return ready
-
-    def _wait_for_badges(self) -> OperationRoundResult | None:
-        """未确认角标时不能判空或收尾，等待沿用操作的总超时。"""
-        if not self._badge_pending:
-            return None
-        return self.round_wait('等待结果格有效角标', wait=0.3)
 
     @node_from(from_name='核对入箱变化', status=_STATUS_SKIP_SLOT)
     @node_from(from_name='核对入箱变化', status='继续装入')
@@ -289,7 +361,7 @@ class BagelStoreSafe(BagelOperation):
         if panel_result is not None:
             return panel_result
         screen = self.last_screenshot
-        states = slot_states(screen, self._result_centers)
+        states = self._search_progress.states
         # 底部文字在揭示闪光结束前就可能变亮，所有候选还必须匹配有效角标。
         # 已确认格可以先处理；角标未确认的格子即使暂时掉回空档，也不能用于收尾。
         results = inspect_occupied(
@@ -302,20 +374,11 @@ class BagelStoreSafe(BagelOperation):
             mark for mark in results if mark.index not in self._unstorable
         ])
         if not results:
-            badge_wait = self._wait_for_badges()
-            if badge_wait is not None:
-                return badge_wait
-            loading_wait = self._wait_for_loading(states)
-            if loading_wait is not None:
-                return loading_wait
-            if not self._search_complete():
-                return self.round_wait('等待新的搜查结果', wait=0.3)
             if inspect_safe_slots(screen) is None:
                 return self._wait_for_safe_slots()
             self._safe_unknown_rounds = 0
             status = self.STATUS_DONE if self.moved or self.acted else self.STATUS_EMPTY
-            self._record_safe_items()
-            return self.round_success(status, data={'moved': self.moved})
+            return self._finish_collection(status)
         safe = inspect_safe_slots(screen)
         if safe is None:
             return self._wait_for_safe_slots()
@@ -329,31 +392,9 @@ class BagelStoreSafe(BagelOperation):
         )
         if choice is None:
             self._safe_unknown_rounds = 0
-            # 安全箱满了、现有候选又都不比箱内的好，不等于没东西可拿：还有格子
-            # 在揭示时，下一帧可能冒出更好的物品。先等揭示完再收工。
-            badge_wait = self._wait_for_badges()
-            if badge_wait is not None:
-                return badge_wait
-            loading_wait = self._wait_for_loading(states)
-            if loading_wait is not None:
-                return loading_wait
-            if not self._search_complete():
-                return self.round_wait('等待新的搜查结果', wait=0.3)
-            self._record_safe_items()
-            return self.round_success(self.STATUS_DONE, data={'moved': self.moved})
-        if choice.kind == ACTION_SWAP:
-            if not self._search_complete():
-                return self.round_wait('等待搜索完成后核对对换', wait=0.3)
-            if choice.source_index in self._swap_seen:
-                badge_wait = self._wait_for_badges()
-                if badge_wait is not None:
-                    return badge_wait
-                log.info(
-                    '贝果入箱：结果格 %s 已对换，不再将换出的物品换回',
-                    choice.source_index + 1,
-                )
-                self._record_safe_items()
-                return self.round_success(self.STATUS_DONE, data={'moved': self.moved})
+            return self._finish_collection(self.STATUS_DONE)
+        self._finish_snapshot = None
+        self._finish_frame_time = None
         source = self._result_centers[choice.source_index]
         destination = _DEST_CENTERS[choice.kind][choice.dest_index]
         # 等待后重新截图，复核面板、亮度与角标；通过后才登记对换并发送拖拽。
@@ -369,6 +410,9 @@ class BagelStoreSafe(BagelOperation):
         eligible = current_safe.empty if choice.kind == ACTION_FILL else current_safe.occupied
         if choice.dest_index not in eligible:
             return self.round_wait('目标格状态变化，重新挑选', wait=0.2)
+        deadline = self._check_collection_deadline()
+        if deadline is not None:
+            return deadline
         if choice.kind == ACTION_SWAP:
             self._swap_seen.add(choice.source_index)
         self._pending_before = self.last_screenshot.copy()
@@ -412,15 +456,15 @@ class BagelStoreSafe(BagelOperation):
         if source.tuple() != before_center.tuple():
             return self.round_wait('结果格位置变化，重新挑选', wait=0.2)
         if slot_state(self.last_screenshot, source) != SLOT_ITEM:
-            self._badge_pending.add(source_index)
+            self._search_progress.invalidate(source_index)
             return self.round_wait('源格亮度未达标，等待重新确认', wait=0.2)
         item_type = identify_type(self.last_screenshot, source)
         if item_type == ITEM_TYPE_OTHER:
-            self._badge_pending.add(source_index)
-            return self._wait_for_badges()
-        self._badge_pending.discard(source_index)
+            self._search_progress.invalidate(source_index)
+            return self.round_wait('等待结果格有效角标', wait=0.3)
         if item_type != ITEM_TYPE_CURRENCY:
             if item_type != expected_type:
+                self._search_progress.invalidate(source_index)
                 return self.round_wait('源格角标类型变化，重新挑选', wait=0.2)
             return None
         give_up = self._skip_source(source_index, '金币不占安全箱')
@@ -443,7 +487,7 @@ class BagelStoreSafe(BagelOperation):
         与 `核对入箱变化`）。
         """
         self._unstorable.add(source_index)
-        self._badge_pending.discard(source_index)
+        self._search_progress.mark_handled(source_index, reason, self.operation_usage_time)
         source = self._result_centers[source_index]
         observed_type = identify_type(self.last_screenshot, source)
         log.info(
@@ -598,8 +642,21 @@ class BagelStoreSafe(BagelOperation):
 
     def _confirm_ledger_transfer(self) -> None:
         """入箱已确认，账本里该格换成拖入的物品。"""
+        source_index = self._pending_source_index
+        if source_index is not None:
+            reason = '已对换' if self._pending_kind == ACTION_SWAP else '已入箱'
+            self._search_progress.mark_handled(
+                source_index, reason, self.operation_usage_time, transferred=True,
+            )
         if self.ledger is not None:
             self.ledger.confirm_transfer()
+
+    def after_operation_done(self, result: OperationResult) -> None:
+        """超时和人工结束也撤销未确认的账本登记，已入箱记录保持不变。"""
+        self._clear_pending()
+        if not result.success:
+            log.warning('贝果搜查未完成：%s；%s', result.status, self._search_progress.summary())
+        super().after_operation_done(result)
 
     def _record_safe_items(self) -> None:
         """记下装箱结束时安全箱各格的类型和品质，只读红色物品的数量；只用于统计日志。"""
