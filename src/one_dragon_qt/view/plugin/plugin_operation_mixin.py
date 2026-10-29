@@ -7,9 +7,7 @@
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
-import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -18,7 +16,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from packaging import version
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 from qfluentwidgets import InfoBar, InfoBarPosition, MessageBox
@@ -39,8 +37,19 @@ from one_dragon.base.operation.application.plugin_market import (
     get_plugin_market_service,
 )
 from one_dragon.base.operation.one_dragon_context import OneDragonContext
+from one_dragon.base.web.common_downloader import (
+    GITHUB_SOURCE_ID,
+    CommonDownloader,
+    CommonDownloaderParam,
+)
+from one_dragon.utils import os_utils
 from one_dragon.utils.i18_utils import gt
 from one_dragon.utils.log_utils import log
+from one_dragon_qt.services.download_queue_service import (
+    DownloadQueueService,
+    ResourceDownloadSpec,
+    ResourceDownloadTaskState,
+)
 from one_dragon_qt.services.plugin_cover_service import (
     PluginCoverService,
     get_plugin_cover_service,
@@ -76,13 +85,18 @@ _active_runner: PluginImportRunner | None = None
 """
 
 _active_runner_lock: threading.Lock = threading.Lock()
+_plugin_write_lock: threading.Lock = threading.Lock()
+"""导入、更新、卸载共用的写锁。下载队列安装插件时也要拿到它。"""
 
 
 def _claim_task_slot(runner: PluginImportRunner) -> bool:
     """占用插件写操作的唯一名额，已被占用时返回 False。"""
     global _active_runner
+    if not _plugin_write_lock.acquire(blocking=False):
+        return False
     with _active_runner_lock:
         if _active_runner is not None:
+            _plugin_write_lock.release()
             return False
         _active_runner = runner
         return True
@@ -91,9 +105,13 @@ def _claim_task_slot(runner: PluginImportRunner) -> bool:
 def _release_task_slot(runner: PluginImportRunner) -> None:
     """释放插件写操作名额。"""
     global _active_runner
+    released = False
     with _active_runner_lock:
         if _active_runner is runner:
             _active_runner = None
+            released = True
+    if released:
+        _plugin_write_lock.release()
 
 
 class PluginImportRunner(QThread):
@@ -468,62 +486,158 @@ class PluginOperationMixin:
     # ------------------------------------------------------------------
 
     def subscribe(self, entry: MarketPlugin) -> None:
-        """订阅一个市场条目，等价于安装。"""
-        if self._import_busy:
-            return
-        if entry.latest is None or not entry.latest.download_url:
-            self._show_error(gt('无法订阅'), gt('该插件没有可下载的版本'))
-            return
-
-        self._start_plugin_task(
-            lambda: self._download_and_import(entry, overwrite=False),
-            partial(self._finish_subscribe, entry),
+        """订阅一个市场条目：把插件包放进统一下载队列，下完再安装。"""
+        self._enqueue_plugin_download(
+            entry,
+            overwrite=False,
+            action_name=gt('订阅'),
+            current_version='',
         )
 
     def update_plugin(self, entry: MarketPlugin, plugin_info: PluginInfo) -> None:
-        """把已安装插件更新到市场最新版本。"""
-        if self._import_busy:
-            return
-        if entry.latest is None or not entry.latest.download_url:
-            self._show_error(gt('无法更新'), gt('该插件没有可下载的版本'))
-            return
-
-        self._start_plugin_task(
-            lambda: self._download_and_import(entry, overwrite=True),
-            partial(self._finish_update, entry),
+        """把已安装插件更新到市场最新版本，下载走统一队列。"""
+        self._enqueue_plugin_download(
+            entry,
+            overwrite=True,
+            action_name=gt('更新'),
+            current_version=plugin_info.version or '',
         )
 
-    def _download_and_import(self, entry: MarketPlugin, overwrite: bool) -> list[ImportResult]:
-        """下载市场版本并导入，返回导入结果列表。"""
+    def _enqueue_plugin_download(
+        self,
+        entry: MarketPlugin,
+        overwrite: bool,
+        action_name: str,
+        current_version: str,
+    ) -> None:
+        """把插件包加入下载队列。已在队列中的同一版本不重复添加。"""
+        if self._import_busy:
+            return
         release = entry.latest
-        if release is None:
-            return [ImportResult(success=False, plugin_name=entry.name, message='没有可下载的版本')]
+        if release is None or not release.download_url:
+            self._show_error(
+                gt('无法{action}').format(action=action_name),
+                gt('该插件没有可下载的版本'),
+            )
+            return
 
-        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
-            tmp_path = Path(tmp.name)
+        queue = self._download_queue()
+        if queue is None:
+            self._show_error(gt('无法{action}').format(action=action_name), gt('下载队列不可用'))
+            return
 
+        archive_name = self._plugin_archive_name(entry)
+        save_dir = os_utils.get_path_under_work_dir('config', 'temp', 'plugin_downloads')
+        source_id = self._plugin_download_source(release.download_url)
+        spec = ResourceDownloadSpec(
+            resource_id=f'plugin:{entry.plugin_id}',
+            resource_type='plugin',
+            title=entry.name,
+            current_version=current_version,
+            target_version=entry.latest_version or archive_name,
+            downloader_factory=lambda: CommonDownloader(
+                CommonDownloaderParam(
+                    save_file_path=save_dir,
+                    save_file_name=archive_name,
+                    download_urls={source_id: release.download_url},
+                )
+            ),
+            source_order=[source_id],
+            note=action_name,
+            after_download=lambda success: self._install_queued_plugin(
+                entry,
+                overwrite,
+                action_name,
+                Path(save_dir) / archive_name,
+                success,
+            ),
+        )
+        active_states = {
+            ResourceDownloadTaskState.WAITING,
+            ResourceDownloadTaskState.DOWNLOADING,
+            ResourceDownloadTaskState.EXTRACTING,
+            ResourceDownloadTaskState.APPLYING,
+            ResourceDownloadTaskState.CANCELLING,
+        }
+        existing = queue.get_task(spec.task_key)
+        if existing is not None and existing.state in active_states:
+            self._show_download_queued_tip(entry.name)
+            return
+        if existing is not None:
+            queue.remove(existing.task_key)
+        queue.enqueue(spec)
+        self._show_download_queued_tip(entry.name)
+
+    def _download_queue(self) -> DownloadQueueService | None:
+        """主窗口上的统一下载队列。"""
+        window = self._as_widget().window()
+        queue = getattr(window, 'download_queue', None)
+        if isinstance(queue, DownloadQueueService):
+            return queue
+        return None
+
+    def _show_download_queued_tip(self, title: str) -> None:
+        """提示用户到标题栏的下载队列看进度。"""
+        window = self._as_widget().window()
+        show_tip = getattr(window, 'show_download_queue_added_tip', None)
+        if callable(show_tip):
+            show_tip(title)
+
+    @staticmethod
+    def _plugin_download_source(download_url: str) -> str:
+        """GitHub 地址走统一源的代理规则，其他地址按直链下载。"""
+        lowered = download_url.casefold()
+        if 'github.com/' in lowered or 'githubusercontent.com' in lowered:
+            return GITHUB_SOURCE_ID
+        return 'direct'
+
+    @staticmethod
+    def _plugin_archive_name(entry: MarketPlugin) -> str:
+        """插件包在临时目录中的文件名。"""
+        raw = f'{entry.plugin_id}-{entry.latest_version or "latest"}.zip'
+        return ''.join(ch if ch.isalnum() or ch in '._-' else '_' for ch in raw)
+
+    def _install_queued_plugin(
+        self,
+        entry: MarketPlugin,
+        overwrite: bool,
+        action_name: str,
+        archive: Path,
+        success: bool,
+    ) -> None:
+        """下载队列完成后校验并安装。此方法在下载线程中调用。"""
+        if not success:
+            archive.unlink(missing_ok=True)
+            return
         try:
-            from one_dragon.utils import http_utils
-
-            ok = http_utils.download_file(release.download_url, str(tmp_path))
-            if not ok or not tmp_path.exists() or tmp_path.stat().st_size == 0:
-                return [ImportResult(success=False, plugin_name=entry.name, message='下载插件包失败')]
-
-            if release.sha256:
-                digest = self._sha256_of(tmp_path)
+            if not archive.is_file() or archive.stat().st_size == 0:
+                raise RuntimeError('下载插件包失败')
+            release = entry.latest
+            if release is not None and release.sha256:
+                digest = self._sha256_of(archive)
                 if digest.casefold() != release.sha256.casefold():
-                    return [
-                        ImportResult(
-                            success=False,
-                            plugin_name=entry.name,
-                            message='插件包校验失败，文件可能已损坏',
-                        )
-                    ]
-
-            return [self.plugin_import_service.import_plugin(tmp_path, overwrite=overwrite)]
+                    raise RuntimeError('插件包校验失败，文件可能已损坏')
+            if not _plugin_write_lock.acquire(timeout=120):
+                raise RuntimeError('有插件操作正在进行，请稍后再试')
+            try:
+                result = self.plugin_import_service.import_plugin(archive, overwrite=overwrite)
+            finally:
+                _plugin_write_lock.release()
+            if not result.success:
+                raise RuntimeError(result.message or '导入插件失败')
         finally:
-            with contextlib.suppress(OSError):
-                tmp_path.unlink(missing_ok=True)
+            archive.unlink(missing_ok=True)
+
+        widget = self._as_widget()
+        QTimer.singleShot(
+            0,
+            widget,
+            lambda imported=result: self._handle_subscription_results(
+                [imported],
+                entry,
+                action_name,
+            ),
+        )
 
     @staticmethod
     def _sha256_of(path: Path) -> str:
@@ -532,14 +646,6 @@ class PluginOperationMixin:
             for chunk in iter(lambda: fh.read(1024 * 1024), b''):
                 digest.update(chunk)
         return digest.hexdigest()
-
-    def _finish_subscribe(self, entry: MarketPlugin, results: list[ImportResult]) -> None:
-        self._finish_plugin_task()
-        self._handle_subscription_results(results, entry, gt('订阅'))
-
-    def _finish_update(self, entry: MarketPlugin, results: list[ImportResult]) -> None:
-        self._finish_plugin_task()
-        self._handle_subscription_results(results, entry, gt('更新'))
 
     def _handle_subscription_results(
         self,
