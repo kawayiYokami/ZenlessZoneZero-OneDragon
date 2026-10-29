@@ -160,6 +160,12 @@ DETECTION_TASKS: List[DetectionTask] = [
                 {"template_name": "target_state/boss_vesper", "threshold": 0.85},
                 clear_on_miss=True,
             ),
+            TargetStateDef(
+                "首领-基塔布鲁",
+                TargetCheckWay.TEMPLATE_MATCH_MULTI,
+                {"template_name": "target_state/boss_kita", "threshold": 0.85},
+                clear_on_miss=True,
+            ),
         ],
     ),
 ]

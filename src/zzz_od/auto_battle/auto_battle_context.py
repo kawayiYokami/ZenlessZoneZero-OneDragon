@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 _battle_state_check_executor = ThreadPoolExecutor(thread_name_prefix='od_battle_state_check', max_workers=16)
 
-BTN_BAN_CHECK_INTERVAL: float = 0.2  # 按键禁用的识别间隔秒
+BTN_BAN_CHECK_INTERVAL: float = 0.02  # 按键禁用的识别间隔秒
 
 
 class AutoBattleContext:
@@ -225,7 +225,8 @@ class AutoBattleContext:
         self._check_distance_area = self.ctx.screen_loader.get_area('战斗画面', '距离显示区域')
 
         self.area_btn_normal: ScreenArea = self.ctx.screen_loader.get_area('战斗画面', '按键-普通攻击')
-        self.area_btn_special: ScreenArea = self.ctx.screen_loader.get_area('战斗画面', '按键-特殊攻击')
+        # 特殊攻击的禁用图标暂时不检测 要用时取消这行和 ban_check_list 里的注释
+        # self.area_btn_special: ScreenArea = self.ctx.screen_loader.get_area('战斗画面', '按键-特殊攻击')
         self.area_btn_ultimate: ScreenArea = self.ctx.screen_loader.get_area('战斗画面', '按键-终结技')
         self.area_btn_switch: ScreenArea = self.ctx.screen_loader.get_area('战斗画面', '按键-切换角色')
         self.area_btn_switch_backup_mark: ScreenArea = self.ctx.screen_loader.get_area('战斗画面', '按键-切换后援标记')
@@ -560,11 +561,12 @@ class AutoBattleContext:
         """
         normal_attack_available: bool = self.is_normal_attack_btn_available(screen)
 
-        # 三个按钮各自判断 按钮禁用时中心显示灰白 X 只看圆心区域 外圈进度环不参与
+        # 普通攻击和终结技各自判断 按钮禁用时中心显示灰白 X 只看圆心区域 外圈进度环不参与
         # 禁用的按钮图标变了 模板匹配不到 不能当成离开战斗 否则战斗结束识别会被误触发
         ban_check_list: list[tuple[str, ScreenArea, str]] = [
             (BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value, self.area_btn_normal, 'btn_ban_normal_attack'),
-            (BattleStateEnum.STATUS_SPECIAL_BAN.value, self.area_btn_special, 'btn_ban_special_attack'),
+            # 特殊攻击的禁用图标暂时不检测 要用时取消下面的注释
+            # (BattleStateEnum.STATUS_SPECIAL_BAN.value, self.area_btn_special, 'btn_ban_special_attack'),
             (BattleStateEnum.STATUS_ULTIMATE_BAN.value, self.area_btn_ultimate, 'btn_ban_ultimate'),
         ]
 
@@ -1062,9 +1064,10 @@ class AutoBattleContext:
         :param screen:
         :return:
         """
-        part = cv2_utils.crop_image_only(screen, self.area_btn_normal.rect)
-        mrl = self.ctx.tm.match_template(part, 'battle', 'btn_normal_attack',
-                                         threshold=0.9)
+        mrl = self.ctx.tm.crop_and_match_template(
+            screen, self.area_btn_normal.rect, 'battle', 'btn_normal_attack',
+            threshold=0.9,
+        )
         return mrl.max is not None
 
     def check_btn_ban(self, screen: MatLike,
@@ -1083,20 +1086,42 @@ class AutoBattleContext:
         future_list: list[Future] = []
         for _, area, template_id in ban_check_list:
             future_list.append(_battle_state_check_executor.submit(
-                self.ctx.tm.crop_and_match_template,
-                screen, area.rect, 'battle', template_id, threshold=0.9,
+                self._match_btn_ban_gray, screen, area, template_id,
             ))
 
         result: dict[str, bool] = {}
         for (state_name, _, _), future in zip(ban_check_list, future_list, strict=True):
             try:
-                mrl = future.result()
-                result[state_name] = mrl.max is not None
+                result[state_name] = future.result()
             except Exception:
                 log.error('识别按键禁用状态失败 %s', state_name, exc_info=True)
 
         self._last_btn_ban_result = result
         return result
+
+    def _match_btn_ban_gray(self, screen: MatLike, area: ScreenArea, template_id: str) -> bool:
+        """
+        灰度识别按键禁用图标
+        禁用图标是灰白的 X 颜色不提供额外信息 灰度匹配比彩色快四倍 判定结果一致
+        :param screen: 游戏画面
+        :param area: 按钮区域
+        :param template_id: 禁用图标模板ID
+        :return: 是否命中禁用图标
+        """
+        part = cv2_utils.crop_image_only(screen, area.rect)
+        part_gray = cv2.cvtColor(part, cv2.COLOR_RGB2GRAY)
+        # 裁剪后的小图原点是 (0,0) 匹配前把区域左上角压进偏移 调试覆盖层才能把框画在真实位置
+        bus = self.ctx.tm.debug_trace_bus
+        if bus is not None:
+            parent_x, parent_y = bus.crop_offset
+            bus.set_crop_offset(parent_x + area.rect.x1, parent_y + area.rect.y1)
+        try:
+            mrl = self.ctx.tm.match_template(part_gray, 'battle', template_id,
+                                             template_type='gray', threshold=0.9)
+        finally:
+            if bus is not None:
+                bus.reset_crop_offset()
+        return mrl.max is not None
 
     def _update_btn_ban_states(self, ban_result: dict[str, bool], screenshot_time: float) -> list[StateRecord]:
         """
@@ -1110,7 +1135,8 @@ class AutoBattleContext:
         """
         state_records: list[StateRecord] = []
         for state_name in [BattleStateEnum.STATUS_NORMAL_ATTACK_BAN.value,
-                           BattleStateEnum.STATUS_SPECIAL_BAN.value,
+                           # 特殊攻击的禁用图标暂时不检测 要用时取消下面的注释
+                           # BattleStateEnum.STATUS_SPECIAL_BAN.value,
                            BattleStateEnum.STATUS_ULTIMATE_BAN.value]:
             if ban_result.get(state_name, False):
                 if state_name in self._btn_ban_first_time:
