@@ -8935,9 +8935,21 @@
         - "op_name": "按键-普通攻击-按下"
         - "op_name": "等待秒数"
           "seconds": 0.5
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.5
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.5
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.5
+        - "op_name": "按键-普通攻击-按下"
+        - "op_name": "等待秒数"
+          "seconds": 0.5
         - "op_name": "按键-普通攻击-松开"
         - "op_name": "等待秒数"
-          "seconds": 4
+          "seconds": 2
         "states": "[蕾米埃尔-虚曜]{3,3}"
       - "debug_name": "长按强化特殊技"
         "interrupt_states": "[按键可用-快速支援] | [蕾米埃尔-虚曜]{3,3}"

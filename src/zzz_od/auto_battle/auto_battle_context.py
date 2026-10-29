@@ -1064,9 +1064,10 @@ class AutoBattleContext:
         :param screen:
         :return:
         """
-        part = cv2_utils.crop_image_only(screen, self.area_btn_normal.rect)
-        mrl = self.ctx.tm.match_template(part, 'battle', 'btn_normal_attack',
-                                         threshold=0.9)
+        mrl = self.ctx.tm.crop_and_match_template(
+            screen, self.area_btn_normal.rect, 'battle', 'btn_normal_attack',
+            threshold=0.9,
+        )
         return mrl.max is not None
 
     def check_btn_ban(self, screen: MatLike,
@@ -1109,8 +1110,17 @@ class AutoBattleContext:
         """
         part = cv2_utils.crop_image_only(screen, area.rect)
         part_gray = cv2.cvtColor(part, cv2.COLOR_RGB2GRAY)
-        mrl = self.ctx.tm.match_template(part_gray, 'battle', template_id,
-                                         template_type='gray', threshold=0.9)
+        # 裁剪后的小图原点是 (0,0) 匹配前把区域左上角压进偏移 调试覆盖层才能把框画在真实位置
+        bus = self.ctx.tm.debug_trace_bus
+        if bus is not None:
+            parent_x, parent_y = bus.crop_offset
+            bus.set_crop_offset(parent_x + area.rect.x1, parent_y + area.rect.y1)
+        try:
+            mrl = self.ctx.tm.match_template(part_gray, 'battle', template_id,
+                                             template_type='gray', threshold=0.9)
+        finally:
+            if bus is not None:
+                bus.reset_crop_offset()
         return mrl.max is not None
 
     def _update_btn_ban_states(self, ban_result: dict[str, bool], screenshot_time: float) -> list[StateRecord]:
