@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 import time
-from math import atan2, cos, degrees, hypot, radians, sin
+from math import atan2, cos, degrees, floor, hypot, radians, sin
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -164,7 +164,7 @@ TURN_SCALE_MIN_CHANGE: float = 0.03
 """与本次初值差不到这么多就不写盘：实测每局的改进只有 0.03~0.06，门槛取大就永远写不进去。"""
 
 TURN_SCALE_PEAK_BIN_WIDTH: float = 0.05
-"""峰值平均的分箱宽度：补偿比例按此宽度分箱，取个数最多的箱加左右邻箱求平均。"""
+"""峰值箱的分箱宽度：箱以 1.0 为中心（如 0.975~1.025），取个数最多的箱的区间中点。"""
 
 TURN_SCALE_BOUNDS: tuple[float, float] = (0.55, 1.95)
 """可信的补偿比例范围；超出说明样本被别的动作污染，存了也是错的。"""
@@ -257,7 +257,7 @@ def _closest_on_segment(
 
 
 def peak_bin_midpoint(samples: list[float], bin_width: float) -> tuple[float, int]:
-    """全程补偿比例的峰值箱中点：按箱宽分箱，取个数最多的箱的区间中点。
+    """全程补偿比例的峰值箱中点：箱以 1.0 为中心，取个数最多的箱的区间中点。
 
     Args:
         samples: 全程原始补偿比例样本。
@@ -268,9 +268,9 @@ def peak_bin_midpoint(samples: list[float], bin_width: float) -> tuple[float, in
     """
     bins: dict[int, list[float]] = {}
     for value in samples:
-        bins.setdefault(int(value // bin_width), []).append(value)
+        bins.setdefault(floor((value - 1.0) / bin_width + 0.5 + 1e-9), []).append(value)
     peak_key = max(bins, key=lambda key: len(bins[key]))
-    return ((peak_key + 0.5) * bin_width, len(bins[peak_key]))
+    return (1.0 + peak_key * bin_width, len(bins[peak_key]))
 
 
 class BagelRouteWalker(BagelOperation):

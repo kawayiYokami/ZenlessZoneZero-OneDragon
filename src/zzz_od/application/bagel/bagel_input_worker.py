@@ -15,10 +15,10 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import deque
-from statistics import median
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -79,9 +79,6 @@ TURN_TARGET_FRESH_SECONDS: float = 1.0
 自己停手，不用每个分支都调一次暂停。正常移动时约 0.1 秒提交一次，
 远小于这个值，不影响。"""
 
-TURN_RATIO_SMOOTH: float = 0.3
-"""校准值的指数平滑系数：新样本占三成，避免单次抖动带偏。"""
-
 TURN_RATIO_MIN: float = 0.2
 TURN_RATIO_MAX: float = 20.0
 """可信校准值范围；超出说明样本被别的动作污染，直接丢弃。"""
@@ -101,12 +98,8 @@ CRUISE_TURN_CAP: float = 15.0
 TURN_CRUISE_LIMIT: float = 10.0
 """偏差在它以内是边走边转，对应主线束角；超过它才停车转。"""
 
-TURN_RATIO_RECENT_SAMPLES: int = 5
-"""实时校准值按最近这么多个样本的中位数更新。
-
-单个样本偶尔会掉到 0.74 这种（实转只到一半），直接进指数平滑会把校准值一次拽下
-0.23；取中位数后单个异常样本不影响目标值。
-"""
+TURN_RATIO_PEAK_BIN_WIDTH: float = 0.05
+"""实时校准分箱宽度：箱以 1.0 为中心（如 0.975~1.025），每样本只做一次槽计数加一与峰值比较。"""
 
 TURN_RATIO_CLAMP_WARN_STREAK: int = 5
 """校准值连续这么多个样本贴着可信区间的边界，就提示可能需要重做灵敏度检测。"""
@@ -262,8 +255,12 @@ class _TurnWorker:
         """转向校准值：名义转角乘它就是实际转角，1.0 表示还没校准过。任何时候都不重置。"""
         self.turn_samples: int = 0
         """已累积的校准样本数，用于日志观察。"""
-        self._recent_samples: list[float] = []
-        """最近几个有效样本，实时校准值取它们的中位数，挡住单个异常样本。"""
+        self._peak_bins: dict[int, int] = {}
+        """实时峰值槽计数：槽号到样本数，每样本只加一并与最高比较。"""
+        self._peak_key: int | None = None
+        """当前最高的槽号；不如它就保持不变。"""
+        self._peak_count: int = 0
+        """最高槽的样本数。"""
         self._clamp_streak: int = 0
         """校准值连续几次贴到夹取边界的计数，用于提示重做灵敏度检测。"""
         self._scale_samples: list[float] = []
@@ -316,7 +313,9 @@ class _TurnWorker:
             self._history.clear()
             self._target = None
             self._still_since = None
-            self._recent_samples.clear()
+            self._peak_bins.clear()
+            self._peak_key = None
+            self._peak_count = 0
             self._clamp_streak = 0
         self._wake.set()
         self._thread.join(timeout=1.0)
@@ -480,16 +479,19 @@ class _TurnWorker:
                     sample, pending, delta,
                 )
                 return True
-            self._recent_samples.append(sample)
-            del self._recent_samples[:-TURN_RATIO_RECENT_SAMPLES]
-            target = median(self._recent_samples)
-            self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + target * TURN_RATIO_SMOOTH
+            key = math.floor((sample - 1.0) / TURN_RATIO_PEAK_BIN_WIDTH + 0.5 + 1e-9)
+            slot_count = self._peak_bins.get(key, 0) + 1
+            self._peak_bins[key] = slot_count
+            if self._peak_key is None or slot_count > self._peak_count:
+                self._peak_key = key
+                self._peak_count = slot_count
+                self.turn_ratio = 1.0 + key * TURN_RATIO_PEAK_BIN_WIDTH
             self.turn_samples += 1
             self._scale_samples.append(abs(pending) / abs(delta) if delta else 1.0)
-            ratio, count = self.turn_ratio, self.turn_samples
+            ratio, total = self.turn_ratio, self.turn_samples
         log.info(
-            '贝果转向校准 %.3f（样本 %.2f，中位 %.2f，名义 %.1f 实际 %.1f，共 %s 次）',
-            ratio, sample, target, pending, delta, count,
+            '贝果转向校准 %.3f（样本 %.2f，峰值槽 %s 个，名义 %.1f 实际 %.1f，共 %s 次）',
+            ratio, sample, self._peak_count, pending, delta, total,
         )
         if TURN_RATIO_MIN * 1.2 <= ratio <= TURN_RATIO_MAX / 1.2:
             with self._lock:
