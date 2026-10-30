@@ -485,7 +485,7 @@ class _TurnWorker:
             target = median(self._recent_samples)
             self.turn_ratio = self.turn_ratio * (1 - TURN_RATIO_SMOOTH) + target * TURN_RATIO_SMOOTH
             self.turn_samples += 1
-            self._scale_samples.append(1.0 / self.turn_ratio if self.turn_ratio else 1.0)
+            self._scale_samples.append(abs(pending) / abs(delta) if delta else 1.0)
             ratio, count = self.turn_ratio, self.turn_samples
         log.info(
             '贝果转向校准 %.3f（样本 %.2f，中位 %.2f，名义 %.1f 实际 %.1f，共 %s 次）',
@@ -636,7 +636,7 @@ class BagelInputWorker:
 
     @property
     def turn_scale_samples(self) -> list[float]:
-        """本局补偿比例轨迹，供局末取中位数写回现有灵敏度字段。"""
+        """本局补偿比例原始样本，供局末峰值平均写回现有灵敏度字段。"""
         return list(self._turn_worker._scale_samples)
 
     def idle(self) -> bool:
