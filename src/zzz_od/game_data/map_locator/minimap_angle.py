@@ -3,9 +3,8 @@
 流程：
 1. 按 HSV 范围过滤切出亮区，再做腐蚀、膨胀把圆心菱形和外面扇形断开。
    参数对应流水线 assets/image_analysis_pipelines/小地图方向识别.yml。
-2. 镜头朝向：圆心用裁剪块的几何中心（角色标记恒定落在那里，实测偏差在
-   1.5px 内），在固定半径的环里取亮区质心，质心方向即扇形方向。
-   不再需要先拟合菱形、再用菱形半径算环带。
+2. 镜头朝向：圆心固定用手标真值（几何中心偏 2.8、1.5），在固定半径的环里
+   找扇形两侧边，取角平分线。
 3. 角色朝向：保留两套算法，都算出来返回，供后续对比，当前不参与决策。
    - 顶点法：取距圆心最近的连通域，approxPolyDP 拟合四顶点（多则合并），
      两条对角线交点作中心，最远顶点方向即朝向。
@@ -46,9 +45,13 @@ DILATE_KERNEL_SIZE: int = 1
 DILATE_ITERATIONS: int = 1
 """膨胀迭代次数。"""
 
+SECTOR_CENTER_OFFSET: tuple[float, float] = (2.8, 1.5)
+"""镜头圆心相对几何中心的偏移。红豆手标六点拟合：201 图上真圆心
+(102.8, 101.5)，几何中心 (100, 100)。线上裁剪同为 201，直接套偏移。"""
+
 SECTOR_INNER_RADIUS: int = 18
 SECTOR_OUTER_RADIUS: int = 40
-"""求扇形方向的环形带，单位像素，以角色标记质心为圆心。
+"""求扇形方向的环形带，单位像素，以固定圆心为准。
 
 内边界 18 要大于角色菱形半径（实测 15.8），避开标记自身；外侧到 40 覆盖
 扇形主体，实测贝果局内扇形亮区落在半径 18~40 之间。
@@ -127,7 +130,7 @@ def _sector_angle(
 
     Args:
         mask: 亮区掩码，角色标记自身的像素应当已经清掉。
-        center_x: 圆心 x，取角色标记质心。
+        center_x: 圆心 x，取固定圆心。
         center_y: 圆心 y。
 
     Returns:
@@ -421,7 +424,7 @@ def _marker_by_edges(component: np.ndarray) -> tuple[float, float, float, float]
 
 def analyze(
     rgb: MatLike,
-) -> tuple[float | None, float | None, float | None, float | None, float, tuple[float, float]]:
+) -> tuple[float | None, float | None, float | None, float, tuple[float, float]]:
     """一次算出两套角色朝向、镜头朝向与圆心。
 
     Args:
@@ -429,10 +432,12 @@ def analyze(
 
     Returns:
         (角色朝向·顶点法, 角色朝向·边拟合法, 镜头朝向, 菱形半径, 圆心)。
-        算不出的项为 None，半径算不出时为 0。圆心恒为裁剪块几何中心。
+        算不出的项为 None，半径算不出时为 0。圆心为手标固定圆心。
     """
     height, width = rgb.shape[:2]
-    center_x, center_y = (width - 1) / 2, (height - 1) / 2
+    geo_x, geo_y = (width - 1) / 2, (height - 1) / 2
+    center_x = geo_x + SECTOR_CENTER_OFFSET[0]
+    center_y = geo_y + SECTOR_CENTER_OFFSET[1]
     center = (center_x, center_y)
 
     mask = _bright_mask(rgb)
@@ -444,14 +449,12 @@ def analyze(
         sector_value = _sector_angle(mask, center_x, center_y)
         return None, None, sector_value, 0.0, center
 
-    # 角色标记并不总在裁剪块正中：贝果局内实测偏出 30 像素上下，
-    # 拿几何中心当圆心会把环带整个扫到空地上去，所以先找标记再定圆心。
+    # 扇形环带以固定圆心为准，不再按菱形质心：旧版按标记质心定环带，
+    # 菱形偏出 30 像素时会把环带扫到空地上去。
     marker_ys, marker_xs = np.nonzero(component)
     sector_mask = mask.copy()
     sector_mask[marker_ys, marker_xs] = 0
-    sector_value = _sector_angle(
-        sector_mask, float(marker_xs.mean()), float(marker_ys.mean()),
-    )
+    sector_value = _sector_angle(sector_mask, center_x, center_y)
 
     vertices_result = _marker_by_vertices(component)
     edges_result = _marker_by_edges(component)
