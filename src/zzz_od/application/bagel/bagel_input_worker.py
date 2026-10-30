@@ -117,6 +117,10 @@ TURN_SCALE_SAMPLE_MIN_COMMAND: float = 8.0
 TURN_SETTLE_GRACE: float = 0.4
 """下发转向后这么久内画面没变化不计数：实测转稳中位 0.24 秒、最大 0.31 秒。"""
 
+TURN_POST_TURN_QUIET: float = 0.3
+"""下发转向后这么久内不截图：宽限内的样本本来就直接丢掉，不采省截图开销。
+转稳最大 0.31 秒，0.3 停采后补 3 帧判稳，首个样本约 0.39 秒落地，不丢精度。"""
+
 TURN_STILL_TIMEOUT: float = 1.0
 """宽限过后，画面持续没变化超过这么久就放行下一笔，不重置校准。
 
@@ -336,6 +340,13 @@ class _TurnWorker:
             with self._lock:
                 if self._stopping:
                     return
+                in_quiet = (
+                    self._pending is not None
+                    and time.monotonic() - self._pending_at < TURN_POST_TURN_QUIET
+                )
+            if in_quiet:
+                # 下发后静默期内不截图：这段的样本本来就丢掉，采了也是浪费。
+                continue
             try:
                 current = self._sampler()
             except Exception:
