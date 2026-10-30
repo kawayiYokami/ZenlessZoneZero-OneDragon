@@ -21,8 +21,8 @@ import cv2
 import numpy as np
 from cv2.typing import MatLike
 
-SECTOR_CENTER_OFFSET: tuple[float, float] = (0.5, 0.5)
-"""镜头圆心相对几何中心的偏移。几何中心按像素中心取整，201 图上为 (100.5, 100.5)。"""
+SECTOR_CENTER_OFFSET: tuple[float, float] = (0.0, 0.0)
+"""镜头圆心相对几何中心的偏移。红豆要求直接用几何中心 (100, 100)。"""
 
 SECTOR_WEDGE_WIDTH: float = 117.0
 """滑窗楔宽。手标 5 张张角 115~119，均值 117；扇形角宽固定，只转中线。"""
