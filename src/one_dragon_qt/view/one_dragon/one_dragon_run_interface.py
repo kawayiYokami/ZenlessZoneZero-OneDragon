@@ -193,9 +193,19 @@ class OneDragonRunInterface(SplitAppRunInterface):
             ),
         )
 
+    def run_app(self) -> None:
+        if self.app_runner.isRunning():
+            log.error('已有应用在运行中')
+            return
+        self.app_runner.app_id = self.app_id
+        self.app_runner.start()
+
     def run_app_by_item(self, app: ApplicationGroupConfigItem) -> None:
-        """单应用也沿用公共线程与日志收尾入口。"""
-        self._start_app_runner(app.app_id)
+        if self.app_runner.isRunning():
+            log.error('已有应用在运行中')
+            return
+        self.app_runner.app_id = app.app_id
+        self.app_runner.start()
 
     def on_context_state_changed(self) -> None:
         SplitAppRunInterface.on_context_state_changed(self)
