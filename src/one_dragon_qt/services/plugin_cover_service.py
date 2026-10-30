@@ -25,12 +25,18 @@ from one_dragon.utils.log_utils import log
 MAX_COVER_BYTES = 4 * 1024 * 1024
 """单张封面允许的最大体积，超过则放弃使用。"""
 
+MARKET_SITE_ROOT = f"{MARKET_URL.split('/api/', 1)[0]}/"
+"""插件商店站点根目录，例如 https://onedragon-anyone.github.io/plugin-data/。"""
+
 
 def resolve_cover_url(raw_url: str) -> str:
     """把市场里的封面字段补成完整地址。
 
+    相对路径按插件商店站点根目录解析，开头带不带 `/` 结果相同，
+    例如 `covers/a.png` 与 `/covers/a.png` 都指向 `<站点根目录>/covers/a.png`。
+
     Args:
-        raw_url: plugins.json 中的原始值，可能是绝对地址或站点内相对路径。
+        raw_url: plugins.json 中的原始值，可能是完整地址或相对站点根目录的路径。
 
     Returns:
         可直接下载的完整 URL；空值返回空字符串。
@@ -38,7 +44,9 @@ def resolve_cover_url(raw_url: str) -> str:
     value = (raw_url or '').strip()
     if not value:
         return ''
-    return urljoin(MARKET_URL, value)
+    if urlparse(value).scheme:
+        return value
+    return urljoin(MARKET_SITE_ROOT, value.lstrip('/'))
 
 
 def _read_image(path: Path) -> QImage | None:
@@ -97,7 +105,8 @@ class _DownloadTask(QRunnable):
         finally:
             if not ok:
                 temp_path.unlink(missing_ok=True)
-            self._service._on_download_finished(self._plugin_id, self._url, ok)
+            # 经信号排队回到 GUI 线程，下载状态只在 GUI 线程里改
+            self._service._download_finished.emit(self._plugin_id, self._url, ok)
 
 
 class PluginCoverService(QObject):
@@ -106,14 +115,21 @@ class PluginCoverService(QObject):
     cover_ready = Signal(str)
     """某个插件的封面可用，参数为插件标识。"""
 
+    _download_finished = Signal(str, str, bool)
+    """下载线程结束，参数为插件标识、地址、是否成功。仅内部使用。"""
+
     def __init__(self) -> None:
         super().__init__()
         self._cache_dir: Path = Path(os_utils.get_path_under_work_dir('config', 'temp', 'plugin_covers'))
         self._memory: dict[str, QPixmap | None] = {}
         self._failed: set[str] = set()
-        """下载失败过的地址，避免每次重建卡片都重打一遍外网。"""
+        """下载失败过的地址，避免每次重建卡片都重打一遍外网。手动刷新时清空。"""
         self._downloading: set[str] = set()
         self._pool: QThreadPool = QThreadPool.globalInstance()
+        self._download_finished.connect(
+            self._on_download_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
 
     # ------------------------------------------------------------------
     # 对外接口
@@ -124,10 +140,22 @@ class PluginCoverService(QObject):
         cover_path = plugin_info.cover_path
         if cover_path is None:
             return None
-        key = f'local:{cover_path}'
+        try:
+            mtime_ns = cover_path.stat().st_mtime_ns
+        except OSError:
+            return None
+        # 键里带上修改时间：插件更新替换了封面文件后会重新读取
+        prefix = f'local:{cover_path}:'
+        key = f'{prefix}{mtime_ns}'
         if key not in self._memory:
+            for stale_key in [k for k in self._memory if k.startswith(prefix)]:
+                del self._memory[stale_key]
             self._memory[key] = _load_pixmap(cover_path)
         return self._memory[key]
+
+    def clear_failed(self) -> None:
+        """清空下载失败记录，让之前失败的封面在下次显示时重新下载。"""
+        self._failed.clear()
 
     def market_cover(self, plugin_id: str, cover_url: str) -> QPixmap | None:
         """市场条目的封面；缓存未命中时返回 None 并在后台下载。"""
@@ -169,7 +197,7 @@ class PluginCoverService(QObject):
         self._pool.start(_DownloadTask(self, plugin_id, url, target))
 
     def _on_download_finished(self, plugin_id: str, url: str, ok: bool) -> None:
-        """下载线程结束时回到主线程通知界面。"""
+        """下载结束后在 GUI 线程更新状态并通知界面。"""
         self._downloading.discard(url)
         if ok:
             self.cover_ready.emit(plugin_id)

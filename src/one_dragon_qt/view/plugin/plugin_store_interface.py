@@ -121,7 +121,9 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
 
     def on_interface_shown(self) -> None:
         VerticalScrollInterface.on_interface_shown(self)
-        if self.market_snapshot is None:
+        snapshot = self.market_snapshot
+        # fetched_at 为 0 表示上次读取失败且没有缓存，再进页面时自动重试
+        if snapshot is None or snapshot.fetched_at == 0:
             self.load_market()
         else:
             self.refresh_cards()
@@ -134,8 +136,10 @@ class PluginStoreInterface(PluginOperationMixin, VerticalScrollInterface):
         self._set_status(gt('正在读取插件商店…'))
 
     def on_market_loaded(self, snapshot: MarketSnapshot) -> None:
-        if not self._listed_entries():
+        if snapshot.fetched_at == 0:
             self._set_status(gt('插件商店读取失败，请检查网络后点击刷新'))
+        elif not self._listed_entries():
+            self._set_status(gt('插件商店暂时没有可订阅的插件'))
 
     # ------------------------------------------------------------------
     # 卡片

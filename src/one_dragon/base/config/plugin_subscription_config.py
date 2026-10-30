@@ -88,7 +88,9 @@ class PluginSubscriptionConfig(YamlConfig):
         record = current.get(registry_id)
         if record is None:
             return
-        record['ignored_version'] = version
+        # 必须换成新字典：record 与 self.data 里的是同一个对象，原地改会让
+        # update() 判断新旧值相等而跳过保存
+        current[registry_id] = {**record, 'ignored_version': version}
         self.update('records', current)
 
     def find_registry_id(self, app_id: str, plugin_dir_name: str) -> str | None:

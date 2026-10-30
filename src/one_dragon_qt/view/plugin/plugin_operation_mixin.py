@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from packaging import version
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 from qfluentwidgets import InfoBar, InfoBarPosition, MessageBox
@@ -139,8 +139,12 @@ class PluginImportRunner(QThread):
         self.task_finished.emit(result)
 
 
-class MarketLoadRunner(QThread):
-    """在后台线程读取插件市场数据。"""
+class MarketLoadRunner(QObject):
+    """在后台守护线程读取插件市场数据。
+
+    用 Python 守护线程而不是 QThread：网络卡住时程序退出不必等它结束，
+    线程随进程一起退出；QThread 在运行中被销毁会让 Qt 直接中止进程。
+    """
 
     load_finished = Signal(object)
 
@@ -148,13 +152,26 @@ class MarketLoadRunner(QThread):
         self,
         service: PluginMarketService,
         force: bool,
-        parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent)
+        super().__init__()
         self._service: PluginMarketService = service
         self._force: bool = force
+        self._thread: threading.Thread = threading.Thread(
+            target=self._run,
+            name='plugin-market-load',
+            daemon=True,
+        )
 
-    def run(self) -> None:
+    def start(self) -> None:
+        self._thread.start()
+
+    def is_running(self) -> bool:
+        return self._thread.is_alive()
+
+    def wait(self, timeout_seconds: float) -> None:
+        self._thread.join(timeout_seconds)
+
+    def _run(self) -> None:
         self.load_finished.emit(self._service.load(force=self._force))
 
 
@@ -205,12 +222,22 @@ class PluginOperationMixin:
 
     def load_market(self, force: bool = False) -> None:
         """读取市场数据，结果通过 market_loaded 回调交给页面。"""
-        if self._market_runner is not None and self._market_runner.isRunning():
+        if self._market_runner is not None and self._market_runner.is_running():
             return
+        if force:
+            # 手动刷新时给之前下载失败的封面一次重试机会
+            self.cover_service.clear_failed()
         self.on_market_loading()
-        runner = MarketLoadRunner(self.market_service, force, self._as_widget())
-        runner.load_finished.connect(self._on_market_loaded)
-        runner.finished.connect(lambda: self._cleanup_market_runner(runner))
+        runner = MarketLoadRunner(self.market_service, force)
+        # 信号在后台线程发出，显式排队回到 GUI 线程
+        runner.load_finished.connect(
+            self._on_market_loaded,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        runner.load_finished.connect(
+            lambda _snapshot: self._cleanup_market_runner(runner),
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._market_runner = runner
         runner.start()
 
@@ -228,20 +255,19 @@ class PluginOperationMixin:
     def _cleanup_market_runner(self, runner: MarketLoadRunner) -> None:
         if self._market_runner is runner:
             self._market_runner = None
-        runner.deleteLater()
 
     def wait_for_market_load(self) -> None:
-        """等待市场线程结束，避免界面销毁时线程仍在运行。
+        """等待市场线程结束，让读取结果有机会在界面关闭前处理完。
 
-        最多等 MARKET_WAIT_SECONDS 秒：下载卡住时也要能退出程序，宁可让线程
-        随进程结束，也不让界面无限挂住。
+        最多等 MARKET_WAIT_SECONDS 秒：下载卡住时也要能退出程序。市场线程是
+        守护线程，超时后放着不管，会随进程一起结束。
         """
         runner = self._market_runner
-        if runner is None or not runner.isRunning():
+        if runner is None or not runner.is_running():
             return
         deadline = time.monotonic() + self.MARKET_WAIT_SECONDS
-        while runner.isRunning() and time.monotonic() < deadline:
-            runner.wait(50)
+        while runner.is_running() and time.monotonic() < deadline:
+            runner.wait(0.05)
             QApplication.processEvents()
 
     @property
@@ -496,11 +522,20 @@ class PluginOperationMixin:
 
     def update_plugin(self, entry: MarketPlugin, plugin_info: PluginInfo) -> None:
         """把已安装插件更新到市场最新版本，下载走统一队列。"""
+        action_name = gt('更新')
+        package_dir = self.get_plugin_package_dir(plugin_info)
+        if package_dir is not None and self.is_plugin_running(package_dir):
+            self._show_error(
+                gt('无法{action}').format(action=action_name),
+                gt('插件正在运行，请先停止后再{action}').format(action=action_name),
+            )
+            return
         self._enqueue_plugin_download(
             entry,
             overwrite=True,
-            action_name=gt('更新'),
+            action_name=action_name,
             current_version=plugin_info.version or '',
+            package_dir=package_dir,
         )
 
     def _enqueue_plugin_download(
@@ -509,8 +544,17 @@ class PluginOperationMixin:
         overwrite: bool,
         action_name: str,
         current_version: str,
+        package_dir: Path | None = None,
     ) -> None:
-        """把插件包加入下载队列。已在队列中的同一版本不重复添加。"""
+        """把插件包加入下载队列。已在队列中的同一版本不重复添加。
+
+        Args:
+            entry: 市场条目。
+            overwrite: 是否覆盖已安装的同名插件。
+            action_name: 操作名称，用于提示文案。
+            current_version: 当前已安装的版本号，未安装时为空。
+            package_dir: 被覆盖的插件目录，安装前用它确认插件没有在运行。
+        """
         if self._import_busy:
             return
         release = entry.latest
@@ -518,6 +562,12 @@ class PluginOperationMixin:
             self._show_error(
                 gt('无法{action}').format(action=action_name),
                 gt('该插件没有可下载的版本'),
+            )
+            return
+        if not release.sha256:
+            self._show_error(
+                gt('无法{action}').format(action=action_name),
+                gt('该插件没有提供校验值，无法确认安装包未被篡改'),
             )
             return
 
@@ -550,6 +600,7 @@ class PluginOperationMixin:
                 action_name,
                 Path(save_dir) / archive_name,
                 success,
+                package_dir,
             ),
         )
         active_states = {
@@ -604,8 +655,18 @@ class PluginOperationMixin:
         action_name: str,
         archive: Path,
         success: bool,
+        package_dir: Path | None = None,
     ) -> None:
-        """下载队列完成后校验并安装。此方法在下载线程中调用。"""
+        """下载队列完成后校验并安装。此方法在下载线程中调用。
+
+        Args:
+            entry: 市场条目。
+            overwrite: 是否覆盖已安装的同名插件。
+            action_name: 操作名称，用于提示文案。
+            archive: 下载好的插件包。
+            success: 下载是否成功。
+            package_dir: 被覆盖的插件目录，安装前用它确认插件没有在运行。
+        """
         if not success:
             archive.unlink(missing_ok=True)
             return
@@ -613,13 +674,18 @@ class PluginOperationMixin:
             if not archive.is_file() or archive.stat().st_size == 0:
                 raise RuntimeError('下载插件包失败')
             release = entry.latest
-            if release is not None and release.sha256:
-                digest = self._sha256_of(archive)
-                if digest.casefold() != release.sha256.casefold():
-                    raise RuntimeError('插件包校验失败，文件可能已损坏')
+            # 插件代码会被直接加载运行，没有校验值时不安装
+            if release is None or not release.sha256:
+                raise RuntimeError('插件包缺少校验值，无法确认未被篡改')
+            digest = self._sha256_of(archive)
+            if digest.casefold() != release.sha256.casefold():
+                raise RuntimeError('插件包校验失败，文件可能已损坏')
             if not _plugin_write_lock.acquire(timeout=120):
                 raise RuntimeError('有插件操作正在进行，请稍后再试')
             try:
+                # 下载期间插件可能已被启动，覆盖前在写锁内再确认一次
+                if package_dir is not None and self.is_plugin_running(package_dir):
+                    raise RuntimeError(f'插件正在运行，请先停止后再{action_name}')
                 result = self.plugin_import_service.import_plugin(archive, overwrite=overwrite)
             finally:
                 _plugin_write_lock.release()
@@ -800,6 +866,9 @@ class PluginOperationMixin:
         runner = PluginImportRunner(task, self._as_widget())
         if not _claim_task_slot(runner):
             runner.deleteLater()
+            # 任务链的后续段走到这里时 busy 还是上一段留下的 True，必须复位，
+            # 否则页面按钮会一直禁用
+            self._finish_plugin_task()
             self._show_error(
                 gt('有插件操作正在进行'),
                 gt('请等上一个插件操作完成后再试'),

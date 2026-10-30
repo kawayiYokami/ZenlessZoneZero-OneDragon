@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QEnterEvent,
@@ -84,6 +84,8 @@ class PluginCard(QWidget):
         self._pressed: bool = False
         self._badge_kind: str = badge_kind
         self._cover: QPixmap | None = cover
+        self._scaled_cover: QPixmap | None = None
+        self._scaled_size: QSize = QSize()
         self._key: str = ''
         self._top_color, self._bottom_color = cover_colors(seed or title)
         self._initial: str = self._initial_of(title)
@@ -227,7 +229,22 @@ class PluginCard(QWidget):
     def set_cover(self, cover: QPixmap | None) -> None:
         """设置封面位图；传 None 时回退到按插件标识生成的渐变封面。"""
         self._cover = cover
+        self._scaled_cover = None
         self.update()
+
+    def _get_scaled_cover(self) -> QPixmap:
+        """取缩放到当前卡片尺寸的封面，尺寸没变时复用上次的结果。
+
+        调用方需保证 `self._cover` 不为空。
+        """
+        if self._scaled_cover is None or self._scaled_size != self.size():
+            self._scaled_cover = self._cover.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self._scaled_size = self.size()
+        return self._scaled_cover
 
     # ------------------------------------------------------------------
     # 绘制
@@ -245,11 +262,7 @@ class PluginCard(QWidget):
         painter.setClipPath(path)
 
         if self._cover is not None and not self._cover.isNull():
-            scaled = self._cover.scaled(
-                self.size(),
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+            scaled = self._get_scaled_cover()
             source_x = max(0, (scaled.width() - self.width()) // 2)
             source_y = max(0, (scaled.height() - self.height()) // 2)
             painter.drawPixmap(
