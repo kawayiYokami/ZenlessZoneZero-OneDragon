@@ -4,11 +4,17 @@
  "name": "工地深处-默认",
  "spawn_id": "janus_worksite_depths",
  "started_at": "2026-10-30T21:08:24+08:00",
- "ended_at": "2026-10-30T21:46:53+08:00",
+ "ended_at": "2026-10-30T22:28:03+08:00",
  "points": [
   {
    "x": 257,
    "y": 830,
+   "layer": "雅努斯幻境/Custom",
+   "kind": "beacon"
+  },
+  {
+   "x": 257,
+   "y": 771,
    "layer": "雅努斯幻境/Custom",
    "kind": "beacon"
   },
@@ -67,14 +73,20 @@
    "kind": "beacon"
   },
   {
-   "x": 246,
-   "y": 426,
+   "x": 249,
+   "y": 423,
+   "layer": "雅努斯幻境/Custom",
+   "kind": "beacon"
+  },
+  {
+   "x": 290,
+   "y": 427,
    "layer": "雅努斯幻境/Custom",
    "kind": "beacon"
   },
   {
    "x": 307,
-   "y": 424,
+   "y": 426,
    "layer": "雅努斯幻境/Custom",
    "kind": "mechanical_safe"
   }
