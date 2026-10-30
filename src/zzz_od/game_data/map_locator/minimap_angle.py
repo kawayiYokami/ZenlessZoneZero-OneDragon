@@ -3,14 +3,9 @@
 流程：
 1. 按 HSV 范围过滤切出亮区，再做腐蚀、膨胀把圆心菱形和外面扇形断开。
    参数对应流水线 assets/image_analysis_pipelines/小地图方向识别.yml。
-2. 镜头朝向：圆心固定用手标真值（几何中心偏 2.8、1.5），在固定半径的环里
-   找扇形两侧边，取角平分线。
-3. 角色朝向：保留两套算法，都算出来返回，供后续对比，当前不参与决策。
-   - 顶点法：取距圆心最近的连通域，approxPolyDP 拟合四顶点（多则合并），
-     两条对角线交点作中心，最远顶点方向即朝向。
-   - 边拟合法：把轮廓点按四边形四边分段，各用 fitLine 拟合直线，
-     相邻直线外延求交点作顶点。尖角被削平或多出 1px 粘连时，
-     直线外延交点仍落在真实几何尖顶，精度比顶点法高。
+2. 镜头朝向：圆心固定用手标真值（几何中心偏 2.8、1.5），即角色位置，
+   不再检测菱形；在固定半径的环里找扇形两侧边，取角平分线。
+   环带内径 18 大于菱形半径，标记自身本来就不在环里。
 
 角度约定：正右为 0，逆时针增加，取值 0~360。
 
@@ -66,15 +61,6 @@ SECTOR_LIT_RATIO: float = 0.5
 SECTOR_MIN_SPAN: float = 10.0
 SECTOR_MAX_SPAN: float = 180.0
 """可信的扇形张角范围。窄于下限只剩一个角，宽于上限说明半圈都亮着，都不可信。"""
-
-VERTEX_EPSILON: int = 3
-"""菱形顶点拟合精度。小了会把圆角切出多余顶点，大了会把真实的窄角抹平。"""
-
-EDGE_FIT_MAX_DISTANCE: float = 2.5
-"""轮廓点归入某条边的最大距离，超出即视为尖角附近的过渡点。"""
-
-EDGE_FIT_MIN_POINTS: int = 4
-"""一条边至少要这么多点才拟合；少了说明该边几乎被切光。"""
 
 MIN_PIXELS: int = 30
 """少于这个像素数说明不是有效区域。"""
@@ -164,275 +150,20 @@ def _sector_angle(
     return math.degrees(math.atan2(sum_y, sum_x)) % 360
 
 
-def _marker_component(
-    mask: np.ndarray, center_x: float, center_y: float,
-) -> np.ndarray | None:
-    """取距圆心最近的那个连通域，就是角色菱形。
-
-    Args:
-        mask: 亮区掩码。
-        center_x: 圆心 x。
-        center_y: 圆心 y。
-
-    Returns:
-        0/1 掩码；找不到时返回 None。
-    """
-    count, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
-
-    label = 0
-    best = float('inf')
-    for index in range(1, count):
-        if stats[index, cv2.CC_STAT_AREA] < MIN_PIXELS:
-            continue
-        distance = math.hypot(
-            centroids[index][0] - center_x, centroids[index][1] - center_y
-        )
-        if distance < best:
-            best = distance
-            label = index
-    if label == 0:
-        return None
-    return (labels == label).astype(np.uint8)
-
-
-def _merge_to_four(polygon: np.ndarray) -> np.ndarray:
-    """把最相邻的两个顶点合并成中点，直到只剩四个顶点。
-
-    HSV 掩码边界不干净时（尖角被亮区并进来），approxPolyDP 会多切出顶点，
-    典型是尖角变成一小段平边、同一侧出现两个点。逐个吞并最近的一对，
-    最后总能回到四个顶点，避免整帧判失败。
-
-    Args:
-        polygon: approxPolyDP 拟合出的顶点，至少四个。
-
-    Returns:
-        四个顶点。原本就是四个时原样返回。
-    """
-    points = [point.astype(np.float64) for point in polygon]
-    while len(points) > 4:
-        count = len(points)
-        near_index = 0
-        near_distance = float('inf')
-        for index in range(count):
-            next_index = (index + 1) % count
-            gap = float(np.hypot(*(points[index] - points[next_index])))
-            if gap < near_distance:
-                near_distance = gap
-                near_index = index
-        next_index = (near_index + 1) % count
-        middle = (points[near_index] + points[next_index]) / 2
-        points = [
-            points[index] for index in range(count)
-            if index not in (near_index, next_index)
-        ]
-        points.insert(min(near_index, len(points)), middle)
-    return np.array(points)
-
-
-def _cross_point(
-    first_a: np.ndarray, first_b: np.ndarray, second_a: np.ndarray, second_b: np.ndarray
-) -> np.ndarray | None:
-    """两条直线的交点。
-
-    Args:
-        first_a: 第一条线端点。
-        first_b: 第一条线另一端点。
-        second_a: 第二条线端点。
-        second_b: 第二条线另一端点。
-
-    Returns:
-        交点坐标，两线平行时返回 None。
-    """
-    x1, y1 = first_a
-    x2, y2 = first_b
-    x3, y3 = second_a
-    x4, y4 = second_b
-    denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
-    if abs(denominator) < 1e-9:
-        return None
-    first = x1 * y2 - y1 * x2
-    second = x3 * y4 - y3 * x4
-    return np.array([
-        (first * (x3 - x4) - (x1 - x2) * second) / denominator,
-        (first * (y3 - y4) - (y1 - y2) * second) / denominator,
-    ])
-
-
-def _tip_from_vertices(
-    vertices: np.ndarray,
-) -> tuple[float, float, float, np.ndarray] | None:
-    """从四个顶点算菱形朝向。
-
-    Args:
-        vertices: 四个顶点坐标，顺序沿轮廓。
-
-    Returns:
-        (朝向角, 半径 A, 中心 x, 中心 y)，退化时返回 None。
-    """
-    origin = _cross_point(vertices[0], vertices[2], vertices[1], vertices[3])
-    if origin is None:
-        return None
-    distances = np.hypot(vertices[:, 0] - origin[0], vertices[:, 1] - origin[1])
-    tip = vertices[int(np.argmax(distances))]
-    offset_x = tip[0] - origin[0]
-    offset_y = tip[1] - origin[1]
-    if offset_x == 0 and offset_y == 0:
-        return None
-    angle = math.degrees(math.atan2(-offset_y, offset_x)) % 360
-    return angle, float(distances.max()), float(origin[0]), float(origin[1])
-
-
-def _marker_by_vertices(
-    component: np.ndarray,
-) -> tuple[float, float, float, float] | None:
-    """顶点法：approxPolyDP 拟合四顶点，对角线交点作中心。
-
-    Args:
-        component: 角色菱形的 0/1 掩码。
-
-    Returns:
-        (朝向角, 半径 A, 中心 x, 中心 y)，拟合不出四边形时返回 None。
-    """
-    contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-    contour = max(contours, key=cv2.contourArea)
-    polygon = cv2.approxPolyDP(contour, VERTEX_EPSILON, True).reshape(-1, 2)
-    if len(polygon) < 4:
-        return None
-    result = _tip_from_vertices(_merge_to_four(polygon))
-    if result is None:
-        return None
-    angle, radius, origin_x, origin_y = result
-    return angle, radius, origin_x, origin_y
-
-
-def _edge_groups(
-    contour: np.ndarray, polygon: np.ndarray,
-) -> list[np.ndarray]:
-    """把轮廓点按四边形四条边分段，返回每边的点集。
-
-    Args:
-        contour: 完整轮廓点（CHAIN_APPROX_NONE）。
-        polygon: 用作分段基准的四个顶点。
-
-    Returns:
-        四组点，顺序与 polygon 的边一致。
-    """
-    points = contour.reshape(-1, 2).astype(np.float64)
-    groups: list[list[np.ndarray]] = [[] for _ in range(4)]
-    for point in points:
-        near_index = 0
-        near_distance = float('inf')
-        for index in range(4):
-            start = polygon[index]
-            end = polygon[(index + 1) % 4]
-            edge = end - start
-            length_squared = float(edge @ edge)
-            if length_squared < 1e-9:
-                continue
-            ratio = np.clip(float((point - start) @ edge) / length_squared, 0.0, 1.0)
-            distance = float(np.hypot(*(point - (start + ratio * edge))))
-            if distance < near_distance:
-                near_distance = distance
-                near_index = index
-        if near_distance < EDGE_FIT_MAX_DISTANCE:
-            groups[near_index].append(point)
-    return [np.array(group, dtype=np.float64) for group in groups]
-
-
-def _fit_line(points: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
-    """用最小二乘拟合一条直线，并剔除偏离过远的点后重拟一次。
-
-    Args:
-        points: 该边上的轮廓点。
-
-    Returns:
-        (线上一点, 单位方向向量)；点太少时返回 None。
-    """
-    if len(points) < EDGE_FIT_MIN_POINTS:
-        return None
-    samples = points.astype(np.float32)
-    vx, vy, x0, y0 = cv2.fitLine(samples, cv2.DIST_L2, 0, 0.01, 0.01).ravel()
-    direction = np.array([float(vx), float(vy)])
-    norm = float(np.linalg.norm(direction))
-    if norm < 1e-9:
-        return None
-    direction /= norm
-    normal = np.array([-direction[1], direction[0]])
-    origin = np.array([float(x0), float(y0)])
-    offsets = np.abs((points - origin) @ normal)
-    keep = offsets < max(0.5, float(np.median(offsets)) * 2.0)
-    refined = points[keep]
-    if len(refined) >= EDGE_FIT_MIN_POINTS:
-        vx, vy, x0, y0 = cv2.fitLine(
-            refined.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01,
-        ).ravel()
-        direction = np.array([float(vx), float(vy)])
-        norm = float(np.linalg.norm(direction))
-        if norm < 1e-9:
-            return None
-        direction /= norm
-        origin = np.array([float(x0), float(y0)])
-    return origin, direction
-
-
-def _marker_by_edges(component: np.ndarray) -> tuple[float, float, float, float] | None:
-    """边拟合法：四条边分别拟合直线，相邻直线外延交点作顶点。
-
-    顶点法的顶点受像素栅格限制，只能落在整数坐标上；尖角被削平还会整个失败。
-    直线外延的交点是连续解，能落在真实几何尖顶上，精度是亚像素级的。
-
-    Args:
-        component: 角色菱形的 0/1 掩码。
-
-    Returns:
-        (朝向角, 半径 A, 中心 x, 中心 y)，任一步失败时返回 None。
-    """
-    contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    if not contours:
-        return None
-    contour = max(contours, key=cv2.contourArea)
-    approx = cv2.approxPolyDP(contour, VERTEX_EPSILON, True).reshape(-1, 2)
-    if len(approx) < 4:
-        return None
-    polygon = _merge_to_four(approx)
-
-    lines = []
-    for group in _edge_groups(contour, polygon):
-        line = _fit_line(group)
-        if line is None:
-            return None
-        lines.append(line)
-
-    vertices = []
-    for index in range(4):
-        (origin_a, direction_a) = lines[index]
-        (origin_b, direction_b) = lines[(index + 1) % 4]
-        cross = _cross_point(
-            origin_a, origin_a + direction_a, origin_b, origin_b + direction_b,
-        )
-        if cross is None:
-            return None
-        vertices.append(cross)
-    result = _tip_from_vertices(np.array(vertices))
-    if result is None:
-        return None
-    angle, radius, origin_x, origin_y = result
-    return angle, radius, origin_x, origin_y
-
-
 def analyze(
     rgb: MatLike,
 ) -> tuple[float | None, float | None, float | None, float, tuple[float, float]]:
-    """一次算出两套角色朝向、镜头朝向与圆心。
+    """只算镜头朝向与固定圆心，不再检测菱形。
+
+    圆心即角色位置，直接用手标固定值。返回保持 5 元组，
+    角色朝向两项恒为 None、半径恒为 0.0，调用方解包不用改。
 
     Args:
         rgb: 小地图 RGB 图，正方形。
 
     Returns:
-        (角色朝向·顶点法, 角色朝向·边拟合法, 镜头朝向, 菱形半径, 圆心)。
-        算不出的项为 None，半径算不出时为 0。圆心为手标固定圆心。
+        (None, None, 镜头朝向, 0.0, 圆心)。
+        扫不到可信扇形时镜头朝向为 None。圆心为手标固定圆心。
     """
     height, width = rgb.shape[:2]
     geo_x, geo_y = (width - 1) / 2, (height - 1) / 2
@@ -444,21 +175,6 @@ def analyze(
     if int(mask.sum()) < MIN_PIXELS:
         return None, None, None, 0.0, center
 
-    component = _marker_component(mask, center_x, center_y)
-    if component is None:
-        sector_value = _sector_angle(mask, center_x, center_y)
-        return None, None, sector_value, 0.0, center
-
-    # 扇形环带以固定圆心为准，不再按菱形质心：旧版按标记质心定环带，
-    # 菱形偏出 30 像素时会把环带扫到空地上去。
-    marker_ys, marker_xs = np.nonzero(component)
-    sector_mask = mask.copy()
-    sector_mask[marker_ys, marker_xs] = 0
-    sector_value = _sector_angle(sector_mask, center_x, center_y)
-
-    vertices_result = _marker_by_vertices(component)
-    edges_result = _marker_by_edges(component)
-    marker_vertices = vertices_result[0] if vertices_result is not None else None
-    marker_edges = edges_result[0] if edges_result is not None else None
-    radius = vertices_result[1] if vertices_result is not None else 0.0
-    return marker_vertices, marker_edges, sector_value, radius, center
+    # 环带内径大于菱形半径，标记自身不在环里，不用清掉也能直接扫。
+    sector_value = _sector_angle(mask, center_x, center_y)
+    return None, None, sector_value, 0.0, center
