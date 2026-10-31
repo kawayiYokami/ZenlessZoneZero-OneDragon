@@ -163,6 +163,7 @@ class OneDragonContext(ContextEventBus, OneDragonEnvContext):
 
         :param app_id: 插件应用 ID
         :return: 插件数据目录路径
+        :raises ValueError: app_id 为空时抛出
         """
         if not app_id:
             raise ValueError('app_id 不能为空')

@@ -153,14 +153,19 @@ class MyPluginFactory(ApplicationFactory):
 - 插件之间数据互相隔离（按 app_id 分目录）
 
 ```python
+import json
+
 class MyPluginFactory(ApplicationFactory):
-    def __init__(self, ctx: ZContext):
+    def __init__(self, ctx: ZContext) -> None:
         super().__init__(my_plugin_const)
         self.ctx = ctx
 
-    def some_method(self):
-        data_file = self.data_dir / 'my_data.json'
-        ...
+    def load_routes(self) -> list[dict]:
+        """读取插件保存的路线数据。"""
+        data_file = self.data_dir / 'routes.json'
+        if not data_file.exists():
+            return []
+        return json.loads(data_file.read_text(encoding='utf-8'))
 ```
 
 ---
