@@ -43,22 +43,9 @@
 
 **2. 按首领动作**
 
-具体动作写在 `config/auto_battle_state_handler/首领交互.sample.yml`，`states` 用 `[首领-XXX, 0, 999]` 分流。以薇斯珀为例：
-
-```yaml
-- states: "[首领-薇斯珀, 0, 999]"
-  interrupt_states: "![按键禁用-终结技, 0, 999]"
-  debug_name: "薇斯珀-首领交互"
-  operations:
-    - op_name: "等待秒数"
-      seconds: 2.646
-    - op_name: "按键-切换角色-下一个"   # 空格默认绑这个动作
-    ...
-    - op_name: "等待秒数"
-      seconds: 10
-```
+具体动作写在 `config/auto_battle_state_handler/首领交互.sample.yml`，外层 `states` 用 `[首领-XXX, 0, 999]` 分流，内层 `sub_handlers` 按禁用类型分支（普攻禁用切人 / 终结技禁用闪避）。各首领结构相同，切人分支保留各自实测时间轴。完整写法直接看源文件，这里不另抄一份。
 
 - 触发挂在「自动守护」和「全配队通用」的 scene 上，`triggers: [按键禁用-终结技]`，`priority: 100`。
 - 每段间隔用「等待秒数」而不是 `pre_delay`：等待可被 `interrupt_states` 打断，`pre_delay` 内部是 `time.sleep`，打断不了。
 - `![按键禁用-终结技, 0, 999]` 的意思是「终结技仍在禁用」，所以禁用一解除就中断整套动作。
-- 时间轴来自实机录制，见 [按键禁用](../../game/mechanics/按键禁用.md) 的实测记录。
+- 时间轴来自实机录制，仅供参考，见 [按键禁用](../../game/mechanics/按键禁用.md) 的实测记录。实际使用时从第一个点开始不停往前微调，找到最早可用点，尽可能减少延迟。
