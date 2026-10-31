@@ -144,6 +144,25 @@ class MyPluginFactory(ApplicationFactory):
 - ✅ 支持嵌套子目录和子包
 - ✅ 必须放在 `plugins/` 的子目录中（不能直接放在根目录）
 
+### 插件数据目录
+
+插件需要持久化数据（缓存、用户数据、路由文件等）时，统一使用插件数据目录，不要写到插件目录或 `config/` 里：
+
+- 在工厂类中用 `self.data_dir`（等价于 `ctx.get_plugin_data_dir(APP_ID)`，目录不存在时自动创建）
+- 路径为工作目录下的 `plugin_data/<app_id>/`，与 `plugins/` 同级，已在 `.gitignore` 中忽略，不会被 git 追踪
+- 插件之间数据互相隔离（按 app_id 分目录）
+
+```python
+class MyPluginFactory(ApplicationFactory):
+    def __init__(self, ctx: ZContext):
+        super().__init__(my_plugin_const)
+        self.ctx = ctx
+
+    def some_method(self):
+        data_file = self.data_dir / 'my_data.json'
+        ...
+```
+
 ---
 
 ## 通过 GUI 导入插件

@@ -39,7 +39,14 @@ from one_dragon.base.operation.one_dragon_env_context import (
 from one_dragon.base.push.push_service import PushService
 from one_dragon.base.screen.screen_loader import ScreenContext
 from one_dragon.base.screen.template_loader import TemplateLoader
-from one_dragon.utils import debug_utils, file_utils, i18_utils, log_utils, thread_utils
+from one_dragon.utils import (
+    debug_utils,
+    file_utils,
+    i18_utils,
+    log_utils,
+    os_utils,
+    thread_utils,
+)
 from one_dragon.utils.log_utils import log
 
 
@@ -146,6 +153,20 @@ class OneDragonContext(ContextEventBus, OneDragonEnvContext):
     def factory_manager(self) -> ApplicationFactoryManager:
         """应用工厂管理器"""
         return ApplicationFactoryManager(self, self.application_plugin_dirs)
+
+    def get_plugin_data_dir(self, app_id: str) -> Path:
+        """
+        获取插件数据目录（不存在时自动创建）
+
+        统一放在工作目录下的 plugin_data/<app_id>/，与插件代码目录 plugins/ 分离，
+        插件更新不会碰到数据；该目录已在 .gitignore 中忽略，不入库。
+
+        :param app_id: 插件应用 ID
+        :return: 插件数据目录路径
+        """
+        if not app_id:
+            raise ValueError('app_id 不能为空')
+        return Path(os_utils.get_path_under_work_dir('plugin_data', app_id))
 
     #------------------- 以下是 游戏/脚本级别的 -------------------#
 
