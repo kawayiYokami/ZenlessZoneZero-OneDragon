@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -54,6 +55,7 @@ class AppSettingManager(QObject):
         self._interface_cache: dict[tuple[int, type], BaseInterface] = {}
         self._notify_interface_cache: dict[int, NotifySettingInterface] = {}
         self._app_setting_map: dict[str, Callable[..., None]] = {}
+        self._pushed_navis: list[PivotNavigatorInterface] = []
 
     # ─── 公共 API ─────────────────────────────────────────
 
@@ -63,10 +65,24 @@ class AppSettingManager(QObject):
         可重复调用：每次扫描前清空上次的注册结果与界面实例缓存，
         使插件安装/卸载后的增删能正确反映到 settable_app_ids。
         """
+        self._reset_pushed_setting_interfaces()
         self._app_setting_map.clear()
         self._interface_cache.clear()
         self._discover_providers()
         self.ready.emit()
+
+    def _reset_pushed_setting_interfaces(self) -> None:
+        """把曾推入过设置界面的页面栈重置回根页面。
+
+        重扫后旧的设置界面实例已作废（插件可能已卸载或换新版本），
+        页面栈里若还压着它们，用户切回去会看到失效界面，因此先退回根页面。
+        启动时首次 discover 没有任何 push 记录，本方法是空操作。
+        界面控件可能已被销毁，忽略其抛出的 RuntimeError。
+        """
+        for navi in self._pushed_navis:
+            with contextlib.suppress(RuntimeError):
+                navi.reset_all_setting_interfaces()
+        self._pushed_navis.clear()
 
     @property
     def settable_app_ids(self) -> set[str]:
@@ -246,6 +262,8 @@ class AppSettingManager(QObject):
             if isinstance(iface, GroupIdMixin):
                 iface.group_id = group_id
         pivot_navi.push_setting_interface(instance.nav_text, instance)
+        if pivot_navi not in self._pushed_navis:
+            self._pushed_navis.append(pivot_navi)
 
     def _show_flyout(
         self,
