@@ -58,7 +58,13 @@ class AppSettingManager(QObject):
     # ─── 公共 API ─────────────────────────────────────────
 
     def discover(self) -> None:
-        """执行设置提供者扫描并发出 ready 信号。"""
+        """执行设置提供者扫描并发出 ready 信号。
+
+        可重复调用：每次扫描前清空上次的注册结果与界面实例缓存，
+        使插件安装/卸载后的增删能正确反映到 settable_app_ids。
+        """
+        self._app_setting_map.clear()
+        self._interface_cache.clear()
         self._discover_providers()
         self.ready.emit()
 
