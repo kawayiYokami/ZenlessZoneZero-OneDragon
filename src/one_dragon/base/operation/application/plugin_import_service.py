@@ -33,6 +33,7 @@ from one_dragon.utils.log_utils import log
 from one_dragon.utils.plugin_module_loader import (
     FACTORY_FILE_NAME,
     find_git_repo,
+    has_factory_and_const,
     is_const_file,
     is_factory_file,
 )
@@ -280,7 +281,9 @@ class PluginImportService:
         staging_dir: Path | None = None
         try:
             target_dir = self._get_target_dir(plugin_name)
-            if self._path_exists(target_dir) and not overwrite:
+            # 目录里只有残留文件、连插件结构都不成立时，说明没装成，直接清掉重装
+            leftover = self._path_exists(target_dir) and not has_factory_and_const(target_dir)
+            if self._path_exists(target_dir) and not overwrite and not leftover:
                 return ImportResult(
                     success=False,
                     plugin_name=plugin_name,
@@ -291,7 +294,7 @@ class PluginImportService:
             staging_dir = self._new_staging_dir(plugin_name)
             self._extract_plugin(zf, staging_dir, layout)
             self._find_primary_const_file(staging_dir)
-            self._replace_plugin_dir(staging_dir, target_dir, overwrite)
+            self._replace_plugin_dir(staging_dir, target_dir, overwrite or leftover)
 
             log.info(f"插件导入成功: {plugin_name}")
             return ImportResult(
@@ -633,7 +636,9 @@ class PluginImportService:
         staging_dir: Path | None = None
         try:
             target_dir = self._get_target_dir(plugin_name)
-            if self._path_exists(target_dir) and not overwrite:
+            # 目录里只有残留文件、连插件结构都不成立时，说明没装成，直接清掉重装
+            leftover = self._path_exists(target_dir) and not has_factory_and_const(target_dir)
+            if self._path_exists(target_dir) and not overwrite and not leftover:
                 return ImportResult(
                     success=False,
                     plugin_name=plugin_name,
@@ -645,7 +650,7 @@ class PluginImportService:
             staging_dir = self._new_staging_dir(plugin_name)
             shutil.copytree(layout.source_dir, staging_dir)
             self._find_primary_const_file(staging_dir)
-            self._replace_plugin_dir(staging_dir, target_dir, overwrite)
+            self._replace_plugin_dir(staging_dir, target_dir, overwrite or leftover)
             log.info(f"目录插件导入成功: {plugin_name}")
             return ImportResult(
                 success=True,
